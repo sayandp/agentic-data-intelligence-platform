@@ -1,0 +1,401 @@
+order_id,customer_city,product_category,order_purchase_timestamp,price,freight_value,review_score
+ORD00001,recife,toys,2025-05-09 00:00:00,,14.76,5
+ORD00002,belo horizonte,electronics,2025-06-21 00:00:00,177.25,18.7,5
+ORD00003,rio de janeiro,toys,2025-06-20 00:00:00,,15.87,1
+ORD00004,salvador,books,2025-06-13 00:00:00,169.86,21.36,2
+ORD00005,belo horizonte,books,2025-01-17 00:00:00,,20.62,4
+ORD00006,salvador,sports,2025-02-15 00:00:00,228.64,19.08,3
+ORD00007,curitiba,toys,2025-10-29 00:00:00,,20.59,1
+ORD00008,salvador,toys,2025-10-03 00:00:00,248.8,21.99,5
+ORD00009,brasilia,furniture,2025-08-15 00:00:00,,2.01,5
+ORD00010,porto alegre,toys,2025-12-22 00:00:00,237.69,14.41,2
+ORD00011,belo horizonte,sports,2025-01-25 00:00:00,,22.9,4
+ORD00012,rio de janeiro,sports,2025-01-31 00:00:00,195.55,5.91,5
+ORD00013,salvador,sports,2025-04-30 00:00:00,,21.98,1
+ORD00014,brasilia,sports,2025-04-22 00:00:00,112.28,28.2,3
+ORD00015,sao paulo,sports,2025-09-06 00:00:00,,14.64,5
+ORD00016,curitiba,sports,2025-10-18 00:00:00,204.55,16.75,5
+ORD00017,recife,sports,2025-09-12 00:00:00,,18.1,4
+ORD00018,recife,toys,2025-05-27 00:00:00,194.59,23.72,2
+ORD00019,sao paulo,beauty,2025-07-10 00:00:00,,9.93,4
+ORD00020,sao paulo,sports,2025-12-25 00:00:00,127.03,5.54,2
+ORD00021,belo horizonte,furniture,2025-04-04 00:00:00,,27.93,5
+ORD00022,rio de janeiro,furniture,2025-03-28 00:00:00,161.79,17.61,4
+ORD00023,belo horizonte,sports,2025-07-03 00:00:00,,11.96,5
+ORD00024,curitiba,beauty,2025-07-23 00:00:00,295.01,17.66,2
+ORD00025,salvador,beauty,2025-06-27 00:00:00,,19.86,1
+ORD00026,salvador,books,2025-07-12 00:00:00,109.25,21.14,4
+ORD00027,rio de janeiro,books,2025-06-09 00:00:00,,27.31,4
+ORD00028,belo horizonte,beauty,2025-04-27 00:00:00,361.59,22.59,3
+ORD00029,curitiba,electronics,2025-06-23 00:00:00,,18.14,2
+ORD00030,curitiba,toys,2025-03-30 00:00:00,203.95,20.46,3
+ORD00031,brasilia,sports,2025-03-27 00:00:00,,6.03,3
+ORD00032,brasilia,toys,2025-07-19 00:00:00,180.0,15.42,4
+ORD00033,sao paulo,sports,2025-11-09 00:00:00,,16.98,5
+ORD00034,recife,electronics,2025-05-04 00:00:00,114.48,22.0,5
+ORD00035,brasilia,sports,2025-09-12 00:00:00,,18.94,4
+ORD00036,belo horizonte,sports,2025-10-22 00:00:00,209.77,11.46,4
+ORD00037,brasilia,electronics,2025-03-03 00:00:00,,31.5,5
+ORD00038,curitiba,sports,2025-05-13 00:00:00,156.68,16.58,4
+ORD00039,curitiba,beauty,2025-02-04 00:00:00,,6.01,3
+ORD00040,salvador,sports,2025-03-06 00:00:00,196.85,22.01,4
+ORD00041,sao paulo,electronics,2025-12-25 00:00:00,,18.44,5
+ORD00042,salvador,electronics,2025-10-11 00:00:00,130.92,8.2,2
+ORD00043,brasilia,beauty,2025-01-21 00:00:00,,19.94,5
+ORD00044,recife,sports,2025-09-06 00:00:00,163.95,22.48,1
+ORD00045,curitiba,furniture,2025-07-24 00:00:00,,5.21,5
+ORD00046,recife,furniture,2025-04-16 00:00:00,181.45,15.03,4
+ORD00047,curitiba,furniture,2025-03-21 00:00:00,,25.58,1
+ORD00048,sao paulo,toys,2025-01-04 00:00:00,280.13,22.14,5
+ORD00049,recife,toys,2025-03-05 00:00:00,,18.96,1
+ORD00050,rio de janeiro,books,2025-12-06 00:00:00,144.8,16.51,3
+ORD00051,recife,furniture,2025-12-08 00:00:00,,25.8,2
+ORD00052,sao paulo,beauty,2025-08-20 00:00:00,247.48,12.4,3
+ORD00053,brasilia,sports,2025-10-10 00:00:00,,14.26,4
+ORD00054,recife,toys,2025-07-04 00:00:00,208.5,18.92,5
+ORD00055,belo horizonte,electronics,2025-12-28 00:00:00,,13.74,5
+ORD00056,brasilia,furniture,2025-07-05 00:00:00,165.89,30.09,4
+ORD00057,salvador,sports,2025-02-07 00:00:00,,29.49,3
+ORD00058,rio de janeiro,toys,2025-05-18 00:00:00,137.65,20.89,4
+ORD00059,belo horizonte,toys,2025-07-13 00:00:00,,20.6,3
+ORD00060,rio de janeiro,sports,2025-06-30 00:00:00,98.87,19.63,3
+ORD00061,rio de janeiro,sports,2025-11-08 00:00:00,,16.85,3
+ORD00062,porto alegre,books,2025-08-24 00:00:00,316.57,15.11,1
+ORD00063,rio de janeiro,books,2025-11-07 00:00:00,,2.0,2
+ORD00064,sao paulo,sports,2025-12-20 00:00:00,186.0,15.28,4
+ORD00065,salvador,beauty,2025-01-16 00:00:00,,14.08,2
+ORD00066,recife,sports,2025-05-10 00:00:00,164.07,14.36,5
+ORD00067,belo horizonte,furniture,2025-09-17 00:00:00,,26.89,4
+ORD00068,brasilia,sports,2025-10-08 00:00:00,175.01,16.07,5
+ORD00069,curitiba,sports,2025-02-05 00:00:00,,23.71,4
+ORD00070,curitiba,books,2025-09-27 00:00:00,142.32,13.34,1
+ORD00071,sao paulo,electronics,2025-04-08 00:00:00,,27.94,1
+ORD00072,recife,beauty,2025-05-20 00:00:00,259.58,19.21,1
+ORD00073,rio de janeiro,sports,2025-08-19 00:00:00,,15.55,2
+ORD00074,recife,beauty,2025-09-17 00:00:00,223.86,8.18,2
+ORD00075,brasilia,beauty,2025-08-26 00:00:00,,25.79,5
+ORD00076,recife,beauty,2025-01-09 00:00:00,166.94,16.63,4
+ORD00077,rio de janeiro,books,2025-12-21 00:00:00,,13.82,3
+ORD00078,sao paulo,beauty,2025-12-16 00:00:00,201.2,26.25,3
+ORD00079,brasilia,sports,2025-04-18 00:00:00,,27.02,2
+ORD00080,rio de janeiro,sports,2025-10-04 00:00:00,234.73,21.18,3
+ORD00081,sao paulo,books,2025-12-11 00:00:00,,8.4,1
+ORD00082,belo horizonte,electronics,2025-04-06 00:00:00,182.13,29.61,5
+ORD00083,rio de janeiro,books,2025-02-08 00:00:00,,19.79,2
+ORD00084,recife,toys,2025-06-14 00:00:00,265.42,6.5,5
+ORD00085,curitiba,furniture,2025-12-07 00:00:00,,15.8,4
+ORD00086,rio de janeiro,electronics,2025-08-27 00:00:00,144.66,17.33,4
+ORD00087,recife,beauty,2025-11-13 00:00:00,,17.5,4
+ORD00088,belo horizonte,toys,2025-04-11 00:00:00,114.15,10.54,2
+ORD00089,brasilia,furniture,2025-05-16 00:00:00,,11.23,1
+ORD00090,belo horizonte,books,2025-05-25 00:00:00,115.78,21.23,2
+ORD00091,recife,sports,2025-09-03 00:00:00,,25.09,3
+ORD00092,brasilia,furniture,2025-09-27 00:00:00,309.41,19.22,2
+ORD00093,brasilia,toys,2025-09-17 00:00:00,,9.18,5
+ORD00094,porto alegre,sports,2025-08-31 00:00:00,223.04,28.74,5
+ORD00095,rio de janeiro,toys,2025-04-07 00:00:00,,7.39,3
+ORD00096,sao paulo,beauty,2025-07-09 00:00:00,224.28,29.6,4
+ORD00097,porto alegre,electronics,2025-08-16 00:00:00,,32.8,1
+ORD00098,porto alegre,toys,2025-04-09 00:00:00,133.98,25.18,2
+ORD00099,recife,toys,2025-03-23 00:00:00,,19.45,5
+ORD00100,brasilia,electronics,2025-02-24 00:00:00,261.9,25.04,2
+ORD00101,recife,beauty,2025-12-05 00:00:00,,27.64,1
+ORD00102,rio de janeiro,beauty,2025-08-21 00:00:00,70.95,10.46,4
+ORD00103,belo horizonte,furniture,2025-08-21 00:00:00,,14.71,4
+ORD00104,recife,electronics,2025-11-19 00:00:00,210.54,26.06,4
+ORD00105,recife,beauty,2025-04-02 00:00:00,,18.07,4
+ORD00106,rio de janeiro,beauty,2025-04-11 00:00:00,230.83,11.42,5
+ORD00107,curitiba,books,2025-05-18 00:00:00,,33.07,1
+ORD00108,sao paulo,toys,2025-02-16 00:00:00,260.37,13.88,4
+ORD00109,recife,sports,2025-10-10 00:00:00,,11.44,3
+ORD00110,recife,electronics,2025-03-21 00:00:00,200.94,22.68,5
+ORD00111,porto alegre,beauty,2025-03-31 00:00:00,,2.93,3
+ORD00112,porto alegre,sports,2025-09-14 00:00:00,165.32,27.49,1
+ORD00113,rio de janeiro,books,2025-03-25 00:00:00,,36.22,4
+ORD00114,brasilia,electronics,2025-09-10 00:00:00,95.32,2.0,5
+ORD00115,belo horizonte,toys,2025-03-27 00:00:00,,23.71,4
+ORD00116,curitiba,sports,2025-04-03 00:00:00,180.71,13.78,5
+ORD00117,belo horizonte,electronics,2025-01-09 00:00:00,,17.37,1
+ORD00118,sao paulo,sports,2025-02-15 00:00:00,117.23,19.4,1
+ORD00119,rio de janeiro,beauty,2025-04-08 00:00:00,,26.21,5
+ORD00120,curitiba,books,2025-12-11 00:00:00,123.5,20.14,2
+ORD00121,rio de janeiro,toys,2025-03-11 00:00:00,,14.67,5
+ORD00122,salvador,beauty,2025-02-13 00:00:00,181.65,17.28,1
+ORD00123,recife,furniture,2025-11-19 00:00:00,,21.22,1
+ORD00124,belo horizonte,books,2025-12-17 00:00:00,195.15,10.9,3
+ORD00125,rio de janeiro,books,2025-08-13 00:00:00,,16.16,1
+ORD00126,belo horizonte,beauty,2025-11-24 00:00:00,192.23,2.98,5
+ORD00127,rio de janeiro,electronics,2025-04-24 00:00:00,,28.78,2
+ORD00128,belo horizonte,beauty,2025-12-06 00:00:00,197.7,20.8,3
+ORD00129,sao paulo,books,2025-10-29 00:00:00,,33.06,4
+ORD00130,curitiba,books,2025-06-29 00:00:00,224.72,17.06,2
+ORD00131,porto alegre,books,2025-05-27 00:00:00,,6.68,3
+ORD00132,belo horizonte,beauty,2025-01-22 00:00:00,34.73,21.92,3
+ORD00133,salvador,toys,2025-12-03 00:00:00,,32.51,2
+ORD00134,recife,toys,2025-02-24 00:00:00,144.76,13.67,5
+ORD00135,porto alegre,electronics,2025-12-12 00:00:00,,21.47,3
+ORD00136,sao paulo,electronics,2025-10-21 00:00:00,235.83,24.07,5
+ORD00137,salvador,furniture,2025-08-22 00:00:00,,16.38,4
+ORD00138,sao paulo,books,2025-04-29 00:00:00,143.41,27.65,3
+ORD00139,sao paulo,furniture,2025-01-26 00:00:00,,8.43,2
+ORD00140,curitiba,electronics,2025-10-13 00:00:00,215.7,21.35,2
+ORD00141,recife,furniture,2025-09-15 00:00:00,,23.56,3
+ORD00142,salvador,furniture,2025-05-27 00:00:00,155.13,15.47,1
+ORD00143,sao paulo,furniture,2025-07-23 00:00:00,,27.69,5
+ORD00144,sao paulo,furniture,2025-04-06 00:00:00,159.98,31.29,1
+ORD00145,salvador,electronics,2025-02-06 00:00:00,,15.81,3
+ORD00146,recife,toys,2025-09-27 00:00:00,211.44,27.72,2
+ORD00147,rio de janeiro,furniture,2025-11-25 00:00:00,,33.17,1
+ORD00148,recife,sports,2025-09-16 00:00:00,288.3,16.9,4
+ORD00149,salvador,toys,2025-04-05 00:00:00,,13.98,5
+ORD00150,rio de janeiro,sports,2025-11-19 00:00:00,102.18,17.58,3
+ORD00151,recife,electronics,2025-05-11 00:00:00,,22.5,1
+ORD00152,belo horizonte,furniture,2025-09-04 00:00:00,93.27,12.07,2
+ORD00153,belo horizonte,electronics,2025-01-24 00:00:00,,15.83,1
+ORD00154,porto alegre,electronics,2025-05-26 00:00:00,218.16,26.02,4
+ORD00155,sao paulo,sports,2025-06-18 00:00:00,,30.65,3
+ORD00156,rio de janeiro,furniture,2025-02-10 00:00:00,265.15,26.0,2
+ORD00157,brasilia,toys,2025-02-25 00:00:00,,33.62,5
+ORD00158,brasilia,toys,2025-01-21 00:00:00,139.59,5.74,5
+ORD00159,recife,electronics,2025-08-07 00:00:00,,29.82,3
+ORD00160,brasilia,furniture,2025-03-26 00:00:00,196.75,25.69,3
+ORD00161,belo horizonte,toys,2025-12-27 00:00:00,,22.34,1
+ORD00162,belo horizonte,toys,2025-08-01 00:00:00,207.23,13.76,1
+ORD00163,recife,electronics,2025-10-04 00:00:00,,20.09,1
+ORD00164,brasilia,sports,2025-11-20 00:00:00,221.73,19.51,5
+ORD00165,curitiba,electronics,2025-09-16 00:00:00,,20.43,4
+ORD00166,recife,furniture,2025-08-28 00:00:00,219.46,33.31,2
+ORD00167,belo horizonte,furniture,2025-11-25 00:00:00,,21.81,2
+ORD00168,sao paulo,furniture,2025-07-16 00:00:00,196.49,20.22,4
+ORD00169,salvador,books,2025-07-25 00:00:00,,21.4,3
+ORD00170,sao paulo,sports,2025-03-15 00:00:00,143.69,21.6,2
+ORD00171,brasilia,furniture,2025-09-22 00:00:00,,20.21,3
+ORD00172,porto alegre,toys,2025-12-25 00:00:00,153.25,12.07,5
+ORD00173,recife,books,2025-05-16 00:00:00,,25.56,2
+ORD00174,recife,sports,2025-06-12 00:00:00,216.98,23.58,5
+ORD00175,porto alegre,toys,2025-04-21 00:00:00,,9.1,1
+ORD00176,recife,furniture,2025-05-31 00:00:00,201.62,17.93,3
+ORD00177,salvador,books,2025-11-05 00:00:00,,26.48,3
+ORD00178,recife,toys,2025-03-11 00:00:00,112.58,6.49,2
+ORD00179,sao paulo,toys,2025-07-11 00:00:00,,16.56,5
+ORD00180,rio de janeiro,beauty,2025-11-24 00:00:00,117.6,8.71,2
+ORD00181,rio de janeiro,furniture,2025-05-31 00:00:00,,19.83,1
+ORD00182,salvador,electronics,2025-08-29 00:00:00,185.42,24.88,2
+ORD00183,curitiba,books,2025-12-10 00:00:00,,22.57,3
+ORD00184,belo horizonte,sports,2025-02-11 00:00:00,150.24,21.08,3
+ORD00185,rio de janeiro,toys,2025-03-08 00:00:00,,16.55,3
+ORD00186,porto alegre,books,2025-03-26 00:00:00,145.49,14.42,1
+ORD00187,belo horizonte,beauty,2025-07-11 00:00:00,,13.39,3
+ORD00188,curitiba,electronics,2025-02-13 00:00:00,257.45,24.4,5
+ORD00189,brasilia,sports,2025-12-21 00:00:00,,9.21,5
+ORD00190,recife,furniture,2025-02-27 00:00:00,133.99,26.1,5
+ORD00191,brasilia,books,2025-03-11 00:00:00,,20.48,1
+ORD00192,curitiba,toys,2025-03-15 00:00:00,217.37,23.14,1
+ORD00193,recife,electronics,2025-10-12 00:00:00,,18.53,3
+ORD00194,belo horizonte,electronics,2025-05-21 00:00:00,109.13,29.13,3
+ORD00195,salvador,books,2025-02-20 00:00:00,,9.89,4
+ORD00196,recife,furniture,2025-03-20 00:00:00,198.05,20.84,1
+ORD00197,curitiba,furniture,2025-04-04 00:00:00,,21.82,5
+ORD00198,belo horizonte,books,2025-12-01 00:00:00,71.38,17.01,3
+ORD00199,recife,toys,2025-07-04 00:00:00,,7.19,2
+ORD00200,belo horizonte,beauty,2025-10-05 00:00:00,124.66,24.57,4
+ORD00201,salvador,toys,2025-01-06 00:00:00,,11.65,2
+ORD00202,rio de janeiro,beauty,2025-12-06 00:00:00,57.52,26.61,2
+ORD00203,recife,sports,2025-10-23 00:00:00,,5.71,4
+ORD00204,belo horizonte,toys,2025-03-14 00:00:00,145.94,17.37,5
+ORD00205,brasilia,beauty,2025-09-28 00:00:00,,5.09,5
+ORD00206,rio de janeiro,toys,2025-10-24 00:00:00,200.54,26.31,5
+ORD00207,belo horizonte,books,2025-03-29 00:00:00,,15.1,4
+ORD00208,curitiba,electronics,2025-06-03 00:00:00,89.21,19.24,3
+ORD00209,salvador,toys,2025-05-13 00:00:00,,26.42,2
+ORD00210,rio de janeiro,furniture,2025-12-06 00:00:00,207.82,16.14,3
+ORD00211,curitiba,books,2025-03-20 00:00:00,,17.66,2
+ORD00212,salvador,beauty,2025-04-09 00:00:00,93.24,9.08,1
+ORD00213,porto alegre,beauty,2025-08-06 00:00:00,,32.49,3
+ORD00214,brasilia,toys,2025-08-13 00:00:00,182.66,19.88,1
+ORD00215,salvador,furniture,2025-09-23 00:00:00,,18.14,5
+ORD00216,rio de janeiro,books,2025-03-08 00:00:00,121.76,33.77,3
+ORD00217,rio de janeiro,sports,2025-08-09 00:00:00,,15.97,4
+ORD00218,rio de janeiro,books,2025-01-08 00:00:00,249.8,13.83,3
+ORD00219,rio de janeiro,toys,2025-06-14 00:00:00,,31.84,4
+ORD00220,sao paulo,beauty,2025-07-08 00:00:00,226.84,24.89,3
+ORD00221,belo horizonte,toys,2025-03-04 00:00:00,,25.84,4
+ORD00222,sao paulo,beauty,2025-02-07 00:00:00,79.21,17.62,1
+ORD00223,rio de janeiro,beauty,2025-03-08 00:00:00,,30.2,3
+ORD00224,recife,electronics,2025-05-21 00:00:00,15.0,24.36,1
+ORD00225,porto alegre,electronics,2025-05-03 00:00:00,,17.77,1
+ORD00226,rio de janeiro,books,2025-07-07 00:00:00,181.55,27.22,5
+ORD00227,salvador,furniture,2025-04-07 00:00:00,,11.18,4
+ORD00228,belo horizonte,furniture,2025-09-11 00:00:00,338.45,9.38,5
+ORD00229,recife,electronics,2025-01-31 00:00:00,,3.17,5
+ORD00230,brasilia,beauty,2025-08-06 00:00:00,163.61,31.41,1
+ORD00231,curitiba,furniture,2025-06-06 00:00:00,,7.71,1
+ORD00232,curitiba,electronics,2025-12-16 00:00:00,198.99,3.14,4
+ORD00233,recife,toys,2025-06-27 00:00:00,,25.32,3
+ORD00234,belo horizonte,electronics,2025-09-18 00:00:00,217.1,24.06,4
+ORD00235,belo horizonte,furniture,2025-09-11 00:00:00,,29.55,5
+ORD00236,recife,electronics,2025-06-15 00:00:00,247.62,25.73,3
+ORD00237,rio de janeiro,furniture,2025-11-01 00:00:00,,19.35,4
+ORD00238,brasilia,beauty,2025-03-07 00:00:00,118.95,25.38,4
+ORD00239,porto alegre,books,2025-08-14 00:00:00,,11.19,2
+ORD00240,curitiba,furniture,2025-04-16 00:00:00,249.93,21.21,3
+ORD00241,belo horizonte,beauty,2025-07-31 00:00:00,,16.3,1
+ORD00242,sao paulo,sports,2025-03-24 00:00:00,173.03,21.86,1
+ORD00243,recife,books,2025-08-18 00:00:00,,21.3,1
+ORD00244,salvador,furniture,2025-07-05 00:00:00,99.56,12.25,1
+ORD00245,porto alegre,toys,2025-05-15 00:00:00,,19.66,5
+ORD00246,rio de janeiro,toys,2025-12-15 00:00:00,284.85,20.22,2
+ORD00247,salvador,furniture,2025-10-19 00:00:00,,13.4,3
+ORD00248,porto alegre,electronics,2025-06-11 00:00:00,223.84,35.32,4
+ORD00249,curitiba,beauty,2025-04-20 00:00:00,,12.39,2
+ORD00250,porto alegre,beauty,2025-03-20 00:00:00,236.16,18.06,1
+ORD00251,salvador,furniture,2025-09-21 00:00:00,,12.85,2
+ORD00252,brasilia,sports,2025-05-23 00:00:00,172.35,18.83,3
+ORD00253,curitiba,sports,2025-08-21 00:00:00,,30.22,5
+ORD00254,porto alegre,furniture,2025-06-23 00:00:00,290.53,22.64,1
+ORD00255,sao paulo,electronics,2025-01-20 00:00:00,,10.88,5
+ORD00256,salvador,toys,2025-03-25 00:00:00,110.35,11.62,5
+ORD00257,porto alegre,electronics,2025-08-05 00:00:00,,19.81,2
+ORD00258,rio de janeiro,furniture,2025-03-22 00:00:00,114.41,29.25,4
+ORD00259,rio de janeiro,books,2025-01-20 00:00:00,,17.05,1
+ORD00260,sao paulo,beauty,2025-01-29 00:00:00,178.52,22.52,5
+ORD00261,sao paulo,books,2025-09-30 00:00:00,,13.97,4
+ORD00262,recife,furniture,2025-04-04 00:00:00,153.4,17.82,4
+ORD00263,curitiba,beauty,2025-10-12 00:00:00,,29.22,2
+ORD00264,salvador,toys,2025-07-15 00:00:00,214.08,22.39,2
+ORD00265,sao paulo,books,2025-04-12 00:00:00,,15.44,2
+ORD00266,curitiba,toys,2025-02-07 00:00:00,279.7,39.87,5
+ORD00267,sao paulo,electronics,2025-11-02 00:00:00,,13.41,3
+ORD00268,curitiba,furniture,2025-09-07 00:00:00,123.22,21.39,2
+ORD00269,salvador,furniture,2025-12-31 00:00:00,,16.08,5
+ORD00270,brasilia,furniture,2025-08-31 00:00:00,255.51,14.44,2
+ORD00271,porto alegre,toys,2025-01-25 00:00:00,,32.42,2
+ORD00272,salvador,books,2025-02-28 00:00:00,250.22,25.39,1
+ORD00273,belo horizonte,sports,2025-09-13 00:00:00,,24.09,1
+ORD00274,porto alegre,furniture,2025-07-14 00:00:00,199.33,25.01,5
+ORD00275,sao paulo,books,2025-08-14 00:00:00,,24.77,2
+ORD00276,recife,furniture,2025-01-06 00:00:00,245.13,10.55,5
+ORD00277,curitiba,books,2025-12-25 00:00:00,,22.26,1
+ORD00278,recife,furniture,2025-04-12 00:00:00,189.85,35.17,1
+ORD00279,curitiba,beauty,2025-08-29 00:00:00,,2.0,2
+ORD00280,porto alegre,beauty,2025-08-15 00:00:00,155.34,11.62,3
+ORD00281,belo horizonte,toys,2025-11-11 00:00:00,,30.23,2
+ORD00282,salvador,beauty,2025-06-11 00:00:00,251.65,16.94,3
+ORD00283,sao paulo,sports,2025-09-02 00:00:00,,15.62,3
+ORD00284,curitiba,beauty,2025-04-14 00:00:00,320.56,34.74,1
+ORD00285,salvador,furniture,2025-09-05 00:00:00,,24.16,4
+ORD00286,sao paulo,beauty,2025-02-10 00:00:00,132.4,33.5,3
+ORD00287,curitiba,furniture,2025-08-31 00:00:00,,31.06,1
+ORD00288,brasilia,books,2025-01-26 00:00:00,198.84,2.0,2
+ORD00289,belo horizonte,furniture,2025-03-24 00:00:00,,18.34,4
+ORD00290,rio de janeiro,sports,2025-11-04 00:00:00,152.77,14.28,3
+ORD00291,sao paulo,books,2025-05-05 00:00:00,,30.61,4
+ORD00292,rio de janeiro,toys,2025-07-28 00:00:00,220.48,13.31,2
+ORD00293,salvador,sports,2025-05-18 00:00:00,,24.55,3
+ORD00294,rio de janeiro,electronics,2025-02-26 00:00:00,142.68,26.06,3
+ORD00295,belo horizonte,furniture,2025-01-09 00:00:00,,26.3,3
+ORD00296,curitiba,toys,2025-05-12 00:00:00,130.43,9.28,3
+ORD00297,recife,beauty,2025-05-04 00:00:00,,25.23,5
+ORD00298,recife,furniture,2025-11-09 00:00:00,221.23,23.33,3
+ORD00299,brasilia,beauty,2025-11-21 00:00:00,,23.7,2
+ORD00300,brasilia,toys,2025-04-23 00:00:00,201.88,2.22,1
+ORD00301,rio de janeiro,sports,2025-09-02 00:00:00,,33.58,4
+ORD00302,recife,beauty,2025-09-24 00:00:00,200.66,17.21,1
+ORD00303,brasilia,books,2025-11-20 00:00:00,,31.96,4
+ORD00304,curitiba,sports,2025-06-01 00:00:00,77.83,15.17,2
+ORD00305,recife,sports,2025-07-14 00:00:00,,23.31,3
+ORD00306,salvador,electronics,2025-07-29 00:00:00,117.05,22.29,3
+ORD00307,salvador,books,2025-10-22 00:00:00,,27.07,4
+ORD00308,recife,toys,2025-03-14 00:00:00,79.83,17.51,4
+ORD00309,recife,beauty,2025-02-17 00:00:00,,7.31,5
+ORD00310,recife,toys,2025-03-03 00:00:00,115.57,25.24,5
+ORD00311,salvador,electronics,2025-12-13 00:00:00,,9.86,3
+ORD00312,curitiba,beauty,2025-05-30 00:00:00,205.85,3.19,5
+ORD00313,salvador,electronics,2025-06-12 00:00:00,,22.01,5
+ORD00314,salvador,sports,2025-03-30 00:00:00,120.72,14.2,1
+ORD00315,curitiba,sports,2025-11-30 00:00:00,,26.68,5
+ORD00316,salvador,electronics,2025-01-15 00:00:00,232.5,13.11,3
+ORD00317,rio de janeiro,beauty,2025-09-19 00:00:00,,6.26,2
+ORD00318,brasilia,electronics,2025-05-07 00:00:00,179.22,25.79,4
+ORD00319,porto alegre,sports,2025-03-18 00:00:00,,37.45,2
+ORD00320,rio de janeiro,beauty,2025-02-20 00:00:00,212.94,21.16,2
+ORD00321,curitiba,books,2025-05-11 00:00:00,,16.21,2
+ORD00322,recife,beauty,2025-04-12 00:00:00,151.18,17.53,4
+ORD00323,sao paulo,electronics,2025-06-08 00:00:00,,22.42,2
+ORD00324,recife,furniture,2025-09-29 00:00:00,198.34,22.65,1
+ORD00325,salvador,books,2025-02-17 00:00:00,,2.71,4
+ORD00326,rio de janeiro,books,2025-07-12 00:00:00,205.44,17.86,2
+ORD00327,recife,sports,2025-12-13 00:00:00,,38.05,5
+ORD00328,belo horizonte,toys,2025-10-05 00:00:00,98.64,13.29,2
+ORD00329,porto alegre,beauty,2025-09-16 00:00:00,,11.91,1
+ORD00330,belo horizonte,books,2025-07-07 00:00:00,202.89,26.92,1
+ORD00331,rio de janeiro,books,2025-07-12 00:00:00,,7.92,4
+ORD00332,recife,furniture,2025-05-09 00:00:00,183.12,44.23,3
+ORD00333,belo horizonte,toys,2025-10-29 00:00:00,,11.32,4
+ORD00334,porto alegre,beauty,2025-04-16 00:00:00,247.28,13.86,5
+ORD00335,brasilia,toys,2025-12-18 00:00:00,,15.77,5
+ORD00336,recife,books,2025-08-06 00:00:00,122.96,23.66,4
+ORD00337,brasilia,sports,2025-02-14 00:00:00,,30.67,5
+ORD00338,recife,books,2025-12-25 00:00:00,150.37,30.09,2
+ORD00339,porto alegre,furniture,2025-08-06 00:00:00,,14.97,4
+ORD00340,curitiba,beauty,2025-09-03 00:00:00,159.02,10.13,3
+ORD00341,rio de janeiro,furniture,2025-08-10 00:00:00,,24.31,1
+ORD00342,rio de janeiro,toys,2025-07-25 00:00:00,147.42,19.1,3
+ORD00343,curitiba,electronics,2025-11-26 00:00:00,,39.69,5
+ORD00344,sao paulo,beauty,2025-10-03 00:00:00,251.57,24.82,3
+ORD00345,curitiba,books,2025-08-27 00:00:00,,21.48,2
+ORD00346,salvador,furniture,2025-04-15 00:00:00,158.95,25.53,4
+ORD00347,salvador,books,2025-04-03 00:00:00,,6.84,1
+ORD00348,salvador,beauty,2025-04-28 00:00:00,148.31,6.67,5
+ORD00349,porto alegre,toys,2025-02-23 00:00:00,,12.08,1
+ORD00350,brasilia,beauty,2025-10-24 00:00:00,200.12,27.99,2
+ORD00351,sao paulo,electronics,2025-01-11 00:00:00,,17.33,3
+ORD00352,recife,beauty,2025-06-15 00:00:00,200.52,18.47,3
+ORD00353,salvador,toys,2025-08-09 00:00:00,,29.25,1
+ORD00354,salvador,sports,2025-08-08 00:00:00,226.64,22.79,4
+ORD00355,salvador,toys,2025-11-12 00:00:00,,16.89,2
+ORD00356,rio de janeiro,electronics,2025-12-31 00:00:00,176.11,8.67,2
+ORD00357,porto alegre,sports,2025-09-25 00:00:00,,7.22,1
+ORD00358,curitiba,electronics,2025-03-25 00:00:00,93.81,13.53,5
+ORD00359,rio de janeiro,beauty,2025-09-23 00:00:00,,19.21,3
+ORD00360,rio de janeiro,toys,2025-02-14 00:00:00,173.63,27.66,1
+ORD00361,sao paulo,sports,2025-07-28 00:00:00,,5.09,1
+ORD00362,porto alegre,beauty,2025-08-26 00:00:00,313.35,14.86,5
+ORD00363,porto alegre,toys,2025-08-17 00:00:00,,17.8,5
+ORD00364,curitiba,sports,2025-04-18 00:00:00,120.25,34.46,2
+ORD00365,porto alegre,books,2025-05-03 00:00:00,,8.61,1
+ORD00366,belo horizonte,sports,2025-08-12 00:00:00,79.43,25.32,3
+ORD00367,porto alegre,electronics,2025-10-11 00:00:00,,26.1,1
+ORD00368,curitiba,sports,2025-11-12 00:00:00,208.3,17.17,2
+ORD00369,belo horizonte,toys,2025-08-05 00:00:00,,29.69,2
+ORD00370,rio de janeiro,electronics,2025-12-12 00:00:00,207.59,39.22,3
+ORD00371,curitiba,sports,2025-12-24 00:00:00,,15.01,2
+ORD00372,sao paulo,furniture,2025-05-15 00:00:00,195.9,24.31,3
+ORD00373,rio de janeiro,books,2025-11-19 00:00:00,,19.14,1
+ORD00374,curitiba,electronics,2025-09-25 00:00:00,145.83,21.65,1
+ORD00375,curitiba,furniture,2025-01-01 00:00:00,,10.3,2
+ORD00376,salvador,furniture,2025-06-15 00:00:00,240.79,19.59,3
+ORD00377,porto alegre,toys,2025-08-22 00:00:00,,26.53,3
+ORD00378,salvador,electronics,2025-01-08 00:00:00,117.43,6.96,2
+ORD00379,rio de janeiro,books,2025-04-30 00:00:00,,7.43,1
+ORD00380,brasilia,books,2025-08-01 00:00:00,282.9,19.57,4
+ORD00381,brasilia,toys,2025-05-24 00:00:00,,15.68,5
+ORD00382,porto alegre,books,2025-08-11 00:00:00,228.07,9.68,1
+ORD00383,porto alegre,toys,2025-04-28 00:00:00,,18.31,3
+ORD00384,curitiba,electronics,2025-04-06 00:00:00,185.11,14.79,3
+ORD00385,curitiba,toys,2025-12-07 00:00:00,,24.44,5
+ORD00386,porto alegre,toys,2025-11-15 00:00:00,126.87,13.39,2
+ORD00387,porto alegre,sports,2025-05-22 00:00:00,,15.21,1
+ORD00388,sao paulo,furniture,2025-12-21 00:00:00,175.69,15.06,3
+ORD00389,belo horizonte,sports,2025-02-17 00:00:00,,8.61,5
+ORD00390,curitiba,electronics,2025-08-09 00:00:00,192.33,26.22,4
+ORD00391,belo horizonte,sports,2025-08-01 00:00:00,,6.74,4
+ORD00392,curitiba,sports,2025-03-26 00:00:00,298.6,13.68,3
+ORD00393,rio de janeiro,electronics,2025-03-07 00:00:00,,26.44,4
+ORD00394,recife,books,2025-06-21 00:00:00,82.43,18.07,3
+ORD00395,belo horizonte,sports,2025-03-04 00:00:00,,9.32,2
+ORD00396,sao paulo,sports,2025-03-21 00:00:00,214.54,22.06,3
+ORD00397,recife,toys,2025-12-31 00:00:00,,24.19,2
+ORD00398,salvador,furniture,2025-10-11 00:00:00,120.82,33.94,3
+ORD00399,recife,beauty,2025-05-17 00:00:00,,22.17,1
+ORD00400,salvador,beauty,2025-01-19 00:00:00,239.44,22.41,2

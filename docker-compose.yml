@@ -1,0 +1,90 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: agentic_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/agentic_platform
+      # Phase 8: checkpoints the LangGraph ingest orchestrator's
+      # await_human pauses in the SAME Postgres instance as the app's own
+      # data - one durable store, resumable after this container itself
+      # restarts (a human approval can arrive days later; see
+      # app/graph/checkpointer.py). psycopg (v3, not the app's own
+      # psycopg2) is what PostgresSaver needs - see requirements.txt.
+      GRAPH_CHECKPOINT_POSTGRES_URL: postgresql://postgres:postgres@db:5432/agentic_platform
+      # LLM configuration - read from a `.env` file in the project root
+      # (`cp .env.example .env` and fill in a key) via docker compose's own
+      # ${VAR:-default} substitution, which works whether or not `.env`
+      # exists at all. None of this is required for the platform to run:
+      # with no key configured, every corruption escalates to human review
+      # and reports generate from the deterministic template - the
+      # platform's designed fallback, not a broken deployment. See the
+      # README's "Running without an LLM" section.
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
+      # Files uploaded via the frontend's Sources screen land inside the
+      # SAME ./backend/data volume the manual-path flow already uses
+      # (mounted below) - visible on the host, not trapped in the container.
+      UPLOAD_DIR: /data/uploads
+      # The frontend (below) is a separate origin/port - the API needs to
+      # accept cross-origin requests from wherever it's actually served.
+      FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:-http://localhost:3000}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/data:/data
+      # A run halted at awaiting_approval against a mutable (SQL/API)
+      # source has its raw pre-fix frame snapshotted here
+      # (app/run_snapshots.py) - it must survive this container being
+      # recreated, not just a process restart within it.
+      - run_artifacts:/app/.run_artifacts
+      # Diagnosis/query/modeling LLM-response caches - losing this just
+      # costs a re-spent LLM call, never correctness, but there's no
+      # reason to throw it away on every `docker compose up`.
+      - app_cache:/app/.cache
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked in at BUILD time (Vite convention) - must be a URL the
+        # BROWSER can reach, since API calls happen client-side, never the
+        # backend service's internal docker-network name.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  db_data:
+  run_artifacts:
+  app_cache:

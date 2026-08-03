@@ -1,0 +1,611 @@
+{
+  "_divergences": [
+    {
+      "reason": "Phase 8 Part 2 adds edge_taken tracking: new AgentTrace rows (agent_name 'resolve' and, where a human decision was involved, 'await_human') recording which edge the graph took at each branch point, plus edge_taken populated on the existing ingest/validate/explore/narrate traces. This inserts new entries into agent_trace_sequence for most scenarios that pass through resolve_node. Separately, the ingest node now writes a trace on the connector-fetch failure path (see 'connector_fetch_exception', whose recorded sequence was the empty list) so GET /audit/{run_id} can answer 'why did this run fail' even when fetch() raised before anything else was traced. Both changes are PURE INSERTIONS - every originally-recorded trace step still appears, in the same relative order - verified by tests/golden_compare.py's subsequence check rather than exact-sequence equality. No domain field (run_status, fix_chain, events, baseline_active, exploration_present, report_present, report_generation_mode) is expected to change for any scenario; those remain exact-equality checks."
+    },
+    {
+      "reason": "Phase 8 Part 1 (graph migration): the pre-migration router built the 'ingestion' AgentTrace as the LAST step of a single monolithic function (after validate/correlate/diagnose/gate had all already run), even though ingestion is causally the FIRST thing that happens. The graph instead has a dedicated ingest_node that writes its own trace immediately as it executes, before validate_node/resolve_node ever run - so agent_trace_sequence now starts with 'ingestion' for every scenario that re-ingests against an existing baseline (previously it appeared wherever the old code happened to construct the response). This is a deliberate improvement, not a bug: the trace order now matches true execution order, which is exactly what an audit trail is for. Affected scenarios (ingestion moved to the front, all other steps keep their original relative order - a pure reordering of one element, never a removal): corruption_change_dtype, corruption_change_dtype_approve_fails_verification, corruption_drop_column, corruption_drop_column_reject_data, corruption_inject_nulls, corruption_inject_nulls_reject_fix, corruption_inject_whitespace_case, corruption_rename_column, corruption_shift_distribution, corruption_shift_distribution_accept_as_baseline, corruption_truncate_rows, corruption_truncate_rows_left_pending, low_confidence_rename_then_approved, second_clean_ingest_noop. 'baseline_sanity_rejection' is NOT in this list - its ingestion trace was already written after 'baseline_profiler' within the same node, in the same relative order as before, so no divergence applies there."
+    }
+  ],
+  "_scenario_count": 20,
+  "baseline_sanity_rejection": {
+    "agent_trace_sequence": [
+      "baseline_profiler",
+      "ingestion",
+      "exploration",
+      "narrative"
+    ],
+    "baseline_active": {
+      "excluded_columns": null,
+      "exists": false,
+      "is_provisional": null,
+      "row_count": null
+    },
+    "events": [],
+    "exploration_present": true,
+    "fix_chain": null,
+    "report_generation_mode": "template",
+    "report_present": true,
+    "reveal_depth_reached": 0,
+    "run_status": "completed"
+  },
+  "connector_fetch_exception": {
+    "agent_trace_sequence": [],
+    "baseline_active": {
+      "excluded_columns": null,
+      "exists": false,
+      "is_provisional": null,
+      "row_count": null
+    },
+    "events": [],
+    "exploration_present": false,
+    "fix_chain": null,
+    "report_generation_mode": null,
+    "report_present": false,
+    "reveal_depth_reached": 0,
+    "run_status": "failed"
+  },
+  "connector_warning_acknowledged": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "exploration",
+      "narrative"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": true,
+      "row_count": 2
+    },
+    "events": [
+      {
+        "action_taken": "acknowledged",
+        "correlated": false,
+        "rule_failed": "connector_warning:0",
+        "state": "resolved"
+      }
+    ],
+    "exploration_present": true,
+    "fix_chain": null,
+    "report_generation_mode": "template",
+    "report_present": true,
+    "reveal_depth_reached": 0,
+    "run_status": "completed"
+  },
+  "corruption_change_dtype": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "validation",
+      "correlation",
+      "diagnosis",
+      "gate"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": true,
+      "row_count": 60
+    },
+    "events": [
+      {
+        "action_taken": "auto_fix_reverted",
+        "correlated": false,
+        "rule_failed": "schema_conformance:dtype_mismatch:id",
+        "state": "awaiting_approval"
+      }
+    ],
+    "exploration_present": false,
+    "fix_chain": [],
+    "ground_truth_expected_risk_level": "low",
+    "report_generation_mode": null,
+    "report_present": false,
+    "reveal_depth_reached": 0,
+    "run_status": "awaiting_approval"
+  },
+  "corruption_change_dtype_approve_fails_verification": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "validation",
+      "correlation",
+      "diagnosis",
+      "gate",
+      "exploration",
+      "narrative"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": true,
+      "row_count": 60
+    },
+    "events": [
+      {
+        "action_taken": "approved_fix_failed_verification",
+        "correlated": false,
+        "rule_failed": "schema_conformance:dtype_mismatch:id",
+        "state": "rejected"
+      }
+    ],
+    "exploration_present": true,
+    "fix_chain": [],
+    "report_generation_mode": "template",
+    "report_present": true,
+    "reveal_depth_reached": 0,
+    "run_status": "completed"
+  },
+  "corruption_drop_column": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "validation",
+      "correlation",
+      "diagnosis",
+      "gate"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": true,
+      "row_count": 60
+    },
+    "events": [
+      {
+        "action_taken": null,
+        "correlated": false,
+        "rule_failed": "schema_conformance:missing_column:id",
+        "state": "awaiting_approval"
+      }
+    ],
+    "exploration_present": false,
+    "fix_chain": [],
+    "ground_truth_expected_risk_level": "high",
+    "report_generation_mode": null,
+    "report_present": false,
+    "reveal_depth_reached": 0,
+    "run_status": "awaiting_approval"
+  },
+  "corruption_drop_column_reject_data": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "validation",
+      "correlation",
+      "diagnosis",
+      "gate"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": true,
+      "row_count": 60
+    },
+    "events": [
+      {
+        "action_taken": "rejected_data_unfit",
+        "correlated": false,
+        "rule_failed": "schema_conformance:missing_column:id",
+        "state": "rejected"
+      }
+    ],
+    "exploration_present": false,
+    "fix_chain": [],
+    "report_generation_mode": null,
+    "report_present": false,
+    "reveal_depth_reached": 0,
+    "run_status": "failed"
+  },
+  "corruption_inject_nulls": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "validation",
+      "correlation",
+      "diagnosis",
+      "gate"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": true,
+      "row_count": 60
+    },
+    "events": [
+      {
+        "action_taken": null,
+        "correlated": false,
+        "rule_failed": "null_threshold:id",
+        "state": "awaiting_approval"
+      }
+    ],
+    "exploration_present": false,
+    "fix_chain": [],
+    "ground_truth_expected_risk_level": "high",
+    "report_generation_mode": null,
+    "report_present": false,
+    "reveal_depth_reached": 0,
+    "run_status": "awaiting_approval"
+  },
+  "corruption_inject_nulls_reject_fix": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "validation",
+      "correlation",
+      "diagnosis",
+      "gate",
+      "exploration",
+      "narrative"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": true,
+      "row_count": 60
+    },
+    "events": [
+      {
+        "action_taken": "rejected_fix_data_acceptable",
+        "correlated": false,
+        "rule_failed": "null_threshold:id",
+        "state": "rejected"
+      }
+    ],
+    "exploration_present": true,
+    "fix_chain": [],
+    "report_generation_mode": "template",
+    "report_present": true,
+    "reveal_depth_reached": 0,
+    "run_status": "completed"
+  },
+  "corruption_inject_whitespace_case": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "validation",
+      "correlation",
+      "diagnosis",
+      "gate"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": true,
+      "row_count": 60
+    },
+    "events": [
+      {
+        "action_taken": "auto_fix_reverted",
+        "correlated": false,
+        "rule_failed": "categorical_drift:city",
+        "state": "awaiting_approval"
+      }
+    ],
+    "exploration_present": false,
+    "fix_chain": [],
+    "ground_truth_expected_risk_level": "low",
+    "report_generation_mode": null,
+    "report_present": false,
+    "reveal_depth_reached": 0,
+    "run_status": "awaiting_approval"
+  },
+  "corruption_rename_column": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "validation",
+      "correlation",
+      "diagnosis",
+      "gate",
+      "exploration",
+      "narrative"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": true,
+      "row_count": 60
+    },
+    "events": [
+      {
+        "action_taken": "auto_fixed",
+        "correlated": true,
+        "rule_failed": "schema_conformance:missing_column:id",
+        "state": "auto_fixed"
+      },
+      {
+        "action_taken": "auto_fixed",
+        "correlated": true,
+        "rule_failed": "schema_conformance:unexpected_column:id_renamed",
+        "state": "auto_fixed"
+      }
+    ],
+    "exploration_present": true,
+    "fix_chain": [
+      {
+        "action": "rename_column",
+        "spec": {
+          "current_name": "id_renamed",
+          "target_name": "id"
+        }
+      }
+    ],
+    "ground_truth_expected_risk_level": "low",
+    "report_generation_mode": "template",
+    "report_present": true,
+    "reveal_depth_reached": 0,
+    "run_status": "completed"
+  },
+  "corruption_shift_distribution": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "validation",
+      "correlation",
+      "diagnosis",
+      "gate"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": true,
+      "row_count": 60
+    },
+    "events": [
+      {
+        "action_taken": null,
+        "correlated": false,
+        "rule_failed": "distribution_drift:id",
+        "state": "awaiting_approval"
+      }
+    ],
+    "exploration_present": false,
+    "fix_chain": [],
+    "ground_truth_expected_risk_level": "high",
+    "report_generation_mode": null,
+    "report_present": false,
+    "reveal_depth_reached": 0,
+    "run_status": "awaiting_approval"
+  },
+  "corruption_shift_distribution_accept_as_baseline": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "validation",
+      "correlation",
+      "diagnosis",
+      "gate",
+      "exploration",
+      "narrative"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": false,
+      "row_count": 60
+    },
+    "events": [
+      {
+        "action_taken": "accepted_as_new_baseline",
+        "correlated": false,
+        "rule_failed": "distribution_drift:id",
+        "state": "resolved"
+      }
+    ],
+    "exploration_present": true,
+    "fix_chain": [],
+    "report_generation_mode": "template",
+    "report_present": true,
+    "reveal_depth_reached": 0,
+    "run_status": "completed"
+  },
+  "corruption_truncate_rows": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "validation",
+      "correlation",
+      "diagnosis",
+      "gate",
+      "diagnosis",
+      "gate",
+      "diagnosis",
+      "gate"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": true,
+      "row_count": 60
+    },
+    "events": [
+      {
+        "action_taken": null,
+        "correlated": false,
+        "rule_failed": "schema_conformance:row_count_drop",
+        "state": "awaiting_approval"
+      },
+      {
+        "action_taken": null,
+        "correlated": false,
+        "rule_failed": "distribution_drift:id",
+        "state": "awaiting_approval"
+      },
+      {
+        "action_taken": null,
+        "correlated": false,
+        "rule_failed": "distribution_drift:amount",
+        "state": "awaiting_approval"
+      }
+    ],
+    "exploration_present": false,
+    "fix_chain": [],
+    "ground_truth_expected_risk_level": "high",
+    "report_generation_mode": null,
+    "report_present": false,
+    "reveal_depth_reached": 0,
+    "run_status": "awaiting_approval"
+  },
+  "corruption_truncate_rows_left_pending": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "validation",
+      "correlation",
+      "diagnosis",
+      "gate",
+      "diagnosis",
+      "gate",
+      "diagnosis",
+      "gate"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": true,
+      "row_count": 60
+    },
+    "events": [
+      {
+        "action_taken": null,
+        "correlated": false,
+        "rule_failed": "schema_conformance:row_count_drop",
+        "state": "awaiting_approval"
+      },
+      {
+        "action_taken": null,
+        "correlated": false,
+        "rule_failed": "distribution_drift:id",
+        "state": "awaiting_approval"
+      },
+      {
+        "action_taken": null,
+        "correlated": false,
+        "rule_failed": "distribution_drift:amount",
+        "state": "awaiting_approval"
+      }
+    ],
+    "exploration_present": false,
+    "fix_chain": [],
+    "report_generation_mode": null,
+    "report_present": false,
+    "reveal_depth_reached": 0,
+    "run_status": "awaiting_approval"
+  },
+  "first_clean_ingest": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "exploration",
+      "narrative"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": true,
+      "row_count": 60
+    },
+    "events": [],
+    "exploration_present": true,
+    "fix_chain": null,
+    "report_generation_mode": "template",
+    "report_present": true,
+    "reveal_depth_reached": 0,
+    "run_status": "completed"
+  },
+  "low_confidence_rename_then_approved": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "validation",
+      "correlation",
+      "diagnosis",
+      "gate",
+      "exploration",
+      "narrative"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": true,
+      "row_count": 60
+    },
+    "events": [
+      {
+        "action_taken": "approved_and_applied",
+        "correlated": true,
+        "rule_failed": "schema_conformance:missing_column:city",
+        "state": "resolved"
+      },
+      {
+        "action_taken": "approved_and_applied",
+        "correlated": true,
+        "rule_failed": "schema_conformance:unexpected_column:town",
+        "state": "resolved"
+      }
+    ],
+    "exploration_present": true,
+    "fix_chain": [
+      {
+        "action": "rename_column",
+        "spec": {
+          "current_name": "town",
+          "target_name": "city"
+        }
+      }
+    ],
+    "report_generation_mode": "template",
+    "report_present": true,
+    "reveal_depth_reached": 1,
+    "run_status": "completed"
+  },
+  "provisional_baseline_confirmed": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "exploration",
+      "narrative"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": false,
+      "row_count": 60
+    },
+    "events": [],
+    "exploration_present": true,
+    "fix_chain": null,
+    "report_generation_mode": "template",
+    "report_present": true,
+    "reveal_depth_reached": 0,
+    "run_status": "completed"
+  },
+  "provisional_baseline_rejected": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "exploration",
+      "narrative"
+    ],
+    "baseline_active": {
+      "excluded_columns": null,
+      "exists": false,
+      "is_provisional": null,
+      "row_count": null
+    },
+    "events": [],
+    "exploration_present": true,
+    "fix_chain": null,
+    "report_generation_mode": "template",
+    "report_present": true,
+    "reveal_depth_reached": 0,
+    "run_status": "completed"
+  },
+  "second_clean_ingest_noop": {
+    "agent_trace_sequence": [
+      "ingestion",
+      "validation",
+      "correlation",
+      "exploration",
+      "narrative"
+    ],
+    "baseline_active": {
+      "excluded_columns": [],
+      "exists": true,
+      "is_provisional": true,
+      "row_count": 60
+    },
+    "events": [],
+    "exploration_present": true,
+    "fix_chain": [],
+    "report_generation_mode": "template",
+    "report_present": true,
+    "reveal_depth_reached": 0,
+    "run_status": "completed"
+  }
+}
