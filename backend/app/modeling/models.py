@@ -49,7 +49,7 @@ class IntentOutcome(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     classification: IntentClassification | None
-    source: Literal["llm", "cache", "escalated_parse_failure", "escalated_quota_exhausted"]
+    source: Literal["llm", "cache", "escalated_parse_failure", "escalated_quota_exhausted", "escalated_unavailable"]
     model_name: str | None = None
     temperature: float | None = None
 

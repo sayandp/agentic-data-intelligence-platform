@@ -116,7 +116,13 @@ def test_template_fallback_when_stage1_produces_only_unknown_finding_ids():
     report = generate_narrative_report(findings, df, agent)
 
     assert report.generation_mode == GenerationMode.TEMPLATE
-    assert "no usable claims" in report.fallback_reason
+    # Wording updated with the fallback-diagnosability pass: the reason now
+    # leads with the cause in plain words instead of the internal phrase
+    # "no usable claims". Asserting the substance rather than the old
+    # sentence - the stage, and the specific unknown id that was rejected,
+    # which is what makes this diagnosable at all.
+    assert "stage 1" in report.fallback_reason
+    assert "does-not-exist" in report.fallback_reason
 
 
 def test_template_fallback_when_stage2_raises_on_every_call():

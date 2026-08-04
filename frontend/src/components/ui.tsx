@@ -1,35 +1,64 @@
 import { useState, type ReactNode } from "react";
 import type { ToastState } from "../hooks/useToast";
 
+// DESIGN.md's Flat-By-Default Rule: no shadow, a 1px border and a 6px
+// radius carry the surface instead of a floating-card illusion. Cards
+// never nest inside another card (see the Do's and Don'ts) - a section
+// needing internal grouping uses `surface-sunken` or a divider instead.
 export function Card({ title, subtitle, children, className = "" }: { title?: string; subtitle?: string; children: ReactNode; className?: string }) {
   return (
-    <div className={`mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm ${className}`}>
-      {title && <h2 className="mb-1 text-lg font-semibold text-slate-900">{title}</h2>}
-      {subtitle && <p className="mb-4 text-sm text-slate-500">{subtitle}</p>}
+    <div className={`mb-6 rounded-md border border-border bg-white p-5 ${className}`}>
+      {title && <h2 className="mb-1 text-[15px] font-semibold text-ink">{title}</h2>}
+      {subtitle && <p className="mb-4 text-sm text-ink-muted">{subtitle}</p>}
       {children}
     </div>
   );
 }
 
+// Fixed status vocabulary (DESIGN.md's Status-Never-Accent Rule) - exactly
+// four roles, never the accent color, mapped consistently everywhere a
+// status appears. A leading dot carries meaning by shape+color before the
+// word is read, per Part 3's "status should be legible at a glance."
+const STATUS_ROLES: Record<string, "positive" | "negative" | "caution" | "active" | "neutral"> = {
+  completed: "positive",
+  answered: "positive",
+  resolved: "positive",
+  low: "positive",
+  failed: "negative",
+  rejected: "negative",
+  high: "negative",
+  awaiting_approval: "caution",
+  escalated: "caution",
+  running: "active",
+  template: "neutral",
+  llm: "active",
+};
+
 const BADGE_STYLES: Record<string, string> = {
-  completed: "bg-emerald-100 text-emerald-700",
-  answered: "bg-emerald-100 text-emerald-700",
-  resolved: "bg-emerald-100 text-emerald-700",
-  low: "bg-emerald-100 text-emerald-700",
-  failed: "bg-rose-100 text-rose-700",
-  rejected: "bg-rose-100 text-rose-700",
-  high: "bg-rose-100 text-rose-700",
-  awaiting_approval: "bg-amber-100 text-amber-700",
-  escalated: "bg-amber-100 text-amber-700",
-  running: "bg-blue-100 text-blue-700",
-  template: "bg-slate-200 text-slate-700",
-  llm: "bg-brand-100 text-brand-700",
+  positive: "bg-status-positive-tint text-status-positive",
+  negative: "bg-status-negative-tint text-status-negative",
+  caution: "bg-status-caution-tint text-status-caution",
+  active: "bg-status-active-tint text-status-active",
+  neutral: "bg-surface-sunken text-ink-muted",
+};
+
+const DOT_STYLES: Record<string, string> = {
+  positive: "bg-status-positive",
+  negative: "bg-status-negative",
+  caution: "bg-status-caution",
+  active: "bg-status-active",
+  neutral: "bg-ink-faint",
 };
 
 export function Badge({ value }: { value: string | null | undefined }) {
   if (!value) return null;
-  const style = BADGE_STYLES[value] ?? "bg-slate-100 text-slate-700";
-  return <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${style}`}>{value}</span>;
+  const role = STATUS_ROLES[value] ?? "neutral";
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${BADGE_STYLES[role]}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${DOT_STYLES[role]}`} aria-hidden="true" />
+      {value}
+    </span>
+  );
 }
 
 // An indeterminate spinner, deliberately - these are single request/response
@@ -64,16 +93,19 @@ export function Button({
   loadingText?: string;
 }) {
   const styles = {
-    default: "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50",
+    default: "border border-border-strong bg-white text-ink hover:bg-surface-sunken",
     primary: "bg-brand-600 text-white hover:bg-brand-700",
-    danger: "border border-rose-300 bg-white text-rose-700 hover:bg-rose-50",
+    // Reserved for the single irreversible action (discard run) - its color
+    // alone signals "this one is different" before a reader reaches the
+    // label. Never used for an ordinary reject/dismiss decision.
+    danger: "border border-status-negative bg-white text-status-negative hover:bg-status-negative-tint",
   }[variant];
   return (
     <button
       type={type}
       onClick={onClick}
       disabled={disabled || loading}
-      className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${styles}`}
+      className={`inline-flex items-center gap-2 rounded-sm px-3.5 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${styles}`}
     >
       {loading && <Spinner />}
       {loading ? loadingText ?? "Working..." : children}
@@ -134,7 +166,7 @@ export function CopyableId({ id, className = "", full = true }: { id: string; cl
 
   return (
     <span className={`inline-flex items-center gap-1 ${className}`}>
-      <code className="select-all text-xs" title={full ? undefined : id}>
+      <code className="select-all font-mono text-xs text-ink-faint" title={full ? undefined : id}>
         {full ? id : id.slice(0, 8)}
       </code>
       <button
@@ -145,7 +177,7 @@ export function CopyableId({ id, className = "", full = true }: { id: string; cl
         }}
         aria-label={copied ? "Copied" : "Copy full ID"}
         title={copied ? "Copied" : "Copy full ID"}
-        className="text-slate-400 hover:text-slate-700"
+        className="text-ink-faint hover:text-ink"
       >
         <CopyIcon copied={copied} />
       </button>
@@ -170,7 +202,7 @@ export function RunLabel({ runNumber, runId, className = "" }: { runNumber: numb
 
   return (
     <span className={`inline-flex items-center gap-1 ${className}`}>
-      <span className="font-medium text-slate-700" title={runId}>
+      <span className="font-medium text-ink" title={runId}>
         {label}
       </span>
       <button
@@ -181,7 +213,7 @@ export function RunLabel({ runNumber, runId, className = "" }: { runNumber: numb
         }}
         aria-label={copied ? "Copied" : "Copy full run ID (for API use)"}
         title={copied ? "Copied" : "Copy full run ID (for API use)"}
-        className="text-slate-400 hover:text-slate-700"
+        className="text-ink-faint hover:text-ink"
       >
         <CopyIcon copied={copied} />
       </button>
@@ -192,26 +224,29 @@ export function RunLabel({ runNumber, runId, className = "" }: { runNumber: numb
 export function ErrorMessage({ error }: { error: unknown }) {
   if (!error) return null;
   const message = error instanceof Error ? error.message : String(error);
-  return <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">{message}</p>;
+  return (
+    <p className="rounded-sm border border-status-negative bg-status-negative-tint px-3 py-2 text-sm font-medium text-status-negative">{message}</p>
+  );
 }
 
 export function CodeBlock({ children }: { children: string }) {
-  return <pre className="overflow-x-auto rounded-xl bg-slate-900 p-4 text-sm text-slate-100">{children}</pre>;
+  return <pre className="overflow-x-auto rounded-md bg-ink p-4 font-mono text-sm text-white">{children}</pre>;
 }
 
 export function Muted({ children }: { children: ReactNode }) {
-  return <p className="text-sm text-slate-500">{children}</p>;
+  return <p className="text-sm text-ink-muted">{children}</p>;
 }
 
 // Fixed-position, self-dismissing (see useToast) confirmation that an
 // action actually happened - specifically for the case where a resolved
 // item just disappears from a list with no other visible trace that
-// anything occurred at all.
+// anything occurred at all. This is genuinely overlaying content (the one
+// exception to Flat-By-Default), so it keeps a small ambient shadow.
 export function Toast({ toast, onDismiss }: { toast: ToastState | null; onDismiss: () => void }) {
   if (!toast) return null;
-  const styles = toast.kind === "success" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white";
+  const styles = toast.kind === "success" ? "bg-status-positive text-white" : "bg-status-negative text-white";
   return (
-    <div className={`fixed right-6 bottom-6 z-50 flex max-w-sm items-start gap-3 rounded-xl px-4 py-3 shadow-lg ${styles}`} role="status">
+    <div className={`fixed right-6 bottom-6 z-50 flex max-w-sm items-start gap-3 rounded-md px-4 py-3 shadow-md ${styles}`} role="status">
       <span className="text-sm font-medium">{toast.message}</span>
       <button onClick={onDismiss} aria-label="Dismiss" className="ml-2 text-white/80 hover:text-white">
         &times;

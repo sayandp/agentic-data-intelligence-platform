@@ -106,6 +106,30 @@ def generate_narrative_report(
     )
 
 
+def _stage_failure_reason(what_failed: str, stage: str, outcome) -> str:
+    """The sentence a reader of the report actually sees.
+
+    Leads with the cause in plain words ("couldn't ground the narrative -
+    the model's response was cut off before it finished") and keeps the
+    stage and machine-readable source code in a trailing parenthetical,
+    where codes belong and where anyone correlating with the backend log
+    can still find them. `failure_summary` is absent only for an outcome
+    produced before this existed, so the code alone remains the fallback.
+    """
+    summary = getattr(outcome, "failure_summary", None)
+    tail = f"({stage}, {outcome.source})"
+    if summary:
+        return f"couldn't {what_failed} - {summary} {tail}"
+    return f"couldn't {what_failed} {tail}"
+
+
+def _log_stage_failure(stage: str, source: str, rejected_reasons: list[str]) -> None:
+    """Full provider detail to the backend log, where a report can't carry
+    it - finish_reason, model, token counts and the raw response body."""
+    detail = " | ".join(rejected_reasons) if rejected_reasons else "no detail captured"
+    print(f"[narrative] {stage} failed ({source}): {detail}")
+
+
 @dataclass
 class _LLMAttemptResult:
     report: NarrativeReport | None
@@ -121,14 +145,36 @@ def _try_llm_report(
     charts: list[ChartRef],
 ) -> _LLMAttemptResult:
     claims_outcome = narrative_agent.generate_claims(findings)
+    if claims_outcome.claims is not None and len(claims_outcome.claims) == 0:
+        # Parsed cleanly and cited nothing. Distinct from a failed stage:
+        # source is "llm" here, so without this branch it read as
+        # "couldn't ground the narrative (llm)" - technically true and
+        # completely uninformative.
+        _log_stage_failure("stage 1 (grounding)", claims_outcome.source, ["model returned zero claims"])
+        return _LLMAttemptResult(report=None, fallback_reason="couldn't ground the narrative - the model produced no claims about these findings (stage 1, llm)")
     if not claims_outcome.claims:
-        return _LLMAttemptResult(report=None, fallback_reason=f"stage 1 (grounding) unavailable: {claims_outcome.source}")
+        # This used to report only `claims_outcome.source`, discarding the
+        # rejected_reasons the agent had already collected - so a fallback
+        # read "stage 1 (grounding) unavailable: escalated_parse_failure",
+        # naming the outcome but never the cause, and leaving nothing to
+        # diagnose from afterwards. Both now survive: the human-readable
+        # cause in the report, the full provider detail in the log.
+        _log_stage_failure("stage 1 (grounding)", claims_outcome.source, claims_outcome.rejected_reasons)
+        return _LLMAttemptResult(report=None, fallback_reason=_stage_failure_reason("ground the narrative", "stage 1", claims_outcome))
 
     known_finding_ids = {finding.id for finding in findings.findings}
     grounding_result = filter_grounded_claims(claims_outcome.claims, known_finding_ids, config)
     if not grounding_result.valid_claims:
+        # This branch was already detailed - every rejection names the claim
+        # and the unknown finding_ids it cited. That is a CORRECT rejection
+        # (an ungrounded claim must never reach a report), so the wording
+        # says the claims were rejected, not that something malfunctioned.
         reasons = "; ".join(grounding_result.rejected_reasons) or "no claims survived grounding validation"
-        return _LLMAttemptResult(report=None, fallback_reason=f"stage 1 produced no usable claims: {reasons}")
+        _log_stage_failure("stage 1 (grounding)", "rejected_ungrounded", grounding_result.rejected_reasons)
+        return _LLMAttemptResult(
+            report=None,
+            fallback_reason=f"couldn't ground the narrative - every claim cited findings this run didn't produce (stage 1): {reasons}",
+        )
 
     claims = grounding_result.valid_claims
     post_check_history: list[PostCheckAttempt] = []
@@ -138,10 +184,11 @@ def _try_llm_report(
     for attempt_number in range(1, config.max_regeneration_attempts + 2):
         prose_outcome = narrative_agent.generate_prose(claims)
         if prose_outcome.prose is None:
+            _log_stage_failure("stage 2 (expansion)", prose_outcome.source, prose_outcome.rejected_reasons)
             return _LLMAttemptResult(
                 report=None,
                 post_check_history=post_check_history,
-                fallback_reason=f"stage 2 (expansion) unavailable: {prose_outcome.source}",
+                fallback_reason=_stage_failure_reason("write the narrative", "stage 2", prose_outcome),
             )
 
         check_attempt = run_post_checks(claims, prose_outcome.prose, attempt=attempt_number, config=config)

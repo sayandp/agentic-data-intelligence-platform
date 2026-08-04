@@ -56,6 +56,12 @@ function reportDiagnostics(testInfo: import("@playwright/test").TestInfo, consol
 
 test.describe("Real dashboard - full human flow", () => {
   test("register -> ingest -> confirm baseline -> escalate -> resolve -> report -> audit", async ({ page, context }, testInfo) => {
+    // Two real LLM narrative calls in this flow (first run's report, then
+    // the escalated/resolved run's), each polled up to 90s - the 3-minute
+    // suite default (playwright.config.ts) doesn't leave enough room above
+    // this file's own other real-timing waits once both land near their
+    // worst case. Same reasoning as demo-full-charts.spec.ts's override.
+    test.setTimeout(6 * 60 * 1000);
     const { consoleErrors, failedRequests } = trackDiagnostics(page);
     // Part 1 COPY BUTTON verification below reads the real OS/browser
     // clipboard - needs the permission granted up front (Chromium only,
@@ -94,6 +100,25 @@ test.describe("Real dashboard - full human flow", () => {
     expect(firstRunMatch, `expected "Run #<number>" in "${firstIngestText}"`).toBeTruthy();
     expect(firstIngestText).toContain("status=completed");
     const firstRunNumber = firstRunMatch![1];
+
+    // Same explore/narrate timing gap the second run's report wait below
+    // already accounts for (app/graph/nodes.py::explore_node marks the run
+    // "completed" before narrate_node runs) - poll report.available directly
+    // before clicking through, rather than assume "status=completed" means
+    // the report is ready. Real LLM latency varies with provider load/quota,
+    // so this is a generous bound, not a tight one.
+    const firstReportDeadline = Date.now() + 90_000;
+    let firstReportReady = false;
+    while (Date.now() < firstReportDeadline) {
+      const statusResp = await page.request.get(`${API_ORIGIN}/ingest/${firstRunNumber}/status`);
+      const statusBody = await statusResp.json();
+      if (statusBody.report?.available) {
+        firstReportReady = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    expect(firstReportReady, `report for Run #${firstRunNumber} never became available within 90s`).toBe(true);
 
     // --- Part 2 (UX pass): kill the copy-paste workflow - jump to this
     // run's report via the "View report" link the Sources page shows right
@@ -167,7 +192,12 @@ test.describe("Real dashboard - full human flow", () => {
     // graph resumes via BackgroundTasks, so a real UI click here - not a
     // direct-backend-poll workaround - is a genuine test of the fix.
     await page.goto("/approvals");
-    const eventGroup = page.locator("div.rounded-xl", { has: page.locator(`text="Run #${secondRunNumber}"`) });
+    // Dashboard redesign (Instrument Panel): the outer Card wrapper and this
+    // inner event-group div now share the same rounded-md radius token (the
+    // prior design's rounded-xl only happened to disambiguate them by
+    // accident) - .p-4 is what's actually unique to the inner group (Card
+    // itself uses p-5).
+    const eventGroup = page.locator("div.rounded-md.p-4", { has: page.locator(`text="Run #${secondRunNumber}"`) });
     await expect(eventGroup).toBeVisible({ timeout: 15_000 });
     await eventGroup.getByRole("button", { name: "Keep data as-is", exact: true }).click();
 
@@ -205,7 +235,7 @@ test.describe("Real dashboard - full human flow", () => {
     // than assume the resolve completing means the report is ready - via
     // the run NUMBER, exercising the exact lookup a human typing one into
     // the load box gets (app/id_lookup.py::resolve_run).
-    const reportDeadline = Date.now() + 60_000;
+    const reportDeadline = Date.now() + 90_000;
     let reportReady = false;
     while (Date.now() < reportDeadline) {
       const statusResp = await page.request.get(`${API_ORIGIN}/ingest/${secondRunNumber}/status`);
@@ -216,7 +246,7 @@ test.describe("Real dashboard - full human flow", () => {
       }
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    expect(reportReady, `report for Run #${secondRunNumber} never became available within 60s`).toBe(true);
+    expect(reportReady, `report for Run #${secondRunNumber} never became available within 90s`).toBe(true);
 
     // VERIFY: Reports loads via typing the run NUMBER ALONE - no id, no
     // prefix, nothing pasted from anywhere else.

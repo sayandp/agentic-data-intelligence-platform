@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch, apiPostJson, pollIngestStatus } from "../api/client";
 import type { Decision, PendingApprovals, ResolveAckResponse } from "../api/types";
-import { Badge, Button, Card, CopyableId, ErrorMessage, Muted, RunLabel, Toast } from "../components/ui";
+import { Badge, Button, Card, CodeBlock, CopyableId, ErrorMessage, Muted, RunLabel, Toast } from "../components/ui";
 import { auditLink, reportLink } from "../lib/runLinks";
 import { useToast } from "../hooks/useToast";
 
@@ -40,7 +40,7 @@ function RecentlyResolved({ count, children }: { count: number; children: React.
 
 function ResolvedMeta({ decision, resolvedBy, resolvedAt }: { decision: string | null; resolvedBy: string | null; resolvedAt: string | null }) {
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
       {decision && <Badge value={decision} />}
       {resolvedBy && <span>by {resolvedBy}</span>}
       {resolvedAt && <span>{resolvedAt}</span>}
@@ -74,6 +74,20 @@ const BASELINE_DECISION_PAST_TENSE: Partial<Record<Decision, string>> = {
   approve: "confirmed as the active baseline",
   reject_data: "rejected - this candidate will never become the baseline",
 };
+
+// Part 3: an empty section should say which of two different things is
+// true - "this has never happened" (the trigger just hasn't occurred yet)
+// vs. "this happened and is already handled" (something resolved sits in
+// Recently resolved below) - not the same flat "nothing here" for both.
+function EmptyState({ neverText, resolvedCount, triggerText }: { neverText: string; resolvedCount: number; triggerText: string }) {
+  return (
+    <Muted>
+      {resolvedCount > 0
+        ? `Nothing pending right now - ${resolvedCount} resolved below. ${triggerText}`
+        : `${neverText} ${triggerText}`}
+    </Muted>
+  );
+}
 
 const DISCARD_CONFIRM_MESSAGE =
   "Discard this run permanently?\n\n" +
@@ -192,13 +206,13 @@ export default function ApprovalsPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold text-slate-900">Approvals</h1>
+      <h1 className="mb-6 text-[22px] font-semibold text-ink">Approvals</h1>
       <div className="mb-6 flex items-center gap-3">
-        <label className="text-sm font-medium text-slate-700">Resolved by</label>
+        <label className="text-sm font-medium text-ink-muted">Resolved by</label>
         <input
           value={resolvedBy}
           onChange={(e) => setResolvedBy(e.target.value)}
-          className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+          className="rounded-sm border border-border-strong px-2 py-1.5 text-sm"
         />
         <Button onClick={load} loading={initialLoading} loadingText="Refreshing...">
           Refresh
@@ -217,7 +231,7 @@ export default function ApprovalsPage() {
         pending.connector_warnings.length === 0 &&
         pending.escalated_queries.length === 0 &&
         pending.escalated_models.length === 0 && (
-          <p className="mb-6 rounded-lg bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800">
+          <p className="mb-6 rounded-md border border-status-positive bg-status-positive-tint px-4 py-2 text-sm font-medium text-status-positive">
             {pending.summary.total_resolved === 0
               ? "Nothing has required review yet."
               : `All clear — ${pending.summary.total_resolved} item${pending.summary.total_resolved === 1 ? "" : "s"} resolved across ${pending.summary.distinct_runs} run${pending.summary.distinct_runs === 1 ? "" : "s"}.`}
@@ -228,26 +242,31 @@ export default function ApprovalsPage() {
         {!pending ? (
           <Muted>Loading...</Muted>
         ) : pending.provisional_baselines.length === 0 ? (
-          <Muted>Appears automatically on a source's first successful ingest, until a human confirms or rejects it.</Muted>
+          <EmptyState
+            neverText="Nothing here yet."
+            resolvedCount={pending.recently_resolved.provisional_baselines.length}
+            triggerText="Appears automatically on a source's first successful ingest, until a human confirms or rejects it."
+          />
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-slate-500">
-                <th className="py-2 pr-3 font-medium">ID</th>
-                <th className="py-2 pr-3 font-medium">Source</th>
-                <th className="py-2 pr-3 font-medium">Rows</th>
-                <th className="py-2 pr-3 font-medium">Created</th>
-                <th className="py-2 font-medium">Decision</th>
+              <tr className="border-b border-border bg-surface-sunken text-ink-muted">
+                <th className="py-2 px-3 font-medium">ID</th>
+                <th className="py-2 px-3 font-medium">Source</th>
+                <th className="py-2 px-3 text-right font-medium">Rows</th>
+                <th className="py-2 px-3 font-medium">Created</th>
+                <th className="py-2 px-3 font-medium">Decision</th>
               </tr>
             </thead>
             <tbody>
               {pending.provisional_baselines.map((b) => (
-                <tr key={b.id} className="border-b border-slate-100">
-                  <td className="py-2 pr-3"><CopyableId id={b.id} /></td>
-                  <td className="py-2 pr-3"><CopyableId id={b.source_id} /></td>
-                  <td className="py-2 pr-3">{b.row_count}</td>
-                  <td className="py-2 pr-3 text-slate-500">{b.created_at}</td>
-                  <td className="py-2">
+                <tr key={b.id} className="border-b border-border">
+                  <td className="py-2 px-3"><CopyableId id={b.id} /></td>
+                  <td className="py-2 px-3"><CopyableId id={b.source_id} /></td>
+                  <td className="py-2 px-3 text-right font-mono">{b.row_count}</td>
+                  <td className="py-2 px-3 text-ink-muted">{b.created_at}</td>
+                  <td className="py-2 px-3">
                     <div className="flex gap-2">
                       <Button
                         onClick={() =>
@@ -281,11 +300,12 @@ export default function ApprovalsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
         {pending && (
           <RecentlyResolved count={pending.recently_resolved.provisional_baselines.length}>
             {pending.recently_resolved.provisional_baselines.map((b) => (
-              <div key={b.id} className="rounded-lg bg-slate-50 p-3 text-sm">
+              <div key={b.id} className="rounded-md bg-surface-sunken p-3 text-sm">
                 <div className="flex items-center justify-between">
                   <span>Baseline for source</span>
                   <CopyableId id={b.source_id} />
@@ -301,7 +321,11 @@ export default function ApprovalsPage() {
         {!pending ? (
           <Muted>Loading...</Muted>
         ) : pending.validation_events.length === 0 ? (
-          <Muted>Appears when an ingest finds issues that can't be auto-fixed. Ingest a file with data problems to see one.</Muted>
+          <EmptyState
+            neverText="Nothing here yet."
+            resolvedCount={pending.recently_resolved.validation_events.length}
+            triggerText="Appears when an ingest finds issues that can't be auto-fixed."
+          />
         ) : (
           <div className="flex flex-col gap-4">
             {pending.validation_events.map((g) => {
@@ -314,7 +338,7 @@ export default function ApprovalsPage() {
                 isBusy(g.resolve_id, "reject_data") ||
                 isBusy(g.resolve_id, "accept_as_baseline");
               return (
-                <div key={g.resolve_id} className="rounded-xl border border-slate-200 p-4">
+                <div key={g.resolve_id} className="rounded-md border border-border p-4">
                   <div className="mb-2 flex items-center gap-2">
                     <RunLabel runNumber={g.run_number} runId={g.run_id} />
                     {g.risk_level && <Badge value={g.risk_level} />}
@@ -333,8 +357,8 @@ export default function ApprovalsPage() {
                     </p>
                   )}
                   {g.gate_reasons && g.gate_reasons.length > 0 && (
-                    <p className="mb-2 text-sm text-slate-500">
-                      <span className="font-medium text-slate-700">Gate reasons:</span> {g.gate_reasons.join("; ")}
+                    <p className="mb-2 text-sm text-ink-muted">
+                      <span className="font-medium text-ink">Gate reasons:</span> {g.gate_reasons.join("; ")}
                     </p>
                   )}
                   <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -371,7 +395,7 @@ export default function ApprovalsPage() {
                           {/* Separated with a visible divider, not just spacing -
                               this is the one decision with no undo, and it should
                               never read as a fourth variant of the three above. */}
-                          <span className="mx-2 h-6 w-px bg-slate-300" aria-hidden="true" />
+                          <span className="mx-2 h-6 w-px bg-border-strong" aria-hidden="true" />
                           <Button
                             variant="danger"
                             disabled={groupBusy && !isBusy(g.resolve_id, "reject_data")}
@@ -389,7 +413,7 @@ export default function ApprovalsPage() {
                     .map((d) => resolveProgress[`${g.resolve_id}:${d}`])
                     .filter(Boolean)
                     .map((message, i) => (
-                      <p key={i} className="mt-1 text-xs text-slate-500">
+                      <p key={i} className="mt-1 text-xs text-status-active">
                         {message}
                       </p>
                     ))}
@@ -404,7 +428,7 @@ export default function ApprovalsPage() {
         {pending && (
           <RecentlyResolved count={pending.recently_resolved.validation_events.length}>
             {pending.recently_resolved.validation_events.map((e) => (
-              <div key={e.id} className="rounded-lg bg-slate-50 p-3 text-sm">
+              <div key={e.id} className="rounded-md bg-surface-sunken p-3 text-sm">
                 <div className="flex items-center justify-between">
                   <span>
                     {e.rule_failed}
@@ -426,27 +450,32 @@ export default function ApprovalsPage() {
         {!pending ? (
           <Muted>Loading...</Muted>
         ) : pending.connector_warnings.length === 0 ? (
-          <Muted>Appears for source-level issues like a multi-sheet Excel file or a SQL type mismatch.</Muted>
+          <EmptyState
+            neverText="Nothing here yet."
+            resolvedCount={pending.recently_resolved.connector_warnings.length}
+            triggerText="Appears for source-level issues like a multi-sheet Excel file or a SQL type mismatch."
+          />
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-slate-500">
-                <th className="py-2 pr-3 font-medium">Run</th>
-                <th className="py-2 pr-3 font-medium">Message</th>
-                <th className="py-2 font-medium"></th>
+              <tr className="border-b border-border bg-surface-sunken text-ink-muted">
+                <th className="py-2 px-3 font-medium">Run</th>
+                <th className="py-2 px-3 font-medium">Message</th>
+                <th className="py-2 px-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
               {pending.connector_warnings.map((w) => (
-                <tr key={w.id} className="border-b border-slate-100">
-                  <td className="py-2 pr-3">
+                <tr key={w.id} className="border-b border-border">
+                  <td className="py-2 px-3">
                     <div className="flex items-center gap-2">
                       <RunLabel runNumber={w.run_number} runId={w.run_id} />
                       <RunLinks runId={w.run_id} runNumber={w.run_number} />
                     </div>
                   </td>
-                  <td className="py-2 pr-3">{w.message}</td>
-                  <td className="py-2">
+                  <td className="py-2 px-3">{w.message}</td>
+                  <td className="py-2 px-3">
                     <Button
                       onClick={() => resolve(w.id, "acknowledge", "Connector warning")}
                       loading={isBusy(w.id, "acknowledge")}
@@ -459,11 +488,12 @@ export default function ApprovalsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
         {pending && (
           <RecentlyResolved count={pending.recently_resolved.connector_warnings.length}>
             {pending.recently_resolved.connector_warnings.map((w) => (
-              <div key={w.id} className="rounded-lg bg-slate-50 p-3 text-sm">
+              <div key={w.id} className="rounded-md bg-surface-sunken p-3 text-sm">
                 <div className="flex items-center justify-between">
                   <span>{w.message}</span>
                   <RunLabel runNumber={w.run_number} runId={w.run_id} />
@@ -482,20 +512,24 @@ export default function ApprovalsPage() {
         {!pending ? (
           <Muted>Loading...</Muted>
         ) : pending.escalated_queries.length === 0 ? (
-          <Muted>Appears when a question on the Ask page can't be answered safely.</Muted>
+          <EmptyState
+            neverText="Nothing here yet."
+            resolvedCount={pending.recently_resolved.queries.length}
+            triggerText="Appears when a question on the Ask page can't be answered safely."
+          />
         ) : (
           <div className="flex flex-col gap-4">
             {pending.escalated_queries.map((q) => (
-              <div key={q.id} className="rounded-xl border border-slate-200 p-4">
+              <div key={q.id} className="rounded-md border border-border p-4">
                 <div className="mb-1 flex items-center gap-2 text-sm">
                   <RunLabel runNumber={q.run_number} runId={q.run_id} />
                   <RunLinks runId={q.run_id} runNumber={q.run_number} />
                 </div>
                 <p className="mb-1 text-sm"><span className="font-medium">Question:</span> {q.question}</p>
-                <p className="mb-2 text-sm text-slate-500">
-                  <span className="font-medium text-slate-700">Escalation:</span> {q.escalation_reason} - {q.escalation_detail}
+                <p className="mb-2 text-sm text-ink-muted">
+                  <span className="font-medium text-ink">Escalation:</span> {q.escalation_reason} - {q.escalation_detail}
                 </p>
-                <pre className="mb-3 overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">{q.code || "(no code generated)"}</pre>
+                <div className="mb-3"><CodeBlock>{q.code || "(no code generated)"}</CodeBlock></div>
                 <div className="flex gap-2">
                   {q.approvable && (
                     <Button
@@ -524,7 +558,7 @@ export default function ApprovalsPage() {
         {pending && (
           <RecentlyResolved count={pending.recently_resolved.queries.length}>
             {pending.recently_resolved.queries.map((q) => (
-              <div key={q.id} className="rounded-lg bg-slate-50 p-3 text-sm">
+              <div key={q.id} className="rounded-md bg-surface-sunken p-3 text-sm">
                 <div className="flex items-center justify-between">
                   <span>{q.question}</span>
                   <RunLabel runNumber={q.run_number} runId={q.run_id} />
@@ -543,11 +577,15 @@ export default function ApprovalsPage() {
         {!pending ? (
           <Muted>Loading...</Muted>
         ) : pending.escalated_models.length === 0 ? (
-          <Muted>Appears when a Predict request can't produce a trustworthy model.</Muted>
+          <EmptyState
+            neverText="Nothing here yet."
+            resolvedCount={pending.recently_resolved.models.length}
+            triggerText="Appears when a Predict request can't produce a trustworthy model."
+          />
         ) : (
           <div className="flex flex-col gap-4">
             {pending.escalated_models.map((m) => (
-              <div key={m.id} className="rounded-xl border border-slate-200 p-4">
+              <div key={m.id} className="rounded-md border border-border p-4">
                 <div className="mb-1 flex items-center gap-2 text-sm">
                   <RunLabel runNumber={m.run_number} runId={m.run_id} />
                   <RunLinks runId={m.run_id} runNumber={m.run_number} />
@@ -555,8 +593,8 @@ export default function ApprovalsPage() {
                 <p className="mb-1 text-sm">
                   <span className="font-medium">Target:</span> {m.target_column} <span className="font-medium">Task:</span> {m.task_type}
                 </p>
-                <p className="mb-2 text-sm text-slate-500">
-                  <span className="font-medium text-slate-700">Escalation:</span> {m.escalation_reason} - {m.escalation_detail}
+                <p className="mb-2 text-sm text-ink-muted">
+                  <span className="font-medium text-ink">Escalation:</span> {m.escalation_reason} - {m.escalation_detail}
                 </p>
                 {m.out_of_sample_score != null && (
                   <p className="mb-2 text-sm">
@@ -591,7 +629,7 @@ export default function ApprovalsPage() {
         {pending && (
           <RecentlyResolved count={pending.recently_resolved.models.length}>
             {pending.recently_resolved.models.map((m) => (
-              <div key={m.id} className="rounded-lg bg-slate-50 p-3 text-sm">
+              <div key={m.id} className="rounded-md bg-surface-sunken p-3 text-sm">
                 <div className="flex items-center justify-between">
                   <span>{m.target_column ?? m.question ?? "Model"}</span>
                   <RunLabel runNumber={m.run_number} runId={m.run_id} />

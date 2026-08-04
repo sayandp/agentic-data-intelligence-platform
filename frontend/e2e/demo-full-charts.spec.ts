@@ -16,7 +16,9 @@ test.describe("Demo dataset exercises every chart type, and Predict forecasts it
     // folds, plus a full refit for the chart) is genuinely more work than
     // this suite's other fixtures - the default 3-minute suite timeout
     // (playwright.config.ts) is cutting it close for both steps combined.
-    test.setTimeout(5 * 60 * 1000);
+    // Real Gemini latency varies with provider load/quota - generous here,
+    // same reasoning as the report/predict waits below.
+    test.setTimeout(7 * 60 * 1000);
 
     await page.goto("/sources");
     await expect(page.getByRole("heading", { name: "Sources", exact: true })).toBeVisible();
@@ -47,7 +49,7 @@ test.describe("Demo dataset exercises every chart type, and Predict forecasts it
     // still be mid-flight past SourcesPage's own grace period. Poll for
     // report.available directly rather than assume "View report" is safe
     // to click yet (same nuance dashboard-flow.spec.ts already handles).
-    const reportDeadline = Date.now() + 90_000;
+    const reportDeadline = Date.now() + 150_000;
     let reportReady = false;
     while (Date.now() < reportDeadline) {
       const statusResp = await page.request.get(`http://localhost:8000/ingest/${runNumber}/status`);
@@ -58,7 +60,7 @@ test.describe("Demo dataset exercises every chart type, and Predict forecasts it
       }
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    expect(reportReady, `report for Run #${runNumber} never became available within 90s`).toBe(true);
+    expect(reportReady, `report for Run #${runNumber} never became available within 150s`).toBe(true);
 
     // --- Report: every deterministic chart type, rendered as a real
     // Plotly SVG - a chart that fails to render still shows its <Muted>
@@ -85,12 +87,16 @@ test.describe("Demo dataset exercises every chart type, and Predict forecasts it
 
     // --- Predict: forecast revenue (the trending column) via a natural-
     // language question, exactly as a human would type it - no target_column
-    // shortcut, no manual id entry (the source id from registration above
-    // resolves to this source's latest completed run). ---
+    // shortcut and, now, no id entry of ANY kind: the run is SELECTED from
+    // the picker. (Updated with the Ask/Predict run-picker change - this
+    // step used to fill a "source_id (or leave blank and give a run_id)"
+    // box, a field deliberately removed: a run already knows its source,
+    // and asking for both is what let a source UUID be submitted alongside
+    // an unrelated run id.) ---
     await page.goto("/predict");
     await expect(page.getByRole("heading", { name: "Predict", exact: true })).toBeVisible();
-    await page.getByPlaceholder("source_id (or leave blank and give a run_id)").fill(sourceId!);
-    await page.getByPlaceholder("Forecast monthly revenue").fill("Forecast monthly revenue");
+    await page.getByLabel("Run", { exact: true }).selectOption(runNumber);
+    await page.getByLabel("Question", { exact: true }).fill("Forecast monthly revenue");
     await page.getByRole("button", { name: "Predict", exact: true }).click();
 
     // While training, the button shows it's busy (not silently idle) - the
@@ -111,6 +117,13 @@ test.describe("Demo dataset exercises every chart type, and Predict forecasts it
     await expect(forecastPlot).toBeVisible({ timeout: 20_000 });
 
     // Excluded features - the leakage-prevention evidence, not a black box.
-    await expect(page.getByText("order_id")).toBeVisible();
+    // Scoped to the excluded-features TABLE ROW rather than "any text on the
+    // page saying order_id": the run picker now also lists the selected
+    // run's columns (order_id among them), so a bare text match would pass
+    // on the picker's column hint without the leakage evidence ever having
+    // rendered. This asserts the same fact more precisely, not less.
+    const excludedRow = page.getByRole("row").filter({ has: page.getByRole("cell", { name: "order_id", exact: true }) });
+    await expect(excludedRow).toBeVisible();
+    await expect(excludedRow).toContainText("identifier-like");
   });
 });

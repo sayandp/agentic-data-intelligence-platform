@@ -28,6 +28,22 @@ export interface RunSummary {
 // returns the same bare shape; once the run is completed/awaiting_approval
 // it returns every field below, identically to what POST /ingest used to
 // return synchronously.
+// GET /runs (backend/app/routers/runs.py) - the run picker's backing list.
+// Ask/Predict used to make a human TYPE a run identifier, which is how a
+// valid run number ended up reading as "run '48' not found"; a picker means
+// there is nothing to mistype. Deliberately cheap server-side: no
+// column/metadata computation per row (that rebuilds the repaired frame),
+// so columns for the ONE selected run come from GET /ingest/{run}/status.
+export interface RunSummaryRecord {
+  id: string;
+  run_number: number | null;
+  status: string;
+  source_id: string;
+  source_label: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 export interface IngestResponse {
   run_id: string;
   run_number: number | null;

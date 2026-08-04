@@ -41,7 +41,7 @@ class GenerationOutcome(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     query: GeneratedQuery | None
-    source: Literal["llm", "cache", "escalated_parse_failure", "escalated_quota_exhausted"]
+    source: Literal["llm", "cache", "escalated_parse_failure", "escalated_quota_exhausted", "escalated_unavailable"]
     model_name: str | None = None
     temperature: float | None = None
 

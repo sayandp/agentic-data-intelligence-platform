@@ -192,20 +192,36 @@ $frontendProc.Id | Out-File -FilePath $FrontendPidFile -Encoding ascii
 # whole point of the preflight check above is to make 5173 available, not
 # to guarantee Vite chooses it if something changes between the check and
 # this point.
+#
+# Vite colourises that line even when its stdout is a redirected file, and
+# the escape sequences land INSIDE the text being matched:
+#   ESC[1mLocal ESC[22m:   ESC[36mhttp://localhost: ESC[1m5173 ESC[22m/
+# so neither the literal "Local:" nor ":\d+" matches the raw bytes - the
+# frontend starts perfectly and the launcher still reports "did not report
+# a URL within 30s". Strip ANSI SGR sequences before matching rather than
+# trying to write a pattern that tolerates them at every insertion point.
 $frontendUrl = $null
 for ($i = 0; $i -lt 30; $i++) {
     Start-Sleep -Milliseconds 1000
-    $match = Select-String -Path $FrontendOutLog -Pattern "Local:\s+(http://localhost:\d+)" -ErrorAction SilentlyContinue | Select-Object -Last 1
-    if ($match) {
-        $frontendUrl = $match.Matches[0].Groups[1].Value
+    $frontendLog = Get-Content -Path $FrontendOutLog -Raw -ErrorAction SilentlyContinue
+    if (-not $frontendLog) { continue }
+    $plainLog = $frontendLog -replace "\x1b\[[0-9;]*[A-Za-z]", ""
+    $urlMatch = [regex]::Match($plainLog, "Local:\s+(http://localhost:\d+)")
+    if ($urlMatch.Success) {
+        $frontendUrl = $urlMatch.Groups[1].Value
         break
     }
 }
 if (-not $frontendUrl) {
     Write-Host ""
     Write-Host "[FAIL] frontend did not report a URL within 30s." -ForegroundColor Red
+    # The URL line goes to STDOUT; a crash usually explains itself on
+    # stderr. Showing only stderr made this failure look like an empty
+    # error, so show both.
     Write-Host "Last lines of $FrontendErrLog :" -ForegroundColor Red
     Get-Content $FrontendErrLog -Tail 20 -ErrorAction SilentlyContinue
+    Write-Host "Last lines of $FrontendOutLog :" -ForegroundColor Red
+    Get-Content $FrontendOutLog -Tail 20 -ErrorAction SilentlyContinue
     exit 1
 }
 $frontendPort = [regex]::Match($frontendUrl, ':(\d+)$').Groups[1].Value

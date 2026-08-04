@@ -1,14 +1,41 @@
 @import "tailwindcss";
 
+/* Design system: DESIGN.md ("The Instrument Panel"). One accent (signal
+   teal, replacing the prior violet), a fixed four-color status vocabulary
+   never reused for anything else, and a separate graphite nav palette
+   distinct from the accent - the previous system conflated "sidebar dark
+   color" and "brand accent" into the same violet scale. */
 @theme {
-  --color-brand-50: #f4f2ff;
-  --color-brand-100: #ebe6ff;
-  --color-brand-200: #d5cbff;
-  --color-brand-500: #7c5cff;
-  --color-brand-600: #6d3ff2;
-  --color-brand-700: #5b2fd9;
-  --color-brand-900: #211348;
-  --color-brand-950: #170c33;
+  --color-brand-50: #e3f1f1;
+  --color-brand-100: #cfe7e7;
+  --color-brand-200: #a9d4d4;
+  --color-brand-500: #12807e;
+  --color-brand-600: #0b6e6e;
+  --color-brand-700: #095a5a;
+  --color-brand-900: #0a3d3d;
+  --color-brand-950: #072b2b;
+
+  --color-nav-bg: #141922;
+  --color-nav-ink: #b8c0cc;
+
+  --color-ink: #12161c;
+  --color-ink-muted: #4b5563;
+  --color-ink-faint: #6b7280;
+  --color-paper: #f7f8fa;
+  --color-surface-sunken: #f1f3f6;
+  --color-border: #e2e5ea;
+  --color-border-strong: #c7ccd4;
+
+  --color-status-positive: #15803d;
+  --color-status-positive-tint: #e8f5ec;
+  --color-status-negative: #b91c1c;
+  --color-status-negative-tint: #fbebeb;
+  --color-status-caution: #9a6700;
+  --color-status-caution-tint: #fbf2de;
+  --color-status-active: #1e40af;
+  --color-status-active-tint: #e9eefb;
+
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 html,
@@ -19,9 +46,10 @@ body,
 
 body {
   margin: 0;
-  background: #f4f5fb;
-  color: #1e1b2e;
+  background: var(--color-paper);
+  color: var(--color-ink);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
 }
 
 pre {

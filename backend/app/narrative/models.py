@@ -210,16 +210,25 @@ class ClaimsOutcome(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     claims: list[GroundedClaim] | None
-    source: Literal["llm", "escalated_parse_failure", "escalated_quota_exhausted"]
+    source: Literal["llm", "escalated_parse_failure", "escalated_quota_exhausted", "escalated_unavailable"]
     rejected_reasons: list[str] = Field(default_factory=list)
     model_name: str | None = None
     temperature: float | None = None
+    #: Short, user-facing phrase naming WHY the stage failed ("the model's
+    #: response was cut off before it finished"). Separate from
+    #: rejected_reasons, which holds the full technical detail for logs and
+    #: the audit trace: a report reader needs the cause, not a stack of
+    #: provider enums, and "escalated_parse_failure" alone told them
+    #: neither.
+    failure_summary: str | None = None
 
 
 class ProseOutcome(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     prose: NarrativeProse | None
-    source: Literal["llm", "escalated_parse_failure", "escalated_quota_exhausted"]
+    source: Literal["llm", "escalated_parse_failure", "escalated_quota_exhausted", "escalated_unavailable"]
     model_name: str | None = None
     temperature: float | None = None
+    rejected_reasons: list[str] = Field(default_factory=list)
+    failure_summary: str | None = None

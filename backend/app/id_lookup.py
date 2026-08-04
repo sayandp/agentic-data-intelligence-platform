@@ -18,11 +18,19 @@ from sqlalchemy.orm import Session
 from app.models import Run
 
 
-def resolve_run(db: Session, run_id_or_number: str) -> Run:
-    """Returns the matching Run, or raises HTTPException(404). Accepts the
-    full UUID (exact primary-key path, unchanged) or a plain run_number,
-    optionally "#"-prefixed ("17" or "#17") - never a prefix of either, so a
-    caller never needs to disambiguate."""
+def find_run(db: Session, run_id_or_number: str) -> Run | None:
+    """The single definition of "what string identifies a run" - the full
+    UUID (exact primary-key path) or a plain run_number, optionally
+    "#"-prefixed ("17" or "#17"), never a prefix of either.
+
+    Returns None rather than raising, so callers that are not HTTP handlers
+    (app/query/pipeline.py::resolve_run, which raises ValueError and is
+    shared by /ask and /predict) can apply these exact same rules without
+    importing HTTP semantics into a domain layer. Every page that takes a
+    run identifier resolves it through this function - Reports, Audit,
+    ingest status, Ask and Predict - so a run number typed into one of them
+    can never mean something different in another.
+    """
     run = db.get(Run, run_id_or_number)
     if run is not None:
         return run
@@ -31,8 +39,15 @@ def resolve_run(db: Session, run_id_or_number: str) -> Run:
     if candidate.startswith("#"):
         candidate = candidate[1:]
     if candidate.isdigit():
-        run = db.query(Run).filter(Run.run_number == int(candidate)).one_or_none()
-        if run is not None:
-            return run
+        return db.query(Run).filter(Run.run_number == int(candidate)).one_or_none()
 
-    raise HTTPException(status_code=404, detail="run not found")
+    return None
+
+
+def resolve_run(db: Session, run_id_or_number: str) -> Run:
+    """Returns the matching Run, or raises HTTPException(404). Accepts
+    exactly what find_run accepts."""
+    run = find_run(db, run_id_or_number)
+    if run is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    return run

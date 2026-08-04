@@ -20,7 +20,7 @@ import random
 import time
 
 from app.exploration.findings import ExplorationFindings
-from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError
+from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError, LLMUnavailableError
 from app.narrative.config import SAMPLE_END_MARKER, SAMPLE_START_MARKER
 from app.narrative.models import ClaimsOutcome, GroundedClaim, GroundedClaimsResponse, NarrativeProse, ProseOutcome
 from app.retry import backoff_delay_seconds
@@ -94,6 +94,26 @@ required schema. Respond again with ONLY the JSON object, matching the
 schema exactly - no prose, no markdown fences, no extra fields."""
 
 
+def _detail(exc: Exception) -> str:
+    """Full technical detail for logs/audit - finish_reason, model, token
+    accounting and the raw response when the provider layer captured them
+    (app/llm/base.py::LLMResponseError.diagnostic_detail)."""
+    if isinstance(exc, LLMResponseError):
+        return exc.diagnostic_detail()
+    return str(exc)
+
+
+def _summarize(exc: Exception) -> str:
+    """One plain phrase naming the cause, for the report a human reads."""
+    if isinstance(exc, LLMRateLimitError):
+        return "the model's request quota was exhausted"
+    if isinstance(exc, LLMUnavailableError):
+        return "the model was temporarily unavailable"
+    if isinstance(exc, LLMResponseError):
+        return exc.cause_summary()
+    return "the model call failed"
+
+
 class NarrativeAgent:
     def __init__(
         self,
@@ -123,7 +143,28 @@ class NarrativeAgent:
                 response = self._complete_once(system, user, GroundedClaimsResponse)
             except LLMRateLimitError as exc:
                 if attempt == self.max_attempts:
-                    return ClaimsOutcome(claims=None, source="escalated_quota_exhausted", rejected_reasons=[str(exc)])
+                    return ClaimsOutcome(
+                        claims=None,
+                        source="escalated_quota_exhausted",
+                        rejected_reasons=[str(exc)],
+                        failure_summary="the model's request quota was exhausted",
+                        model_name=self.llm_client.model_name,
+                    )
+                self._backoff(attempt)
+                continue
+            except LLMUnavailableError as exc:
+                # Transient server-side failure: retry with backoff, never
+                # the repair path - there is no malformed response to
+                # repair, and a 503 blamed on parsing is what made this
+                # class of failure undiagnosable.
+                if attempt == self.max_attempts:
+                    return ClaimsOutcome(
+                        claims=None,
+                        source="escalated_unavailable",
+                        rejected_reasons=[str(exc)],
+                        failure_summary="the model was temporarily unavailable",
+                        model_name=self.llm_client.model_name,
+                    )
                 self._backoff(attempt)
                 continue
             except LLMResponseError as exc:
@@ -136,9 +177,15 @@ class NarrativeAgent:
     def _stage1_retry_once_with_repair(self, system: str, user: str, original_exc: LLMResponseError) -> ClaimsOutcome:
         try:
             response = self._complete_once(system, user + REPAIR_PROMPT_SUFFIX, GroundedClaimsResponse)
-        except (LLMResponseError, LLMRateLimitError) as repair_exc:
+        except (LLMResponseError, LLMRateLimitError, LLMUnavailableError) as repair_exc:
             return ClaimsOutcome(
-                claims=None, source="escalated_parse_failure", rejected_reasons=[f"original: {original_exc}; repair attempt: {repair_exc}"]
+                claims=None,
+                source="escalated_parse_failure",
+                rejected_reasons=[f"original: {_detail(original_exc)}", f"repair attempt: {_detail(repair_exc)}"],
+                # The repair attempt's cause is the one that actually ended
+                # the stage, so that's what the reader is told about.
+                failure_summary=_summarize(repair_exc),
+                model_name=self.llm_client.model_name,
             )
         return ClaimsOutcome(
             claims=response.claims, source="llm", model_name=self.llm_client.model_name, temperature=self.llm_client.temperature
@@ -160,19 +207,42 @@ class NarrativeAgent:
                 prose = self._complete_once(system, user, NarrativeProse)
             except LLMRateLimitError as exc:
                 if attempt == self.max_attempts:
-                    return ProseOutcome(prose=None, source="escalated_quota_exhausted")
+                    return ProseOutcome(
+                        prose=None,
+                        source="escalated_quota_exhausted",
+                        rejected_reasons=[str(exc)],
+                        failure_summary="the model's request quota was exhausted",
+                        model_name=self.llm_client.model_name,
+                    )
                 self._backoff(attempt)
                 continue
-            except LLMResponseError:
-                return self._stage2_retry_once_with_repair(system, user)
+            except LLMUnavailableError as exc:
+                if attempt == self.max_attempts:
+                    return ProseOutcome(
+                        prose=None,
+                        source="escalated_unavailable",
+                        rejected_reasons=[str(exc)],
+                        failure_summary="the model was temporarily unavailable",
+                        model_name=self.llm_client.model_name,
+                    )
+                self._backoff(attempt)
+                continue
+            except LLMResponseError as exc:
+                return self._stage2_retry_once_with_repair(system, user, exc)
             return ProseOutcome(prose=prose, source="llm", model_name=self.llm_client.model_name, temperature=self.llm_client.temperature)
         raise AssertionError("unreachable: retry loop must return or escalate")
 
-    def _stage2_retry_once_with_repair(self, system: str, user: str) -> ProseOutcome:
+    def _stage2_retry_once_with_repair(self, system: str, user: str, original_exc: LLMResponseError) -> ProseOutcome:
         try:
             prose = self._complete_once(system, user + REPAIR_PROMPT_SUFFIX, NarrativeProse)
-        except (LLMResponseError, LLMRateLimitError):
-            return ProseOutcome(prose=None, source="escalated_parse_failure")
+        except (LLMResponseError, LLMRateLimitError, LLMUnavailableError) as repair_exc:
+            return ProseOutcome(
+                prose=None,
+                source="escalated_parse_failure",
+                rejected_reasons=[f"original: {_detail(original_exc)}", f"repair attempt: {_detail(repair_exc)}"],
+                failure_summary=_summarize(repair_exc),
+                model_name=self.llm_client.model_name,
+            )
         return ProseOutcome(prose=prose, source="llm", model_name=self.llm_client.model_name, temperature=self.llm_client.temperature)
 
     # -- shared --

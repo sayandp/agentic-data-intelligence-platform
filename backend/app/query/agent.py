@@ -20,7 +20,7 @@ import json
 import random
 import time
 
-from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError
+from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError, LLMUnavailableError
 from app.query.cache import QueryCache, cache_key_for_query
 from app.query.models import GeneratedQuery, GenerationOutcome, QueryKind
 from app.retry import backoff_delay_seconds
@@ -140,6 +140,13 @@ class QueryAgent:
                     return GenerationOutcome(query=None, source="escalated_quota_exhausted", model_name=self.llm_client.model_name)
                 self._backoff(attempt)
                 continue
+            except LLMUnavailableError as exc:
+                # Transient 5xx: back off and retry. Never the repair path -
+                # there is no malformed response to repair.
+                if attempt == self.max_attempts:
+                    return GenerationOutcome(query=None, source="escalated_unavailable", model_name=self.llm_client.model_name)
+                self._backoff(attempt)
+                continue
             except LLMResponseError:
                 return self._retry_once_with_repair(system, user)
             return GenerationOutcome(
@@ -150,7 +157,7 @@ class QueryAgent:
     def _retry_once_with_repair(self, system: str, user: str) -> GenerationOutcome:
         try:
             query = self._complete_once(system, user + REPAIR_PROMPT_SUFFIX)
-        except (LLMResponseError, LLMRateLimitError):
+        except (LLMResponseError, LLMRateLimitError, LLMUnavailableError):
             return GenerationOutcome(query=None, source="escalated_parse_failure", model_name=self.llm_client.model_name)
         return GenerationOutcome(
             query=query, source="llm", model_name=self.llm_client.model_name, temperature=self.llm_client.temperature

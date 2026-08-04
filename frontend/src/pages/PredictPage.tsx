@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { apiPostJson, pollPredictStatus } from "../api/client";
 import type { ForecastSeries, PredictAck, PredictResult } from "../api/types";
 import { Badge, Button, Card, ErrorMessage, Muted } from "../components/ui";
-import { loadPlotly } from "../lib/plotly";
+import { RunNotFoundHelp, RunPicker, exampleQuestions, useRunSelection } from "../components/RunPicker";
+import { CHART_ACCENT, loadPlotly } from "../lib/plotly";
 
 // Dashboard UX pass, Part 1: "the real missing feature" - the Modeling
 // Agent (POST /predict, GET /models/{run_id}) had no UI at all despite
@@ -21,7 +22,11 @@ function buildForecastFigure(series: ForecastSeries) {
   const forecastY = series.forecast.map((p) => p.value);
   const hasInterval = series.forecast.some((p) => p.lower != null && p.upper != null);
 
-  const data: unknown[] = [{ x: historicalX, y: historicalY, mode: "lines", name: "Actual", line: { color: "#4f46e5" } }];
+  // Actual (already-known data) stays a neutral ink line; the accent color
+  // is reserved for Forecast (the model's own output) - the one thing on
+  // this chart that's actually new information, same "one accent, used for
+  // what matters" reasoning as everywhere else in this system.
+  const data: unknown[] = [{ x: historicalX, y: historicalY, mode: "lines", name: "Actual", line: { color: "#4b5563" } }];
 
   if (hasInterval) {
     const upperY = series.forecast.map((p) => p.upper ?? p.value);
@@ -34,14 +39,17 @@ function buildForecastFigure(series: ForecastSeries) {
         mode: "lines",
         line: { width: 0 },
         fill: "tonexty",
-        fillcolor: "rgba(249,115,22,0.15)",
+        fillcolor: "rgba(11,110,110,0.15)",
         name: "Interval",
       }
     );
   }
-  data.push({ x: forecastX, y: forecastY, mode: "lines", name: "Forecast", line: { color: "#f97316", dash: "dash" } });
+  data.push({ x: forecastX, y: forecastY, mode: "lines", name: "Forecast", line: { color: CHART_ACCENT, dash: "dash" } });
 
-  const layout = { title: "Forecast - actuals vs. forward horizon", xaxis: { title: "Period" }, yaxis: { title: "Value" }, margin: { t: 40 } };
+  // No native Plotly title - the Card wrapper's own "Forecast chart" caption
+  // is the only title shown (same duplicate-chrome fix already applied to
+  // the report charts on ReportsPage.tsx).
+  const layout = { xaxis: { title: "Period" }, yaxis: { title: "Value" }, margin: { t: 16, r: 16, b: 40, l: 48 } };
   return { data, layout };
 }
 
@@ -56,7 +64,7 @@ function ForecastChart({ series }: { series: ForecastSeries }) {
         try {
           window.Plotly.newPlot(containerRef.current, data, layout, { responsive: true });
         } catch {
-          containerRef.current.innerHTML = '<p class="text-sm text-slate-500">Chart could not be rendered.</p>';
+          containerRef.current.innerHTML = '<p class="text-sm text-ink-muted">Chart could not be rendered.</p>';
         }
       }
     });
@@ -77,8 +85,10 @@ const ESCALATION_LABELS: Record<string, string> = {
 };
 
 export default function PredictPage() {
-  const [sourceId, setSourceId] = useState("");
-  const [runId, setRunId] = useState("");
+  const [params] = useSearchParams();
+  // ?run=<number|uuid> - same contract as View report/View audit, so a run
+  // reaches this page without anyone copying an identifier.
+  const selection = useRunSelection(params.get("run") ?? "");
   const [question, setQuestion] = useState("");
   const [result, setResult] = useState<PredictResult | null>(null);
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
@@ -92,10 +102,11 @@ export default function PredictPage() {
     setResult(null);
     setProgressMessage(null);
     try {
-      const payload: Record<string, string> = { question };
-      if (sourceId) payload.source_id = sourceId;
-      if (runId) payload.run_id = runId;
-      const ack = await apiPostJson<PredictAck>("/predict", payload);
+      // run_id only - a run already knows its source, and POST /predict
+      // ignores source_id whenever run_id is present. Asking for both is
+      // what allowed a source UUID and an unrelated run id to be submitted
+      // together in the first place.
+      const ack = await apiPostJson<PredictAck>("/predict", { run_id: selection.runRef.trim(), question });
       const final = await pollPredictStatus(ack.id, (elapsedMs) => {
         const seconds = Math.round(elapsedMs / 1000);
         setProgressMessage(`Still training (${seconds}s elapsed) - fitting and cross-validating candidate models can take a while, this is not stuck`);
@@ -114,56 +125,71 @@ export default function PredictPage() {
   const isEscalated = result?.status === "escalated";
   const canAppealToApprovals = result?.state === "awaiting_approval";
   const forecastSeries = result?.forecast_series;
+  const examples = exampleQuestions(selection.columnTypes, "predict");
+  const predictPlaceholder = examples[0] ?? "what should this run's data be used to forecast?";
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold text-slate-900">Predict</h1>
+      <h1 className="mb-6 text-[22px] font-semibold text-ink">Predict</h1>
 
       <Card>
-        <form onSubmit={handlePredict} className="flex flex-col gap-3">
+        <form onSubmit={handlePredict} className="flex flex-col gap-4">
+          <RunPicker selection={selection} idPrefix="predict" />
+
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Source ID</label>
-            <input
-              value={sourceId}
-              onChange={(e) => setSourceId(e.target.value)}
-              placeholder="source_id (or leave blank and give a run_id)"
-              className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+            <label htmlFor="predict-question" className="mb-1 block text-sm font-medium text-ink-muted">
+              Question
+            </label>
+            <textarea
+              id="predict-question"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              rows={2}
+              placeholder={predictPlaceholder}
+              className="w-full rounded-sm border border-border-strong px-3 py-2 text-sm"
             />
+            {/* Examples drawn from THIS run's own numeric/date columns, so a
+                forecast is never requested against a column that isn't here. */}
+            {examples.length > 0 && (
+              <p className="mt-1 text-xs text-ink-muted">
+                Try:{" "}
+                {examples.map((ex, i) => (
+                  <span key={ex}>
+                    {i > 0 && " · "}
+                    <button type="button" onClick={() => setQuestion(ex)} className="text-brand-600 hover:underline">
+                      {ex}
+                    </button>
+                  </span>
+                ))}
+              </p>
+            )}
           </div>
+
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Run ID</label>
-            <input
-              value={runId}
-              onChange={(e) => setRunId(e.target.value)}
-              placeholder="run_id (optional, pins the exact repaired frame)"
-              className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-            />
-          </div>
-          <textarea
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            rows={2}
-            placeholder="Forecast monthly revenue"
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          />
-          <div>
-            <Button type="submit" variant="primary" disabled={!question.trim()} loading={predicting} loadingText="Predicting...">
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={!question.trim() || !selection.runRef.trim()}
+              loading={predicting}
+              loadingText="Predicting..."
+            >
               Predict
             </Button>
           </div>
-          {progressMessage && <p className="text-xs text-slate-500">{progressMessage}</p>}
+          {progressMessage && <p className="text-xs text-status-active">{progressMessage}</p>}
         </form>
       </Card>
 
       <ErrorMessage error={error} />
+      <RunNotFoundHelp error={error} selection={selection} />
 
       {result && (
         <>
           {/* Quality context rendered FIRST, same rule as Reports - the
               caveat can never be separated from the numbers that follow. */}
-          <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-6">
-            <h2 className="mb-2 text-lg font-semibold text-amber-900">Data quality context</h2>
-            <pre className="whitespace-pre-wrap text-sm text-amber-900">{result.quality_context_summary ?? ""}</pre>
+          <div className="mb-6 rounded-md border border-status-caution bg-status-caution-tint p-6">
+            <h2 className="mb-2 text-[15px] font-semibold text-status-caution">Data quality context</h2>
+            <div className="max-w-[68ch] whitespace-pre-wrap text-sm leading-relaxed text-ink">{result.quality_context_summary ?? ""}</div>
           </div>
 
           {isRetrieval && (
@@ -207,11 +233,11 @@ export default function PredictPage() {
                   escalation) outcome is a first-class, honest answer here -
                   not styled or worded as an error state. */}
               {isEscalated && (
-                <Card title="Escalated - no trustworthy answer to report" className="border-amber-200">
-                  <p className="mb-2 text-sm text-slate-700">
+                <Card title="Escalated - no trustworthy answer to report" className="border-status-caution">
+                  <p className="mb-2 text-sm text-ink">
                     {result.escalation_reason ? ESCALATION_LABELS[result.escalation_reason] ?? result.escalation_reason : "Escalated."}
                   </p>
-                  {result.escalation_detail && <p className="text-sm text-slate-500">{result.escalation_detail}</p>}
+                  {result.escalation_detail && <p className="text-sm text-ink-muted">{result.escalation_detail}</p>}
                   {canAppealToApprovals && (
                     <p className="mt-3 text-sm">
                       <Link className="text-brand-600 hover:underline" to="/approvals">
@@ -227,7 +253,7 @@ export default function PredictPage() {
                 <Card title="Out-of-sample performance">
                   <div className="flex flex-wrap gap-6 text-sm">
                     <div>
-                      <span className="font-medium text-slate-700">{result.out_of_sample_metric}:</span>{" "}
+                      <span className="font-medium text-ink-muted">{result.out_of_sample_metric}:</span>{" "}
                       <span className="font-mono">{result.out_of_sample_score?.toFixed(4)}</span>
                     </div>
                     {/* The comparison IS the point - baseline is rendered
@@ -235,7 +261,7 @@ export default function PredictPage() {
                         separate screen. */}
                     {result.baseline_scores.map((b) => (
                       <div key={b.model_family}>
-                        <span className="font-medium text-slate-700">
+                        <span className="font-medium text-ink-muted">
                           baseline ({b.model_family}):
                         </span>{" "}
                         <span className="font-mono">{b.out_of_sample_score.toFixed(4)}</span>
@@ -243,25 +269,27 @@ export default function PredictPage() {
                     ))}
                   </div>
                   {result.candidate_scores.length > 1 && (
+                    <div className="overflow-x-auto">
                     <table className="mt-4 w-full text-left text-sm">
                       <thead>
-                        <tr className="border-b border-slate-200 text-slate-500">
-                          <th className="py-1 pr-3 font-medium">Candidate</th>
-                          <th className="py-1 font-medium">Score</th>
+                        <tr className="border-b border-border bg-surface-sunken text-ink-muted">
+                          <th className="py-1 px-3 font-medium">Candidate</th>
+                          <th className="py-1 px-3 text-right font-medium">Score</th>
                         </tr>
                       </thead>
                       <tbody>
                         {result.candidate_scores.map((c) => (
-                          <tr key={c.model_family} className="border-b border-slate-100">
-                            <td className="py-1 pr-3">{c.model_family}</td>
-                            <td className="py-1 font-mono">{c.out_of_sample_score.toFixed(4)}</td>
+                          <tr key={c.model_family} className="border-b border-border">
+                            <td className="py-1 px-3">{c.model_family}</td>
+                            <td className="py-1 px-3 text-right font-mono">{c.out_of_sample_score.toFixed(4)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   )}
                   {result.prediction_interval && result.prediction_interval.lower != null && (
-                    <p className="mt-3 text-sm text-slate-600">
+                    <p className="mt-3 text-sm text-ink-muted">
                       Prediction interval: <span className="font-mono">{result.prediction_interval.lower.toFixed(2)}</span> to{" "}
                       <span className="font-mono">{result.prediction_interval.upper?.toFixed(2)}</span>
                       {result.prediction_interval.confidence_level != null &&
@@ -269,7 +297,7 @@ export default function PredictPage() {
                     </p>
                   )}
                   {result.class_distribution && (
-                    <p className="mt-3 text-sm text-slate-600">
+                    <p className="mt-3 text-sm text-ink-muted">
                       Majority class share: {(result.class_distribution.majority_class_share * 100).toFixed(1)}% -{" "}
                       {JSON.stringify(result.class_distribution.class_counts)}
                     </p>
@@ -288,43 +316,47 @@ export default function PredictPage() {
 
               {result.excluded_features.length > 0 && (
                 <Card title="Excluded features" subtitle="Dropped before training, and why - the leakage-prevention evidence, not a black box.">
+                  <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
                     <thead>
-                      <tr className="border-b border-slate-200 text-slate-500">
-                        <th className="py-1 pr-3 font-medium">Column</th>
-                        <th className="py-1 font-medium">Reason</th>
+                      <tr className="border-b border-border bg-surface-sunken text-ink-muted">
+                        <th className="py-1 px-3 font-medium">Column</th>
+                        <th className="py-1 px-3 font-medium">Reason</th>
                       </tr>
                     </thead>
                     <tbody>
                       {result.excluded_features.map((f) => (
-                        <tr key={f.column} className="border-b border-slate-100">
-                          <td className="py-1 pr-3 font-mono text-xs">{f.column}</td>
-                          <td className="py-1">{f.reason}</td>
+                        <tr key={f.column} className="border-b border-border">
+                          <td className="py-1 px-3 font-mono text-xs text-ink-faint">{f.column}</td>
+                          <td className="py-1 px-3">{f.reason}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </Card>
               )}
 
               {result.feature_associations.length > 0 && (
                 <Card title="Feature associations" subtitle="Association, never cause - from the winning model's fitted coefficients/importances.">
+                  <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm">
                     <thead>
-                      <tr className="border-b border-slate-200 text-slate-500">
-                        <th className="py-1 pr-3 font-medium">Column</th>
-                        <th className="py-1 font-medium">Association strength</th>
+                      <tr className="border-b border-border bg-surface-sunken text-ink-muted">
+                        <th className="py-1 px-3 font-medium">Column</th>
+                        <th className="py-1 px-3 text-right font-medium">Association strength</th>
                       </tr>
                     </thead>
                     <tbody>
                       {result.feature_associations.map((f) => (
-                        <tr key={f.column} className="border-b border-slate-100">
-                          <td className="py-1 pr-3 font-mono text-xs">{f.column}</td>
-                          <td className="py-1 font-mono">{f.association_strength.toFixed(4)}</td>
+                        <tr key={f.column} className="border-b border-border">
+                          <td className="py-1 px-3 font-mono text-xs text-ink-faint">{f.column}</td>
+                          <td className="py-1 px-3 text-right font-mono">{f.association_strength.toFixed(4)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </Card>
               )}
             </>

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiFetch } from "../api/client";
 import type { AuditRecord } from "../api/types";
-import { Badge, Button, Card, ErrorMessage, Muted, RunLabel } from "../components/ui";
+import { Badge, Button, Card, CodeBlock, ErrorMessage, Muted, RunLabel } from "../components/ui";
 
 export default function AuditPage() {
   const [params] = useSearchParams();
@@ -40,14 +40,14 @@ export default function AuditPage() {
 
   return (
     <div>
-      <h1 className="mb-2 text-2xl font-bold text-slate-900">Audit</h1>
+      <h1 className="mb-2 text-[22px] font-semibold text-ink">Audit</h1>
       <Muted>GET /audit/&#123;run_id&#125; - the canonical, single source of truth for "why did this run produce this output". This page renders that response and nothing else.</Muted>
       <div className="my-6 flex items-center gap-3">
         <input
           value={runQuery}
           onChange={(e) => setRunQuery(e.target.value)}
           placeholder="run number (e.g. 17) or full run id"
-          className="w-96 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+          className="w-96 rounded-sm border border-border-strong px-3 py-1.5 text-sm"
         />
         <Button variant="primary" onClick={() => loadAudit(runQuery)} loading={loading} loadingText="Loading...">
           Load
@@ -71,87 +71,91 @@ export default function AuditPage() {
           </Card>
 
           <Card title="Timeline - nodes visited and the edge taken out of each">
+            <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2 pr-3 font-medium">#</th>
-                  <th className="py-2 pr-3 font-medium">Node</th>
-                  <th className="py-2 pr-3 font-medium">Edge taken</th>
-                  <th className="py-2 pr-3 font-medium">Confidence</th>
-                  <th className="py-2 pr-3 font-medium">Timestamp</th>
-                  <th className="py-2 font-medium">Output</th>
+                <tr className="border-b border-border bg-surface-sunken text-ink-muted">
+                  <th className="py-2 px-3 text-right font-medium">#</th>
+                  <th className="py-2 px-3 font-medium">Node</th>
+                  <th className="py-2 px-3 font-medium">Edge taken</th>
+                  <th className="py-2 px-3 text-right font-medium">Confidence</th>
+                  <th className="py-2 px-3 font-medium">Timestamp</th>
+                  <th className="py-2 px-3 font-medium">Output</th>
                 </tr>
               </thead>
               <tbody>
                 {audit.trace.map((t, i) => (
-                  <tr key={t.id} className="border-b border-slate-100 align-top">
-                    <td className="py-2 pr-3">{i + 1}</td>
-                    <td className="py-2 pr-3 font-medium">{t.node}</td>
-                    <td className="py-2 pr-3">{t.edge_taken ? <code className="text-xs">{t.edge_taken}</code> : <span className="text-slate-400">-</span>}</td>
-                    <td className="py-2 pr-3">{t.confidence ?? ""}</td>
-                    <td className="py-2 pr-3 text-slate-500">{t.timestamp}</td>
-                    <td className="py-2">
+                  <tr key={t.id} className="border-b border-border align-top">
+                    <td className="py-2 px-3 text-right font-mono text-ink-faint">{i + 1}</td>
+                    <td className="py-2 px-3 font-medium text-ink">{t.node}</td>
+                    <td className="py-2 px-3">{t.edge_taken ? <code className="font-mono text-xs text-ink-muted">{t.edge_taken}</code> : <span className="text-ink-faint">-</span>}</td>
+                    <td className="py-2 px-3 text-right font-mono">{t.confidence ?? ""}</td>
+                    <td className="py-2 px-3 font-mono text-xs text-ink-muted">{t.timestamp}</td>
+                    <td className="py-2 px-3">
                       {/* Part 5: collapsed by default - the JSON is the same
                           content unchanged, just not dominating the page by
                           default. One click (native <details>, no extra JS)
                           opens it. */}
                       <details className="max-w-md">
                         <summary className="cursor-pointer text-xs font-medium text-brand-600">Show output</summary>
-                        <pre className="mt-1 overflow-x-auto rounded-lg bg-slate-900 p-2 text-xs text-slate-100">
-                          {typeof t.output === "string" ? t.output : JSON.stringify(t.output, null, 2)}
-                        </pre>
+                        <div className="mt-1">
+                          <CodeBlock>{typeof t.output === "string" ? t.output : JSON.stringify(t.output, null, 2)}</CodeBlock>
+                        </div>
                       </details>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
           </Card>
 
           <Card title="Validation events">
+            <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2 pr-3 font-medium">Rule</th>
-                  <th className="py-2 pr-3 font-medium">Column</th>
-                  <th className="py-2 pr-3 font-medium">State</th>
-                  <th className="py-2 pr-3 font-medium">Action taken</th>
-                  <th className="py-2 pr-3 font-medium">Gate reasons</th>
-                  <th className="py-2 font-medium">Resolved by</th>
+                <tr className="border-b border-border bg-surface-sunken text-ink-muted">
+                  <th className="py-2 px-3 font-medium">Rule</th>
+                  <th className="py-2 px-3 font-medium">Column</th>
+                  <th className="py-2 px-3 font-medium">State</th>
+                  <th className="py-2 px-3 font-medium">Action taken</th>
+                  <th className="py-2 px-3 font-medium">Gate reasons</th>
+                  <th className="py-2 px-3 font-medium">Resolved by</th>
                 </tr>
               </thead>
               <tbody>
                 {audit.validation_events.map((e) => {
                   const reverted = e.action_taken === "auto_fix_reverted";
                   return (
-                    <tr key={e.id} className={`border-b border-slate-100 ${reverted ? "bg-rose-50" : ""}`}>
-                      <td className="py-2 pr-3">{e.rule_failed}</td>
-                      <td className="py-2 pr-3">{e.column ?? ""}</td>
-                      <td className="py-2 pr-3"><Badge value={e.state} /></td>
-                      <td className="py-2 pr-3">
+                    <tr key={e.id} className={`border-b border-border ${reverted ? "bg-status-negative-tint" : ""}`}>
+                      <td className="py-2 px-3">{e.rule_failed}</td>
+                      <td className="py-2 px-3">{e.column ?? ""}</td>
+                      <td className="py-2 px-3"><Badge value={e.state} /></td>
+                      <td className="py-2 px-3">
                         {e.action_taken ?? ""}
-                        {reverted && <strong className="ml-1 text-rose-700">(reverted)</strong>}
+                        {reverted && <strong className="ml-1 text-status-negative">(reverted)</strong>}
                       </td>
-                      <td className="py-2 pr-3 text-slate-500">{(e.gate_reasons ?? []).join("; ")}</td>
-                      <td className="py-2">{e.resolved_by ?? ""}</td>
+                      <td className="py-2 px-3 text-ink-muted">{(e.gate_reasons ?? []).join("; ")}</td>
+                      <td className="py-2 px-3">{e.resolved_by ?? ""}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+            </div>
           </Card>
 
           {audit.query_runs.length > 0 && (
             <Card title="Query runs against this data">
               <div className="flex flex-col gap-4">
                 {audit.query_runs.map((q) => (
-                  <div key={q.id} className="rounded-xl border border-slate-200 p-4">
+                  <div key={q.id} className="rounded-md border border-border p-4">
                     <p className="mb-1 text-sm"><span className="font-medium">Q:</span> {q.question}</p>
                     <p className="mb-2 text-sm">
                       <span className="font-medium">State:</span> <Badge value={q.state} /> {q.escalation_reason && `(${q.escalation_reason})`}
                       {q.resolved_by && ` · resolved by ${q.resolved_by}`}
                     </p>
-                    <pre className="overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">{q.generated_code || "(no code)"}</pre>
+                    <CodeBlock>{q.generated_code || "(no code)"}</CodeBlock>
                   </div>
                 ))}
               </div>
@@ -162,7 +166,7 @@ export default function AuditPage() {
             <Card title="Model runs against this data">
               <div className="flex flex-col gap-4">
                 {audit.model_runs.map((m) => (
-                  <div key={m.id} className="rounded-xl border border-slate-200 p-4">
+                  <div key={m.id} className="rounded-md border border-border p-4">
                     <p className="mb-1 text-sm"><span className="font-medium">Target:</span> {m.target_column} ({m.task_type})</p>
                     <p className="mb-2 text-sm">
                       <span className="font-medium">State:</span> <Badge value={m.state} /> {m.escalation_reason && `(${m.escalation_reason})`}

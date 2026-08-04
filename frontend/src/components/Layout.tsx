@@ -1,43 +1,98 @@
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 
+// One consistent stroke (1.6px, round caps/joins) across every nav icon -
+// drawn, not emoji (DESIGN.md: "unicode glyphs standing in for an icon
+// system" is refused).
+function IconSources() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2.5 5.5a1 1 0 0 1 1-1H8l1.5 2h7a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1h-14a1 1 0 0 1-1-1v-9.5Z" />
+    </svg>
+  );
+}
+
+function IconApprovals() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="10" cy="10" r="7.25" />
+      <path d="M7 10.2 9.1 12.3 13.3 8" />
+    </svg>
+  );
+}
+
+function IconReports() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5.5 2.5h6l3 3v12a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1Z" />
+      <path d="M7.5 11h5M7.5 14h5M7.5 8h2" />
+    </svg>
+  );
+}
+
+function IconAudit() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="8.75" cy="8.75" r="5.25" />
+      <path d="M16 16l-3.4-3.4" />
+    </svg>
+  );
+}
+
+function IconAsk() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 4.5h14v9h-8l-3 3v-3H3v-9Z" />
+    </svg>
+  );
+}
+
+function IconPredict() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 15.5 8 9l3.5 3.5L17 5.5" />
+      <path d="M12.5 5.5H17v4.5" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS = [
-  { to: "/sources", label: "Sources", icon: "\u{1F4C1}" },
-  { to: "/approvals", label: "Approvals", icon: "✅" },
-  { to: "/reports", label: "Reports", icon: "\u{1F4C4}" },
-  { to: "/audit", label: "Audit", icon: "\u{1F50E}" },
-  { to: "/ask", label: "Ask", icon: "\u{1F4AC}" },
-  { to: "/predict", label: "Predict", icon: "\u{1F52E}" },
+  { to: "/sources", label: "Sources", Icon: IconSources },
+  { to: "/approvals", label: "Approvals", Icon: IconApprovals },
+  { to: "/reports", label: "Reports", Icon: IconReports },
+  { to: "/audit", label: "Audit", Icon: IconAudit },
+  { to: "/ask", label: "Ask", Icon: IconAsk },
+  { to: "/predict", label: "Predict", Icon: IconPredict },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen">
-      <aside className="flex w-64 shrink-0 flex-col bg-brand-950 text-brand-100">
+      <aside className="flex w-64 shrink-0 flex-col bg-nav-bg text-nav-ink">
         <div className="flex items-center gap-3 px-6 py-6">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-500 text-lg font-bold text-white">A</div>
+          <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-brand-600 text-lg font-bold text-white">A</div>
           <div>
             <div className="text-sm font-semibold text-white">Agentic Data</div>
-            <div className="text-xs text-brand-200">Intelligence Platform</div>
+            <div className="text-xs text-nav-ink">Intelligence Platform</div>
           </div>
         </div>
-        <nav className="mt-4 flex flex-col gap-1 px-3">
-          {NAV_ITEMS.map((item) => (
+        <nav className="mt-4 flex flex-col gap-0.5 px-3">
+          {NAV_ITEMS.map(({ to, label, Icon }) => (
             <NavLink
-              key={item.to}
-              to={item.to}
+              key={to}
+              to={to}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                  isActive ? "bg-brand-600 text-white shadow-sm" : "text-brand-200 hover:bg-brand-900 hover:text-white"
+                `flex items-center gap-3 rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
+                  isActive ? "bg-white/8 text-white" : "text-nav-ink hover:bg-white/5 hover:text-white"
                 }`
               }
             >
-              <span aria-hidden="true">{item.icon}</span>
-              {item.label}
+              <Icon />
+              {label}
             </NavLink>
           ))}
         </nav>
-        <div className="mt-auto px-6 py-6 text-xs text-brand-200/70">
+        <div className="mt-auto px-6 py-6 text-xs text-nav-ink/70">
           Every screen here calls the same JSON API you can hit with curl - nothing is hidden behind this UI.
         </div>
       </aside>

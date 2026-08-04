@@ -108,3 +108,75 @@ def test_get_audit_accepts_a_plain_run_number(client, tmp_path):
 def test_get_report_unknown_run_number_is_404(client):
     resp = client.get("/reports/999999999")
     assert resp.status_code == 404
+
+
+# ---- every run-taking surface accepts the SAME forms ----
+#
+# REGRESSION: app/query/pipeline.py::resolve_run (shared by POST /ask and
+# POST /predict) did a bare db.get(Run, run_id) - primary key only - while
+# Reports/Audit/ingest-status went through app/id_lookup.py. A run number
+# typed on the Ask/Predict screens therefore failed with "run '48' not
+# found" against a run that existed and whose report rendered fine. The
+# asymmetry, not the message, was the defect: these tests pin every surface
+# to the same accepted forms so one can't drift from the others again.
+
+
+def test_ask_accepts_a_plain_run_number(client, tmp_path):
+    """A 404 here means run RESOLUTION failed. With no query LLM configured
+    (the `client` fixture's default) a resolvable run still returns 200 with
+    an escalated answer - which is exactly the distinction being asserted."""
+    result = _ingest_clean_source(client, tmp_path)
+    run_number = result["run_number"]
+
+    resp = client.post("/ask", json={"run_id": str(run_number), "question": "how many rows?"})
+    assert resp.status_code == 200, resp.text
+
+
+def test_ask_accepts_a_hash_prefixed_run_number(client, tmp_path):
+    result = _ingest_clean_source(client, tmp_path)
+    resp = client.post("/ask", json={"run_id": f"#{result['run_number']}", "question": "how many rows?"})
+    assert resp.status_code == 200, resp.text
+
+
+def test_ask_still_accepts_a_full_run_uuid(client, tmp_path):
+    result = _ingest_clean_source(client, tmp_path)
+    resp = client.post("/ask", json={"run_id": result["run_id"], "question": "how many rows?"})
+    assert resp.status_code == 200, resp.text
+
+
+def test_ask_unknown_run_number_is_still_404(client):
+    resp = client.post("/ask", json={"run_id": "999999999", "question": "how many rows?"})
+    assert resp.status_code == 404
+
+
+def test_predict_accepts_a_plain_run_number(client, tmp_path):
+    """POST /predict resolves the run synchronously before queueing the
+    background task, so a 200 ack proves resolution succeeded."""
+    result = _ingest_clean_source(client, tmp_path)
+    resp = client.post("/predict", json={"run_id": str(result["run_number"]), "question": "forecast amount"})
+    assert resp.status_code == 200, resp.text
+
+
+def test_predict_accepts_a_hash_prefixed_run_number(client, tmp_path):
+    result = _ingest_clean_source(client, tmp_path)
+    resp = client.post("/predict", json={"run_id": f"#{result['run_number']}", "question": "forecast amount"})
+    assert resp.status_code == 200, resp.text
+
+
+def test_predict_unknown_run_number_is_still_404(client):
+    resp = client.post("/predict", json={"run_id": "999999999", "question": "forecast amount"})
+    assert resp.status_code == 404
+
+
+def test_every_run_taking_surface_resolves_the_same_run_number(client, tmp_path):
+    """The consistency guarantee itself: one run number, four surfaces, all
+    of them resolving it to the same run rather than some accepting only a
+    UUID."""
+    result = _ingest_clean_source(client, tmp_path)
+    run_id, run_number = result["run_id"], result["run_number"]
+
+    assert client.get(f"/reports/{run_number}").json()["run_id"] == run_id
+    assert client.get(f"/audit/{run_number}").json()["run_id"] == run_id
+    assert client.get(f"/ingest/{run_number}/status").json()["run_id"] == run_id
+    assert client.post("/ask", json={"run_id": str(run_number), "question": "how many rows?"}).status_code == 200
+    assert client.post("/predict", json={"run_id": str(run_number), "question": "forecast amount"}).status_code == 200

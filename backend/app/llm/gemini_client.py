@@ -10,7 +10,7 @@ import os
 
 from pydantic import BaseModel, ValidationError
 
-from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError
+from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError, LLMUnavailableError
 
 # Only free-tier models are ever allowed, regardless of what GEMINI_MODEL is
 # set to - a stray env change (or a typo pointing at a paid model) must fail
@@ -41,6 +41,65 @@ DEFAULT_MODEL = "gemini-3.5-flash"
 # force thinking off (which doesn't work uniformly across the allowlist).
 MAX_OUTPUT_TOKENS = 4096
 RATE_LIMIT_HTTP_CODE = 429
+
+
+# How much of a failed response body to keep. Enough to see WHERE a
+# truncated JSON string stopped, bounded so a log line stays readable and
+# no oversized blob is retained.
+RAW_TEXT_SNIPPET_CHARS = 600
+
+
+def _finish_reason_of(response) -> str | None:
+    """The candidate's finish_reason as a plain uppercase name.
+
+    The SDK reports this as an enum whose repr has changed between
+    versions, so this normalises to `.name` when present and falls back to
+    str(). Returns None when the response carries no candidate at all
+    (which is itself worth seeing as "unknown" downstream).
+    """
+    try:
+        candidates = getattr(response, "candidates", None) or []
+        if not candidates:
+            return None
+        reason = getattr(candidates[0], "finish_reason", None)
+        if reason is None:
+            return None
+        return str(getattr(reason, "name", reason)).upper()
+    except Exception:  # noqa: BLE001 - diagnostics must never mask the original failure
+        return None
+
+
+def _raw_text_of(response) -> str | None:
+    """The response body, truncated for logging. `.text` itself can raise
+    or be None when the model returned no usable part."""
+    try:
+        text = response.text
+    except Exception:  # noqa: BLE001 - see _finish_reason_of
+        return None
+    if text is None:
+        return None
+    if len(text) > RAW_TEXT_SNIPPET_CHARS:
+        return f"{text[:RAW_TEXT_SNIPPET_CHARS]}... [{len(text)} chars total]"
+    return text
+
+
+def _usage_of(response) -> dict:
+    """Token accounting, including THINKING tokens - gemini-3.5-flash
+    spends those from the same max_output_tokens budget as the answer (see
+    MAX_OUTPUT_TOKENS above), so a truncation is only explicable with this
+    number in hand."""
+    try:
+        usage = getattr(response, "usage_metadata", None)
+        if usage is None:
+            return {}
+        return {
+            "prompt_tokens": getattr(usage, "prompt_token_count", None),
+            "output_tokens": getattr(usage, "candidates_token_count", None),
+            "thoughts_tokens": getattr(usage, "thoughts_token_count", None),
+            "total_tokens": getattr(usage, "total_token_count", None),
+        }
+    except Exception:  # noqa: BLE001 - see _finish_reason_of
+        return {}
 
 
 def _load_api_keys_from_env() -> list[str]:
@@ -126,10 +185,20 @@ class GeminiClient(LLMClient):
             try:
                 response = client.models.generate_content(model=self.model_name, contents=user, config=config)
             except errors.APIError as exc:
-                if getattr(exc, "code", None) == RATE_LIMIT_HTTP_CODE:
+                code = getattr(exc, "code", None)
+                if code == RATE_LIMIT_HTTP_CODE:
                     if self._advance_key():
                         continue
                     raise LLMRateLimitError(str(exc)) from exc
+                # A 5xx is the SERVER failing, not the model answering
+                # badly - rotating keys can't help (every key reaches the
+                # same overloaded model) and neither can asking it to
+                # repair its JSON, because there is no JSON. Surfaced as
+                # its own transient error so callers back off and retry,
+                # and so the recorded reason says "unavailable" instead of
+                # blaming a parse that never happened.
+                if isinstance(code, int) and code >= 500:
+                    raise LLMUnavailableError(str(exc)) from exc
                 raise LLMResponseError(str(exc)) from exc
             break
 
@@ -143,4 +212,19 @@ class GeminiClient(LLMClient):
         try:
             return response_schema.model_validate_json(response.text)
         except (ValidationError, ValueError, TypeError) as exc:
-            raise LLMResponseError(f"response did not match {response_schema.__name__}: {exc}") from exc
+            # Attach the evidence that distinguishes "cut off mid-JSON" from
+            # "complete but schema-invalid". Without finish_reason these are
+            # indistinguishable downstream, and both used to surface as a
+            # bare "escalated_parse_failure" that could not be diagnosed
+            # after the fact. Reading these off the response must never
+            # itself raise - a failure to describe a failure would hide it.
+            error = LLMResponseError(
+                f"response did not match {response_schema.__name__}: {exc}",
+                finish_reason=_finish_reason_of(response),
+                raw_text=_raw_text_of(response),
+                model_name=self.model_name,
+                schema_name=response_schema.__name__,
+                usage=_usage_of(response),
+            )
+            print(f"[gemini] parse failure: {error.diagnostic_detail()}")
+            raise error from exc

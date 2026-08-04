@@ -3,7 +3,7 @@ import types as pytypes
 import pytest
 
 from app.diagnosis.models import CauseCategory, Diagnosis, FixAction, RiskLevel, SuggestedFix
-from app.llm.base import LLMRateLimitError, LLMResponseError
+from app.llm.base import LLMRateLimitError, LLMResponseError, LLMUnavailableError
 from app.llm.factory import get_llm_client
 from app.llm.gemini_client import FREE_TIER_MODELS, MAX_OUTPUT_TOKENS, GeminiClient
 
@@ -98,6 +98,52 @@ def test_gemini_client_maps_other_api_errors_to_response_error():
 
     with pytest.raises(LLMResponseError):
         client.complete("s", "u", Diagnosis)
+
+
+@pytest.mark.parametrize("code", [500, 502, 503, 504])
+def test_gemini_client_maps_5xx_to_unavailable_not_a_parse_failure(code):
+    """REGRESSION: a 503 "model is currently experiencing high demand" was
+    classified as LLMResponseError - a malformed-response error - so a
+    provider OUTAGE surfaced to the caller as a parse failure, sent it
+    down the repair path (re-asking a down server to fix its JSON), and
+    was finally recorded against runs as `escalated_parse_failure`. The
+    server failing and the model answering badly are different facts."""
+    from google.genai import errors
+
+    client = GeminiClient(api_key="fake-key", model="gemini-3.5-flash")
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            raise errors.ServerError(code=code, response_json={"error": {"message": "high demand"}})
+
+    client._client = pytypes.SimpleNamespace(models=FakeModels())
+
+    with pytest.raises(LLMUnavailableError):
+        client.complete("s", "u", Diagnosis)
+    # Explicitly NOT the parse-failure class - the two are handled
+    # differently by every agent above this boundary.
+    assert not issubclass(LLMUnavailableError, LLMResponseError)
+
+
+def test_gemini_client_does_not_rotate_keys_on_a_5xx():
+    """Key rotation exists for per-key quota. Every key reaches the same
+    overloaded model, so burning them on a 5xx would exhaust the pool for
+    a condition none of them can fix."""
+    from google.genai import errors
+
+    client = GeminiClient(api_key=None, model="gemini-3.5-flash")
+    client._api_keys = ["key-1", "key-2", "key-3"]
+    client._key_index = 0
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            raise errors.ServerError(code=503, response_json={"error": {"message": "high demand"}})
+
+    client._client = pytypes.SimpleNamespace(models=FakeModels())
+
+    with pytest.raises(LLMUnavailableError):
+        client.complete("s", "u", Diagnosis)
+    assert client._key_index == 0
 
 
 # ---- GeminiClient: multi-key rotation ----

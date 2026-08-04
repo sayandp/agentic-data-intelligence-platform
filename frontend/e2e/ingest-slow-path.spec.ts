@@ -173,7 +173,12 @@ test.describe("Resolving an escalation survives a slow backend (simulated LLM ba
 
     // Runs render via RunLabel now ("Run #N", not a raw id) - the full id
     // still lives on the label span's title attribute (components/ui.tsx).
-    const eventGroup = page.locator("div.rounded-xl", { has: page.locator(`span[title="${FAKE_RUN_ID}"]`) });
+    // Dashboard redesign (Instrument Panel): the outer Card wrapper and this
+    // inner event-group div now share the same rounded-md radius token (the
+    // prior design's rounded-xl only happened to disambiguate them by
+    // accident) - .p-4 is what's actually unique to the inner group (Card
+    // itself uses p-5).
+    const eventGroup = page.locator("div.rounded-md.p-4", { has: page.locator(`span[title="${FAKE_RUN_ID}"]`) });
     await expect(eventGroup).toBeVisible();
     await eventGroup.getByRole("button", { name: "Keep data as-is", exact: true }).click();
 

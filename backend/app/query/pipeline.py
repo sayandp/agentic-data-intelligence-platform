@@ -26,6 +26,7 @@ from app.connectors.factory import build_connector
 from app.connectors.sql_connector import SQLConnectorConfig, _extract_single_table
 from app.contract import SourceType
 from app.exploration.findings import DataQualityContext, ExplorationFindings
+from app.id_lookup import find_run
 from app.models import Baseline, DataSource, ExplorationFinding, QueryRun, Run
 from app.narrative.quality import render_quality_context_summary
 from app.query.agent import QueryAgent
@@ -52,8 +53,16 @@ _SQLALCHEMY_TO_SQLGLOT_DIALECT = {"postgresql": "postgres"}
 
 
 def resolve_run(db: Session, source_id: str | None, run_id: str | None) -> Run:
+    """`run_id` accepts a full UUID OR a run_number ("48"/"#48") - the exact
+    same forms Reports/Audit/ingest-status accept, via the one shared
+    matcher in app/id_lookup.py::find_run. This previously did a bare
+    db.get(Run, run_id) (primary key only), so a run number typed on the
+    Ask/Predict screens fell through to "run '48' not found" even when run
+    #48 existed and its report rendered fine - the run_number lookup added
+    for the paste-an-id boxes was never wired into the two pages that take a
+    run as part of a larger payload."""
     if run_id:
-        run = db.get(Run, run_id)
+        run = find_run(db, run_id)
         if run is None:
             raise ValueError(f"run '{run_id}' not found")
         return run

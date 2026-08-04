@@ -21,7 +21,7 @@ from app.contract import DataContract
 from app.correlation import CorrelatedGroup
 from app.diagnosis.cache import DiagnosisCache, cache_key_for_group
 from app.diagnosis.models import Diagnosis
-from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError
+from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError, LLMUnavailableError
 from app.retry import backoff_delay_seconds
 
 MAX_SAMPLE_ROWS = 20
@@ -57,7 +57,7 @@ schema exactly - no prose, no markdown fences, no extra fields."""
 class DiagnosisOutcome:
     diagnosis_json: dict
     risk_level: str | None  # None whenever diagnosis failed/was escalated
-    source: str  # "cache" | "llm" | "escalated_parse_failure" | "escalated_quota_exhausted"
+    source: str  # "cache" | "llm" | "escalated_parse_failure" | "escalated_quota_exhausted" | "escalated_unavailable"
     model_name: str | None = None
     temperature: float | None = None
 
@@ -108,6 +108,13 @@ class DiagnosticAgent:
                     return self._escalate_quota_exhausted(exc, attempt)
                 self._backoff(attempt)
                 continue
+            except LLMUnavailableError as exc:
+                # Transient 5xx: back off and retry. Never the repair path -
+                # there is no malformed response to repair.
+                if attempt == self.max_attempts:
+                    return self._escalate_unavailable(exc, attempt)
+                self._backoff(attempt)
+                continue
             except LLMResponseError as exc:
                 return self._retry_once_with_repair(system, user, exc)
             return self._success_outcome(diagnosis)
@@ -116,7 +123,7 @@ class DiagnosticAgent:
     def _retry_once_with_repair(self, system: str, user: str, original_exc: LLMResponseError) -> DiagnosisOutcome:
         try:
             diagnosis = self._complete_once(system, user + REPAIR_PROMPT_SUFFIX)
-        except (LLMResponseError, LLMRateLimitError) as repair_exc:
+        except (LLMResponseError, LLMRateLimitError, LLMUnavailableError) as repair_exc:
             return DiagnosisOutcome(
                 diagnosis_json={
                     "error": "parse_failure",
@@ -156,6 +163,18 @@ class DiagnosticAgent:
             diagnosis_json={"error": "quota_exhausted", "detail": str(exc), "attempts": attempts},
             risk_level=None,
             source="escalated_quota_exhausted",
+            model_name=self.llm_client.model_name,
+            temperature=self.llm_client.temperature,
+        )
+
+    def _escalate_unavailable(self, exc: LLMUnavailableError, attempts: int) -> DiagnosisOutcome:
+        """A transient provider outage (5xx), kept distinct from a parse
+        failure so the recorded reason names the outage rather than
+        blaming the model's output for a response that never arrived."""
+        return DiagnosisOutcome(
+            diagnosis_json={"error": "model_unavailable", "detail": str(exc), "attempts": attempts},
+            risk_level=None,
+            source="escalated_unavailable",
             model_name=self.llm_client.model_name,
             temperature=self.llm_client.temperature,
         )

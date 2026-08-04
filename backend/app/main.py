@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()  # GEMINI_API_KEY, GEMINI_MODEL, LLM_PROVIDER, etc. - see .env.example
 
 from app.db import init_db  # noqa: E402
-from app.routers import approvals, audit, baselines, findings, ingest, predict, query, reports, sources  # noqa: E402
+from app.routers import approvals, audit, baselines, findings, ingest, predict, query, reports, runs, sources  # noqa: E402
 
 
 def _log_llm_mode() -> None:
@@ -77,6 +77,7 @@ app.include_router(reports.router)
 app.include_router(query.router)
 app.include_router(predict.router)
 app.include_router(audit.router)
+app.include_router(runs.router)
 
 
 @app.get("/health")

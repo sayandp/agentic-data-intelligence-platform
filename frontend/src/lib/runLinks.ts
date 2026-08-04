@@ -17,3 +17,14 @@ export function reportLink(runId: string, runNumber: number | null): string {
 export function auditLink(runId: string, runNumber: number | null): string {
   return `/audit?run=${runQueryParam(runId, runNumber)}`;
 }
+
+// Same ?run= contract as report/audit above, so a completed run can be
+// carried straight into Ask/Predict with nothing to copy or retype - the
+// only reason those two screens ever asked for a pasted identifier.
+export function askLink(runId: string, runNumber: number | null): string {
+  return `/ask?run=${runQueryParam(runId, runNumber)}`;
+}
+
+export function predictLink(runId: string, runNumber: number | null): string {
+  return `/predict?run=${runQueryParam(runId, runNumber)}`;
+}

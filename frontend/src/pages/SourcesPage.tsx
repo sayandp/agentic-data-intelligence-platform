@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import { apiFetch, apiPostForm, pollIngestStatus } from "../api/client";
 import type { RunSummary, SourceRecord } from "../api/types";
 import { Badge, Button, Card, CopyableId, ErrorMessage, Muted, RunLabel, Toast } from "../components/ui";
-import { auditLink, reportLink } from "../lib/runLinks";
+import { askLink, auditLink, predictLink, reportLink } from "../lib/runLinks";
 import { useToast } from "../hooks/useToast";
 import { Link } from "react-router-dom";
 
@@ -176,7 +176,7 @@ export default function SourcesPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold text-slate-900">Sources</h1>
+      <h1 className="mb-6 text-[22px] font-semibold text-ink">Sources</h1>
 
       <Card title="Upload a CSV or Excel file" subtitle="The simplest way to register a file source - no filesystem path to type or share with the app process.">
         <form onSubmit={handleUpload} className="flex flex-wrap items-center gap-3">
@@ -184,14 +184,14 @@ export default function SourcesPage() {
             type="file"
             accept=".csv,.xlsx,.xls"
             onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-            className="text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
+            className="text-sm text-ink-muted file:mr-3 file:rounded-sm file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
           />
           <Button type="submit" variant="primary" disabled={!uploadFile} loading={uploading} loadingText="Uploading...">
             Upload
           </Button>
         </form>
         {uploadResult && (
-          <p className="mt-3 flex items-center gap-2 text-sm text-emerald-700">
+          <p className="mt-3 flex items-center gap-2 text-sm text-status-positive">
             Uploaded and registered: <CopyableId id={uploadResult} />
           </p>
         )}
@@ -201,11 +201,11 @@ export default function SourcesPage() {
       <Card title="Register a source another way" subtitle="For a SQL/API source, or a file the app process already has a path to.">
         <form onSubmit={handleRegister}>
           <div className="mb-3 flex items-center gap-3">
-            <label className="text-sm font-medium text-slate-700">Type</label>
+            <label className="text-sm font-medium text-ink-muted">Type</label>
             <select
               value={sourceType}
               onChange={(e) => setSourceType(e.target.value as (typeof SOURCE_TYPES)[number])}
-              className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+              className="rounded-sm border border-border-strong px-2 py-1.5 text-sm"
             >
               {SOURCE_TYPES.map((t) => (
                 <option key={t} value={t}>
@@ -222,7 +222,7 @@ export default function SourcesPage() {
             value={configText}
             onChange={(e) => setConfigText(e.target.value)}
             rows={3}
-            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm"
+            className="mt-2 w-full rounded-sm border border-border-strong px-3 py-2 font-mono text-sm"
           />
           <div className="mt-3">
             <Button type="submit" variant="primary" loading={registering} loadingText="Registering...">
@@ -231,7 +231,7 @@ export default function SourcesPage() {
           </div>
         </form>
         {registerResult && (
-          <p className="mt-3 flex items-center gap-2 text-sm text-emerald-700">
+          <p className="mt-3 flex items-center gap-2 text-sm text-status-positive">
             Registered: <CopyableId id={registerResult} />
           </p>
         )}
@@ -255,14 +255,15 @@ export default function SourcesPage() {
         )}
         {sources.length === 0 && !loadError && <Muted>No sources registered yet.</Muted>}
         {sources.length > 0 && (
+          <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-slate-500">
-                <th className="py-2 pr-3 font-medium">ID</th>
-                <th className="py-2 pr-3 font-medium">Type</th>
-                <th className="py-2 pr-3 font-medium">Source</th>
-                <th className="py-2 pr-3 font-medium">Created</th>
-                <th className="py-2 font-medium">Actions</th>
+              <tr className="border-b border-border bg-surface-sunken text-ink-muted">
+                <th className="py-2 px-3 font-medium">ID</th>
+                <th className="py-2 px-3 font-medium">Type</th>
+                <th className="py-2 px-3 font-medium">Source</th>
+                <th className="py-2 px-3 font-medium">Created</th>
+                <th className="py-2 px-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -271,20 +272,20 @@ export default function SourcesPage() {
                 const isIngesting = ingestingId === s.id;
                 return (
                   <Fragment key={s.id}>
-                    <tr className="border-b border-slate-100">
-                      <td className="py-2 pr-3"><CopyableId id={s.id} /></td>
-                      <td className="py-2 pr-3">{s.type}</td>
-                      <td className="py-2 pr-3">
+                    <tr className="border-b border-border">
+                      <td className="py-2 px-3"><CopyableId id={s.id} /></td>
+                      <td className="py-2 px-3">{s.type}</td>
+                      <td className="py-2 px-3">
                         {s.connection_config.original_filename ? (
                           <>
-                            {s.connection_config.original_filename} <span className="text-slate-400">(uploaded)</span>
+                            {s.connection_config.original_filename} <span className="text-ink-faint">(uploaded)</span>
                           </>
                         ) : (
-                          <code className="text-xs">{JSON.stringify(s.connection_config)}</code>
+                          <code className="font-mono text-xs text-ink-faint">{JSON.stringify(s.connection_config)}</code>
                         )}
                       </td>
-                      <td className="py-2 pr-3 text-slate-500">{s.created_at}</td>
-                      <td className="py-2">
+                      <td className="py-2 px-3 text-ink-muted">{s.created_at}</td>
+                      <td className="py-2 px-3">
                         <div className="flex gap-2">
                           <Button onClick={() => triggerIngest(s.id)} loading={isIngesting} loadingText="Ingesting...">
                             Ingest
@@ -301,7 +302,7 @@ export default function SourcesPage() {
                             and a slow LLM backoff retry needs to read as "working,
                             waiting" rather than a bare spinner with no detail. */}
                         {ingestResult && (
-                          <p className={`mt-1 max-w-xs text-xs ${ingestResult.ok ? "text-emerald-700" : "text-rose-700"}`}>
+                          <p className={`mt-1 max-w-xs text-xs ${ingestResult.ok ? "text-status-positive" : "text-status-negative"}`}>
                             {ingestResult.message}
                           </p>
                         )}
@@ -318,6 +319,14 @@ export default function SourcesPage() {
                             &middot;{" "}
                             <Link className="text-brand-600 hover:underline" to={auditLink(ingestResult.runId, ingestResult.runNumber ?? null)}>
                               View audit
+                            </Link>{" "}
+                            &middot;{" "}
+                            <Link className="text-brand-600 hover:underline" to={askLink(ingestResult.runId, ingestResult.runNumber ?? null)}>
+                              Ask
+                            </Link>{" "}
+                            &middot;{" "}
+                            <Link className="text-brand-600 hover:underline" to={predictLink(ingestResult.runId, ingestResult.runNumber ?? null)}>
+                              Predict
                             </Link>
                           </p>
                         )}
@@ -325,33 +334,34 @@ export default function SourcesPage() {
                     </tr>
                     {expanded === s.id && (
                       <tr key={`${s.id}-history`}>
-                        <td colSpan={5} className="bg-slate-50 px-3 py-3">
+                        <td colSpan={5} className="bg-surface-sunken px-3 py-3">
                           <ErrorMessage error={runsError} />
                           {!runsBySource[s.id] ? (
                             <Muted>Loading...</Muted>
                           ) : runsBySource[s.id].length === 0 ? (
                             <Muted>No runs yet.</Muted>
                           ) : (
+                            <div className="overflow-x-auto">
                             <table className="w-full text-left text-sm">
                               <thead>
-                                <tr className="text-slate-500">
-                                  <th className="py-1 pr-3 font-medium">Run</th>
-                                  <th className="py-1 pr-3 font-medium">Status</th>
-                                  <th className="py-1 pr-3 font-medium">Started</th>
-                                  <th className="py-1 pr-3 font-medium">Completed</th>
-                                  <th className="py-1 font-medium">Links</th>
+                                <tr className="text-ink-muted">
+                                  <th className="py-1 px-3 font-medium">Run</th>
+                                  <th className="py-1 px-3 font-medium">Status</th>
+                                  <th className="py-1 px-3 font-medium">Started</th>
+                                  <th className="py-1 px-3 font-medium">Completed</th>
+                                  <th className="py-1 px-3 font-medium">Links</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {runsBySource[s.id].map((r) => (
                                   <tr key={r.id}>
-                                    <td className="py-1 pr-3">
+                                    <td className="py-1 px-3">
                                       <RunLabel runNumber={r.run_number} runId={r.id} />
                                     </td>
-                                    <td className="py-1 pr-3"><Badge value={r.status} /></td>
-                                    <td className="py-1 pr-3 text-slate-500">{r.started_at ?? ""}</td>
-                                    <td className="py-1 pr-3 text-slate-500">{r.completed_at ?? ""}</td>
-                                    <td className="py-1">
+                                    <td className="py-1 px-3"><Badge value={r.status} /></td>
+                                    <td className="py-1 px-3 text-ink-muted">{r.started_at ?? ""}</td>
+                                    <td className="py-1 px-3 text-ink-muted">{r.completed_at ?? ""}</td>
+                                    <td className="py-1 px-3">
                                       <Link className="text-brand-600 hover:underline" to={reportLink(r.id, r.run_number)}>
                                         View report
                                       </Link>{" "}
@@ -359,11 +369,32 @@ export default function SourcesPage() {
                                       <Link className="text-brand-600 hover:underline" to={auditLink(r.id, r.run_number)}>
                                         View audit
                                       </Link>
+                                      {/* Ask/Predict carry the run straight
+                                          through (?run=), so neither screen
+                                          ever needs an id typed by hand. Only
+                                          offered for a completed run - those
+                                          are the only ones either can answer
+                                          against (same rule GET /runs applies
+                                          to the picker). */}
+                                      {r.status === "completed" && (
+                                        <>
+                                          {" "}
+                                          &middot;{" "}
+                                          <Link className="text-brand-600 hover:underline" to={askLink(r.id, r.run_number)}>
+                                            Ask
+                                          </Link>{" "}
+                                          &middot;{" "}
+                                          <Link className="text-brand-600 hover:underline" to={predictLink(r.id, r.run_number)}>
+                                            Predict
+                                          </Link>
+                                        </>
+                                      )}
                                     </td>
                                   </tr>
                                 ))}
                               </tbody>
                             </table>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -373,6 +404,7 @@ export default function SourcesPage() {
               })}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
 
