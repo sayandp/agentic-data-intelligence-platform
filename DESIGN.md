@@ -30,6 +30,44 @@ colors:
   nav-bg: "#141922"
   nav-ink: "#B8C0CC"
   nav-ink-active: "#FFFFFF"
+  # -- Dark theme (OPERATE) --
+  dark-surface: "#0F1319"
+  dark-surface-raised: "#171C24"
+  dark-surface-sunken: "#1E242E"
+  dark-nav-bg: "#0B0E13"
+  dark-ink: "#E8ECF2"
+  dark-ink-muted: "#B3BCC9"
+  dark-ink-faint: "#8D97A5"
+  dark-border: "#2B333F"
+  dark-border-strong: "#414B5A"
+  dark-accent: "#3FC3BD"
+  dark-accent-hover: "#63D6D0"
+  dark-status-positive: "#56D68A"
+  dark-status-negative: "#FF8A8A"
+  dark-status-caution: "#E9B455"
+  dark-status-active: "#8FB0FF"
+  # -- Aurora theme (EXPERIENCE, opt-in) --
+  aurora-ground: "#0A0E1C"
+  aurora-gradient-teal: "#07313A"
+  aurora-gradient-indigo: "#141A4D"
+  aurora-gradient-violet: "#2E1A54"
+  aurora-wash-teal: "rgba(7, 74, 87, 0.55)"
+  aurora-wash-violet: "rgba(62, 27, 104, 0.55)"
+  aurora-surface-raised: "rgba(11, 16, 32, 0.90)"
+  aurora-surface-sunken: "rgba(6, 10, 24, 0.88)"
+  aurora-nav-bg: "rgba(7, 11, 26, 0.96)"
+  aurora-ink: "#EAF1FF"
+  aurora-ink-muted: "#B9C6E6"
+  aurora-ink-faint: "#93A3C9"
+  aurora-border: "rgba(150, 200, 255, 0.16)"
+  aurora-border-strong: "rgba(160, 210, 255, 0.34)"
+  aurora-accent-cyan: "#5EE0F5"
+  aurora-accent-cyan-hover: "#8AEAF9"
+  aurora-accent-magenta: "#FF86DD"
+  aurora-status-positive: "#5EF0A8"
+  aurora-status-negative: "#FF8A9C"
+  aurora-status-caution: "#FFC46B"
+  aurora-status-active: "#8FB8FF"
 typography:
   ui:
     fontFamily: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
@@ -236,7 +274,9 @@ three: the glow is a static `box-shadow`, nothing pulses.
 
 - **Ground:** a fixed three-stop gradient, deep teal to indigo to violet -
   `#07313A` -> `#141A4D` -> `#2E1A54`, lit by two radial washes
-  (`rgba(7,90,105,0.85)` top-left, `rgba(74,32,122,0.8)` upper-right).
+  (`rgba(7,74,87,0.55)` top-left, `rgba(62,27,104,0.55)` upper-right -
+  dimmed from their first values because the brighter top-left lobe sat
+  behind the sidebar glass and dragged worst-case text contrast down).
   These five values exist only as `--page-backdrop` and are part of the
   system, not stray literals.
 - **Panels:** `rgba(11,16,32,0.72)` plus `blur(18px) saturate(135%)`,

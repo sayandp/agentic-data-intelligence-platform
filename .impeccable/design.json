@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-04T00:00:00Z",
+  "generatedAt": "2026-08-04T15:02:32Z",
   "title": "Design System: Agentic Data Intelligence Platform",
   "extensions": {
     "colorMeta": {
@@ -8,61 +8,207 @@
         "role": "primary",
         "displayName": "Signal Teal",
         "canonical": "#0B6E6E",
-        "tonalRamp": ["#072B2B", "#0A3D3D", "#095A5A", "#0B6E6E", "#12807E", "#A9D4D4", "#CFE7E7", "#E3F1F1"]
+        "tonalRamp": [
+          "#072B2B",
+          "#0A3D3D",
+          "#095A5A",
+          "#0B6E6E",
+          "#12807E",
+          "#A9D4D4",
+          "#CFE7E7",
+          "#E3F1F1"
+        ]
       },
       "ink": {
         "role": "neutral",
         "displayName": "Ink",
         "canonical": "#12161C",
-        "tonalRamp": ["#12161C", "#242A33", "#374151", "#4B5563", "#6B7280", "#9AA2AE", "#C7CCD4", "#E2E5EA"]
+        "tonalRamp": [
+          "#12161C",
+          "#242A33",
+          "#374151",
+          "#4B5563",
+          "#6B7280",
+          "#9AA2AE",
+          "#C7CCD4",
+          "#E2E5EA"
+        ]
       },
       "paper": {
         "role": "neutral",
         "displayName": "Paper",
         "canonical": "#F7F8FA",
-        "tonalRamp": ["#12161C", "#2A2F38", "#4B5563", "#6B7280", "#C7CCD4", "#E2E5EA", "#F1F3F6", "#F7F8FA"]
+        "tonalRamp": [
+          "#12161C",
+          "#2A2F38",
+          "#4B5563",
+          "#6B7280",
+          "#C7CCD4",
+          "#E2E5EA",
+          "#F1F3F6",
+          "#F7F8FA"
+        ]
       },
       "status-positive": {
         "role": "tertiary",
         "displayName": "Verdict Green",
         "canonical": "#15803D",
-        "tonalRamp": ["#052E16", "#0A4A22", "#15803D", "#1E9E4E", "#4ABE77", "#8FD9AC", "#C6ECD5", "#E8F5EC"]
+        "tonalRamp": [
+          "#052E16",
+          "#0A4A22",
+          "#15803D",
+          "#1E9E4E",
+          "#4ABE77",
+          "#8FD9AC",
+          "#C6ECD5",
+          "#E8F5EC"
+        ]
       },
       "status-negative": {
         "role": "tertiary",
         "displayName": "Verdict Red",
         "canonical": "#B91C1C",
-        "tonalRamp": ["#450A0A", "#7A1212", "#B91C1C", "#DC2F2F", "#E86A6A", "#F1A3A3", "#F8D2D2", "#FBEBEB"]
+        "tonalRamp": [
+          "#450A0A",
+          "#7A1212",
+          "#B91C1C",
+          "#DC2F2F",
+          "#E86A6A",
+          "#F1A3A3",
+          "#F8D2D2",
+          "#FBEBEB"
+        ]
       },
       "status-caution": {
         "role": "tertiary",
         "displayName": "Verdict Amber",
         "canonical": "#9A6700",
-        "tonalRamp": ["#3D2900", "#6B4700", "#9A6700", "#C08200", "#DDA23A", "#EBC178", "#F5DFB4", "#FBF2DE"]
+        "tonalRamp": [
+          "#3D2900",
+          "#6B4700",
+          "#9A6700",
+          "#C08200",
+          "#DDA23A",
+          "#EBC178",
+          "#F5DFB4",
+          "#FBF2DE"
+        ]
       },
       "status-active": {
         "role": "tertiary",
         "displayName": "Verdict Blue",
         "canonical": "#1E40AF",
-        "tonalRamp": ["#0B1B4D", "#132B7A", "#1E40AF", "#2B54D4", "#5B7CE6", "#93A9F0", "#C4D0F7", "#E9EEFB"]
+        "tonalRamp": [
+          "#0B1B4D",
+          "#132B7A",
+          "#1E40AF",
+          "#2B54D4",
+          "#5B7CE6",
+          "#93A9F0",
+          "#C4D0F7",
+          "#E9EEFB"
+        ]
       },
       "nav-bg": {
         "role": "neutral",
         "displayName": "Graphite",
         "canonical": "#141922",
-        "tonalRamp": ["#0A0D12", "#141922", "#1F2733", "#2E3846", "#4B5563", "#8B93A1", "#B8C0CC", "#E2E5EA"]
+        "tonalRamp": [
+          "#0A0D12",
+          "#141922",
+          "#1F2733",
+          "#2E3846",
+          "#4B5563",
+          "#8B93A1",
+          "#B8C0CC",
+          "#E2E5EA"
+        ]
+      },
+      "dark-accent": {
+        "role": "primary",
+        "displayName": "Signal Teal (Dark)",
+        "canonical": "#3FC3BD",
+        "tonalRamp": [
+          "#08201F",
+          "#0B2B29",
+          "#11312F",
+          "#1D5F5B",
+          "#2C8F89",
+          "#3FC3BD",
+          "#63D6D0",
+          "#A6E9E6"
+        ]
+      },
+      "aurora-accent-cyan": {
+        "role": "primary",
+        "displayName": "Aurora Cyan",
+        "canonical": "#5EE0F5",
+        "tonalRamp": [
+          "#04222B",
+          "#082630",
+          "#0C3B49",
+          "#155C70",
+          "#2A93AE",
+          "#5EE0F5",
+          "#8AEAF9",
+          "#C3F4FB"
+        ]
+      },
+      "aurora-accent-magenta": {
+        "role": "secondary",
+        "displayName": "Aurora Magenta",
+        "canonical": "#FF86DD",
+        "tonalRamp": [
+          "#2C0721",
+          "#480C36",
+          "#6B144F",
+          "#96206F",
+          "#C43C93",
+          "#FF86DD",
+          "#FFAAE8",
+          "#FFD3F2"
+        ]
+      },
+      "aurora-ground": {
+        "role": "neutral",
+        "displayName": "Aurora Ground",
+        "canonical": "#0A0E1C",
+        "tonalRamp": [
+          "#05070F",
+          "#0A0E1C",
+          "#07313A",
+          "#141A4D",
+          "#2E1A54",
+          "#3E2A6B",
+          "#6B5C97",
+          "#B9C6E6"
+        ]
       }
     },
     "typographyMeta": {
-      "ui": { "displayName": "UI", "purpose": "Every control, label, table cell and heading in the app chrome." },
-      "narrative": { "displayName": "Narrative", "purpose": "A report's prose only - larger, looser, measured to ~72ch so it reads as a document rather than another panel." },
-      "data": { "displayName": "Data", "purpose": "Anything a reader copies, compares digit-by-digit, or verifies: ids, timestamps, scores, counts, code." }
+      "ui": {
+        "displayName": "UI",
+        "purpose": "Every control, label, table cell and heading in the app chrome."
+      },
+      "narrative": {
+        "displayName": "Narrative",
+        "purpose": "A report's prose only - larger, looser, measured to ~72ch so it reads as a document rather than another panel."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "Anything a reader copies, compares digit-by-digit, or verifies: ids, timestamps, scores, counts, code."
+      }
     },
     "shadows": [
       {
         "name": "toast-ambient",
         "value": "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)",
         "purpose": "The ONLY shadow in the system. Reserved for the toast, which genuinely floats above the page. Ordinary content is flat by default."
+      },
+      {
+        "name": "aurora-glow",
+        "value": "0 0 0 1px rgba(94,224,245,0.35), 0 0 18px -2px rgba(94,224,245,0.55)",
+        "purpose": "Aurora only. Applied to exactly two things - the primary action and the current nav item - so a demo audience finds both instantly. A STATIC box-shadow: nothing in this system pulses or animates at rest."
       }
     ],
     "motion": [
@@ -73,7 +219,22 @@
       }
     ],
     "breakpoints": [
-      { "name": "lg", "value": "1024px" }
+      {
+        "name": "lg",
+        "value": "1024px"
+      }
+    ],
+    "effects": [
+      {
+        "name": "aurora-panel-filter",
+        "value": "blur(18px) saturate(135%)",
+        "purpose": "Frosted glass, applied only via the .panel class. Resolves to none on the operate themes."
+      },
+      {
+        "name": "aurora-page-backdrop",
+        "value": "radial-gradient(1200px 800px at 12% 4%, rgba(7,74,87,0.55) 0%, rgba(7,49,58,0) 60%), radial-gradient(1000px 900px at 88% 20%, rgba(62,27,104,0.55) 0%, rgba(46,26,84,0) 62%), linear-gradient(155deg, #07313A 0%, #141A4D 52%, #2E1A54 100%)",
+        "purpose": "Aurora's gradient ground. The washes were dimmed from their first values because the brighter top-left lobe sat behind the sidebar glass and lowered worst-case text contrast."
+      }
     ]
   },
   "components": [
@@ -152,10 +313,41 @@
       "Data (ids, timestamps, scores, counts) is monospaced and visually quieter than the judgment it supports; prose (a report's narrative) is set larger and looser than the UI chrome around it."
     ],
     "rules": [
-      { "name": "The One Accent Rule", "body": "Signal teal appears on primary actions, the active nav item, links, and focus rings only - never as a decorative fill, never as a background wash. If a screen has more than a few teal elements, something has drifted into decoration.", "section": "colors" },
-      { "name": "The Status-Never-Accent Rule", "body": "The four status colors and the one accent color are never the same hue family. A reader must be able to tell 'this is the brand color' from 'this is a verdict' without reading the label.", "section": "colors" },
-      { "name": "The Reading vs. Scanning Rule", "body": "A report's narrative and recommendations are set at reading scale with a measured width and no card chrome, so they read as a document. Charts, evidence and tables stay at UI/data scale inside bordered panels, so they read as instruments. The two are never the same weight.", "section": "typography" },
-      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat. The only shadow in the system belongs to the toast, which genuinely floats above the page.", "section": "elevation" }
+      {
+        "name": "The One Accent Rule",
+        "body": "Signal teal appears on primary actions, the active nav item, links, and focus rings only - never as a decorative fill, never as a background wash. If a screen has more than a few teal elements, something has drifted into decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Status-Never-Accent Rule",
+        "body": "The four status colors and the one accent color are never the same hue family. A reader must be able to tell 'this is the brand color' from 'this is a verdict' without reading the label.",
+        "section": "colors"
+      },
+      {
+        "name": "The Reading vs. Scanning Rule",
+        "body": "A report's narrative and recommendations are set at reading scale with a measured width and no card chrome, so they read as a document. Charts, evidence and tables stay at UI/data scale inside bordered panels, so they read as instruments. The two are never the same weight.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Surfaces are flat. The only shadow in the system belongs to the toast, which genuinely floats above the page.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Skin-Not-Surgery Rule",
+        "body": "A theme may change how a surface looks. It may never change what it says, what it emphasises, or what it lets a human do. Every E2E spec runs unmodified against all three themes.",
+        "section": "themes"
+      },
+      {
+        "name": "The Substantive Tint Rule",
+        "body": "A status tint is a SURFACE, not a wash. On a gradient ground a low-alpha tint let the violet through and a status panel read as decoration - which is precisely what the Quality Context panel must never do.",
+        "section": "themes"
+      },
+      {
+        "name": "The Measured-Not-Eyeballed Rule",
+        "body": "No theme ships on a colour judged by eye. Every text node on every page in every theme is measured by two independent methods and the worse is taken.",
+        "section": "themes"
+      }
     ],
     "dos": [
       "Do render Quality Context first on every report, in the caution-tinted panel, above the narrative - never a footnote.",
@@ -171,7 +363,8 @@
       "Don't nest a card inside another card - use a sunken sub-region or a divider instead.",
       "Don't use caused, drove, impact, because of, or any causal phrasing in UI copy, empty states, or labels - correlation is never presented as causation, in the chrome any more than in a report's prose.",
       "Don't let 'Discard run (permanent)' read as a fourth variant of the three recoverable decisions - it keeps its own color (danger), its own visual separation, and its confirmation step.",
-      "Don't give a card a corner radius larger than 6px, or a button/badge larger than 4px."
+      "Don't give a card a corner radius larger than 6px, or a button/badge larger than 4px.",
+      "Don't let a theme auto-select Aurora - it is opt-in, and first-visit detection resolves only to Default or Dark."
     ]
   }
 }
