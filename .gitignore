@@ -10,3 +10,5 @@ venv/
 data/*
 !data/.gitkeep
 .launcher/
+.theme-shots/
+node_modules/

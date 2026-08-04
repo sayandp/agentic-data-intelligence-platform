@@ -69,7 +69,7 @@ const NAV_ITEMS = [
 export default function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen">
-      <aside className="flex w-64 shrink-0 flex-col bg-nav-bg text-nav-ink">
+      <aside className="panel flex w-64 shrink-0 flex-col bg-nav-bg text-nav-ink">
         <div className="flex items-center gap-3 px-6 py-6">
           <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-brand-600 text-lg font-bold text-on-accent">A</div>
           <div>
@@ -84,7 +84,7 @@ export default function Layout({ children }: { children: ReactNode }) {
               to={to}
               className={({ isActive }) =>
                 `flex items-center gap-3 rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
-                  isActive ? "bg-nav-active text-nav-ink-active" : "text-nav-ink hover:bg-nav-hover hover:text-nav-ink-active"
+                  isActive ? "glow-accent bg-nav-active text-nav-ink-active" : "text-nav-ink hover:bg-nav-hover hover:text-nav-ink-active"
                 }`
               }
             >
@@ -95,7 +95,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         </nav>
         <div className="mt-auto">
           <ThemeSwitcher />
-          <div className="px-6 pb-6 text-xs text-nav-ink/70">
+          <div className="px-6 pb-6 text-xs text-nav-ink">
             Every screen here calls the same JSON API you can hit with curl - nothing is hidden behind this UI.
           </div>
         </div>

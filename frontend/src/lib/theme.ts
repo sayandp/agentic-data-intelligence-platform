@@ -42,8 +42,26 @@ export function storedTheme(): Theme | null {
   }
 }
 
+/** `?theme=<name>` renders a theme without persisting it, so external tools
+ *  that cannot reach localStorage (the design detector's browser scan,
+ *  screenshot capture, CI auditors) can address one by URL.
+ *
+ *  This MUST mirror the pre-paint boot script in index.html. When it didn't,
+ *  the boot script set the attribute correctly and then this module's
+ *  consumer immediately overwrote it on mount - the URL override silently
+ *  did nothing. */
+export function urlTheme(): Theme | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const q = new URLSearchParams(window.location.search).get("theme");
+    return isTheme(q) ? q : null;
+  } catch {
+    return null;
+  }
+}
+
 export function resolveInitialTheme(): Theme {
-  return storedTheme() ?? preferredTheme();
+  return urlTheme() ?? storedTheme() ?? preferredTheme();
 }
 
 export function applyTheme(theme: Theme): void {

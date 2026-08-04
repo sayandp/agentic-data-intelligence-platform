@@ -199,6 +199,99 @@ The app's answer to "which run is this about," used identically on Ask and Predi
 - **Active state:** `nav-ink-active` (white) text and icon, subtle background lift (`rgba(255,255,255,0.08)`) - text/icon color change plus tone carries the state; no border accent bar (a decorative color bar is refused elsewhere in this system, so the nav does not get an exception) and never a solid filled pill in the accent color (that reads as a button, not a location).
 - **Hover:** background lift only, no color change until active.
 
+## Themes
+
+Three surfaces share one information architecture. A theme is ONE
+`data-theme` attribute on `<html>` swapping a set of CSS custom properties
+(`frontend/src/index.css`); no component branches on it, and no theme
+changes what a screen says, emphasises, or lets a human do. Everything
+above this section describes the **Default** theme, which is the baseline
+the other two override.
+
+### Default - OPERATE (ships as the default)
+The Instrument Panel exactly as documented above. Flat, bordered, one
+accent, no gradient, no translucency, no glow.
+
+### Dark - OPERATE
+The same instrument in a dark room. Values are re-derived for a dark
+ground rather than inverted, so status keeps both meaning and contrast.
+Still no glow, gradient, or translucency: `--panel-filter`, `--glow` and
+`--page-backdrop` all resolve to `none`.
+
+- Ground `#0F1319`, panels `#171C24`, inset `#1E242E`, nav `#0B0E13`
+- Text `#E8ECF2` / `#B3BCC9` / `#8D97A5`
+- Accent `#3FC3BD` (the teal, lifted for a dark ground); status
+  `#56D68A` / `#FF8A8A` / `#E9B455` / `#8FB0FF`
+
+### Aurora - EXPERIENCE, opt-in
+Exists to look striking in a live demo. **Never the default and never
+auto-selected** - first-visit detection resolves only to Default or Dark.
+
+Aurora knowingly adopts three anti-references the operate surfaces refuse:
+a violet-family gradient ground, glassmorphic translucency, and glow. The
+exception is scoped to this theme and recorded in PRODUCT.md so it reads
+as a decision rather than drift. Everything else on the refusal list still
+binds here - and the ban on motion implying activity is absolute in all
+three: the glow is a static `box-shadow`, nothing pulses.
+
+- **Ground:** a fixed three-stop gradient, deep teal to indigo to violet -
+  `#07313A` -> `#141A4D` -> `#2E1A54`, lit by two radial washes
+  (`rgba(7,90,105,0.85)` top-left, `rgba(74,32,122,0.8)` upper-right).
+  These five values exist only as `--page-backdrop` and are part of the
+  system, not stray literals.
+- **Panels:** `rgba(11,16,32,0.72)` plus `blur(18px) saturate(135%)`,
+  applied through a single `.panel` class - never globally, because a
+  backdrop-filter on every element is a real performance cost and would
+  blur things that are not panels.
+- **Edges:** a light hairline (`rgba(150,200,255,0.16)`) reads as a lit rim
+  on dark glass, where a dark border would vanish.
+- **Accents:** cyan `#5EE0F5` (actions, links, active state) and magenta
+  `#FF86DD` - the only theme where `--accent-secondary` is a genuine
+  second voice rather than an alias of the first.
+- **Glow:** `--glow` is applied to exactly two things, the primary action
+  and the current nav item, so a demo audience can find both instantly.
+
+### Named Rules
+
+**The Skin-Not-Surgery Rule.** A theme may change how a surface looks. It
+may never change what it says, what it emphasises, or what it lets a human
+do. Every E2E spec runs unmodified against all three themes; a spec that
+fails in one theme means that theme made a structural change, and the
+theme is wrong.
+
+**The Substantive Tint Rule.** A status tint is a SURFACE, not a wash. On
+a gradient ground a 15%-alpha tint let the violet through and a status
+panel read as decoration - which is precisely what the Quality Context
+panel must never do. Aurora's tints are therefore dark, hue-carrying fills
+at 0.92 alpha, keeping every status label at 7.4:1 or better.
+
+**The Measured-Not-Eyeballed Rule.** No theme ships on a colour that was
+judged by eye. `frontend/scripts/contrast-audit.mjs` measures every text
+node on every page in every theme by two independent methods - alpha
+compositing, and dominant-pixel sampling of a real screenshot for any
+surface with a gradient, translucency, or backdrop blur - and takes the
+worse of the two. A frosted panel can never pass on a computed number
+while failing on screen.
+
+### Measured contrast (worst case per theme, WCAG AA needs 4.5:1)
+
+Every text node on Sources, Approvals, Reports, Audit, Ask and Predict, in
+all three themes: **0 failures** (338 / 337 / 337 nodes measured). Aurora
+is measured against the LIGHTEST point of its gradient behind a frosted
+panel, which is the worst case for light text.
+
+| Role | Default | Dark | Aurora |
+| --- | --- | --- | --- |
+| Body text on a panel | 16.1 | 14.4 | 15.7 |
+| Muted text | 8.2 | 8.9 | 10.4 |
+| Faint text (ids) on inset | 4.6 | 5.3 | 7.0 |
+| Accent / link | 6.4 | 7.9 | 11.4 |
+| Success label on its tint | 4.6 | 8.5 | 10.6 |
+| Danger label on its tint | 5.6 | 7.4 | 7.5 |
+| Caution label on its tint | 4.6 | 8.2 | 8.9 |
+| Info label on its tint | 7.5 | 7.6 | 8.0 |
+| Label on a filled accent | 5.9 | 8.9 | 10.6 |
+
 ## Do's and Don'ts
 
 ### Do:

@@ -86,8 +86,9 @@
   /* -- effects -- */
   --radius-control: 4px;       /* buttons, badges, inputs */
   --radius-panel: 6px;         /* cards, panels */
-  --blur: 0px;                 /* no frosting on an operate surface */
+  --panel-filter: none;        /* no frosting on an operate surface */
   --glow: none;                /* no glow on an operate surface */
+  --glow-secondary: none;
   --page-backdrop: none;       /* flat ground, no gradient */
   /* The one shadow in the system: the toast genuinely floats above the page.
      Ordinary content is flat by default. */
@@ -152,10 +153,110 @@
 
   --radius-control: 4px;
   --radius-panel: 6px;
-  --blur: 0px;
+  --panel-filter: none;
   --glow: none;
+  --glow-secondary: none;
   --page-backdrop: none;
   --shadow-float: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.5);
+}
+
+/* ===========================================================================
+   AURORA - EXPERIENCE mode, deliberately opt-in (PRODUCT.md). Exists to look
+   striking in a live demo; it is never the default and is never auto-selected.
+
+   Knowingly adopts three of the anti-references the operate surfaces refuse -
+   a violet-family gradient ground, glassmorphic translucency, and glow. That
+   exception is scoped to this theme and recorded in PRODUCT.md so it reads as
+   a decision, not a lapse.
+
+   What it does NOT change: the information architecture, the copy, or the
+   hierarchy. Aurora is a skin over the same instrument.
+
+   Every value below was derived by measuring against the LIGHTEST point of
+   the gradient behind a frosted panel (the worst case for light text), not
+   chosen by eye - "the demo happens on a projector" is exactly the failure
+   mode being designed against. Measured ratios are in DESIGN.md.
+   =========================================================================== */
+
+:root[data-theme="aurora"] {
+  color-scheme: dark;
+
+  /* The panel fill is translucent, so `--surface-raised` carries alpha and
+     the frost is completed by --panel-filter below. 0.90 is what the DETECTOR's worst-case
+     pixel measure needed: at 0.72 the median contrast was fine (10.9:1) but
+     the worst pixels behind a glyph fell to 2.9:1 where a bright lobe of the
+     gradient sat behind the glass. Per the brief, a surface that cannot hold
+     AA gets a more opaque background rather than thinner text. */
+  --surface: #0a0e1c;
+  --surface-raised: rgba(11, 16, 32, 0.90);
+  --surface-sunken: rgba(6, 10, 24, 0.88);
+  --nav-surface: rgba(7, 11, 26, 0.96);
+
+  --text-primary: #eaf1ff;
+  --text-muted: #b9c6e6;
+  --text-faint: #93a3c9;
+  --text-on-accent: #04222b;
+  --nav-text: #c3d0ee;
+  --nav-text-active: #ffffff;
+
+  /* Borders carry the glass edge: a light hairline reads as a lit rim on a
+     dark frosted surface, where a darker line would just disappear. */
+  --border: rgba(150, 200, 255, 0.16);
+  --border-strong: rgba(160, 210, 255, 0.34);
+
+  --accent: #5ee0f5;          /* cyan - actions, links, active state */
+  --accent-hover: #8aeaf9;
+  --accent-tint: rgba(8, 38, 48, 0.97);
+  --accent-secondary: #ff86dd; /* magenta - the genuine second voice */
+
+  /* Status tints are SUBSTANTIVE, not a 15%-alpha wash. At low alpha the
+     violet ground showed straight through them and a status panel read as
+     decoration - which is exactly what the Quality Context panel must never
+     do. A dark hue-carrying fill at 0.92 makes it a surface that happens to
+     be frosted, and keeps its label at 7.4:1 or better. */
+  --success: #5ef0a8;
+  --success-tint: rgba(13, 42, 28, 0.97);
+  --danger: #ff8a9c;
+  --danger-tint: rgba(51, 19, 27, 0.97);
+  --warning: #ffc46b;
+  --warning-tint: rgba(58, 42, 14, 0.97);
+  --info: #8fb8ff;
+  --info-tint: rgba(20, 31, 61, 0.97);
+
+  --nav-hover-bg: rgba(255, 255, 255, 0.07);
+  --nav-active-bg: rgba(94, 224, 245, 0.16);
+
+  --code-surface: rgba(4, 7, 18, 0.94);
+  --code-text: #dfe9ff;
+
+  --chart-1: #5ee0f5;
+  --chart-2: #ff86dd;
+  --chart-3: #8fb8ff;
+  --chart-4: #ffc46b;
+  --chart-5: #5ef0a8;
+  --chart-6: #ff8a9c;
+  --chart-grid: rgba(150, 200, 255, 0.14);
+  --chart-axis: #93a3c9;
+  --chart-ink: #eaf1ff;
+  --chart-band: rgba(94, 224, 245, 0.18);
+
+  --radius-control: 4px;
+  --radius-panel: 6px;
+
+  /* The frost itself. Applied only to `.panel` (see below), never globally -
+     a backdrop-filter on every element would be a real performance problem
+     and would blur things that are not panels. */
+  --panel-filter: blur(18px) saturate(135%);
+  /* Soft glow, used ONLY on the primary action and the active nav item -
+     the two things a demo audience should be able to find instantly. It is
+     a static box-shadow: nothing in this system pulses or animates at rest. */
+  --glow: 0 0 0 1px rgba(94, 224, 245, 0.35), 0 0 18px -2px rgba(94, 224, 245, 0.55);
+  --glow-secondary: 0 0 18px -4px rgba(255, 134, 221, 0.5);
+  --page-backdrop:
+    radial-gradient(1200px 800px at 12% 4%, rgba(7, 74, 87, 0.55) 0%, rgba(7, 49, 58, 0) 60%),
+    radial-gradient(1000px 900px at 88% 20%, rgba(62, 27, 104, 0.55) 0%, rgba(46, 26, 84, 0) 62%),
+    linear-gradient(155deg, #07313a 0%, #141a4d 52%, #2e1a54 100%);
+  --shadow-float: 0 10px 30px -8px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(150, 200, 255, 0.14);
 }
 
 /* ===========================================================================
@@ -231,6 +332,23 @@ pre {
 /* The toast is the one element that genuinely floats. */
 .shadow-float {
   box-shadow: var(--shadow-float);
+}
+
+/* Frosted glass, applied ONLY to elements that are actually panels. A
+   backdrop-filter on every element would blur things that are not panels
+   and would be a genuine performance problem. Resolves to `none` on the
+   operate themes, so this rule costs them nothing. */
+.panel {
+  backdrop-filter: var(--panel-filter);
+  -webkit-backdrop-filter: var(--panel-filter);
+}
+
+/* Glow marks the two things a demo audience should find instantly: the
+   primary action and the current location. It is a STATIC box-shadow -
+   nothing in this system pulses or animates at rest (that would imply
+   activity where there is none). Resolves to `none` on operate themes. */
+.glow-accent {
+  box-shadow: var(--glow);
 }
 
 /* A theme swap shouldn't hard-cut, but nothing should animate on first paint

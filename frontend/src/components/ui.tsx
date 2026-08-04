@@ -7,7 +7,7 @@ import type { ToastState } from "../hooks/useToast";
 // needing internal grouping uses `surface-sunken` or a divider instead.
 export function Card({ title, subtitle, children, className = "" }: { title?: string; subtitle?: string; children: ReactNode; className?: string }) {
   return (
-    <div className={`mb-6 rounded-md border border-border bg-surface p-5 ${className}`}>
+    <div className={`panel mb-6 rounded-md border border-border bg-surface p-5 ${className}`}>
       {title && <h2 className="mb-1 text-[15px] font-semibold text-ink">{title}</h2>}
       {subtitle && <p className="mb-4 text-sm text-ink-muted">{subtitle}</p>}
       {children}
@@ -94,7 +94,7 @@ export function Button({
 }) {
   const styles = {
     default: "border border-border-strong bg-surface text-ink hover:bg-surface-sunken",
-    primary: "bg-brand-600 text-on-accent hover:bg-brand-700",
+    primary: "glow-accent bg-brand-600 text-on-accent hover:bg-brand-700",
     // Reserved for the single irreversible action (discard run) - its color
     // alone signals "this one is different" before a reader reaches the
     // label. Never used for an ordinary reject/dismiss decision.
@@ -230,7 +230,7 @@ export function ErrorMessage({ error }: { error: unknown }) {
 }
 
 export function CodeBlock({ children }: { children: string }) {
-  return <pre className="overflow-x-auto rounded-md bg-code p-4 font-mono text-sm text-code-ink">{children}</pre>;
+  return <pre className="panel overflow-x-auto rounded-md bg-code p-4 font-mono text-sm text-code-ink">{children}</pre>;
 }
 
 export function Muted({ children }: { children: ReactNode }) {
@@ -246,7 +246,7 @@ export function Toast({ toast, onDismiss }: { toast: ToastState | null; onDismis
   if (!toast) return null;
   const styles = toast.kind === "success" ? "bg-status-positive text-on-accent" : "bg-status-negative text-on-accent";
   return (
-    <div className={`fixed right-6 bottom-6 z-50 flex max-w-sm items-start gap-3 rounded-md px-4 py-3 shadow-float ${styles}`} role="status">
+    <div className={`panel fixed right-6 bottom-6 z-50 flex max-w-sm items-start gap-3 rounded-md px-4 py-3 shadow-float ${styles}`} role="status">
       <span className="text-sm font-medium">{toast.message}</span>
       <button onClick={onDismiss} aria-label="Dismiss" className="ml-2 text-on-accent/80 hover:text-on-accent">
         &times;

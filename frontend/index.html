@@ -17,9 +17,22 @@
       (function () {
         var THEMES = ["default", "dark", "aurora"];
         var theme = null;
+        // ?theme=<name> renders a theme WITHOUT persisting it. This exists so
+        // external tools that cannot reach localStorage - the Impeccable
+        // detector's browser scan, screenshot capture, any CI auditor - can
+        // address a specific theme by URL. It never overrides a stored
+        // preference for a real user, because it does not write one.
         try {
-          var stored = localStorage.getItem("adip-theme");
-          if (THEMES.indexOf(stored) !== -1) theme = stored;
+          var q = new URLSearchParams(window.location.search).get("theme");
+          if (THEMES.indexOf(q) !== -1) theme = q;
+        } catch (e) {
+          /* no URLSearchParams - fall through */
+        }
+        try {
+          if (!theme) {
+            var stored = localStorage.getItem("adip-theme");
+            if (THEMES.indexOf(stored) !== -1) theme = stored;
+          }
         } catch (e) {
           /* storage unavailable - fall through to the media query */
         }
