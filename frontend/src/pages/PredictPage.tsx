@@ -75,7 +75,11 @@ function ForecastChart({ series }: { series: ForecastSeries }) {
 
 const ESCALATION_LABELS: Record<string, string> = {
   llm_unavailable: "No LLM is configured/reachable for intent classification.",
-  unanswerable: "The model reported this question cannot be answered from the given schema.",
+  // Overwhelmingly this means the question named a column but never said
+  // what to DO with it ("revenue" rather than "forecast monthly revenue").
+  // The old wording described the classifier's verdict and left the reader
+  // to guess the remedy.
+  unanswerable: "This didn't read as a prediction request. Naming a column on its own doesn't say what to predict from it - say what you want done with it.",
   target_not_found: "The named target column is absent from the live schema.",
   unsupported_task_type: "This column doesn't fit a supported task shape (forecast/classification/regression) from data shape alone.",
   insufficient_rows: "Not enough rows/periods are available to train reliably.",
@@ -238,6 +242,28 @@ export default function PredictPage() {
                     {result.escalation_reason ? ESCALATION_LABELS[result.escalation_reason] ?? result.escalation_reason : "Escalated."}
                   </p>
                   {result.escalation_detail && <p className="text-sm text-ink-muted">{result.escalation_detail}</p>}
+                  {/* An escalation a human can act on. `unanswerable` is
+                      almost always a phrasing problem, so the remedy - this
+                      run's OWN columns in a workable question - belongs here,
+                      one click away, rather than leaving the reader to
+                      rediscover the form's placeholder. */}
+                  {result.escalation_reason === "unanswerable" && examples.length > 0 && (
+                    <p className="mt-3 text-sm text-ink">
+                      Try:{" "}
+                      {examples.map((ex, i) => (
+                        <span key={ex}>
+                          {i > 0 && " · "}
+                          <button
+                            type="button"
+                            onClick={() => setQuestion(ex)}
+                            className="font-medium text-brand-600 hover:underline"
+                          >
+                            {ex}
+                          </button>
+                        </span>
+                      ))}
+                    </p>
+                  )}
                   {canAppealToApprovals && (
                     <p className="mt-3 text-sm">
                       <Link className="text-brand-600 hover:underline" to="/approvals">

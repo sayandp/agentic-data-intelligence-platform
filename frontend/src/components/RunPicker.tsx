@@ -65,9 +65,38 @@ function matches(run: RunSummaryRecord, ref: string): boolean {
 const IDENTIFIER_LIKE = /^(rk|rank|no|num|idx|index|id|key|uuid|guid)$/i;
 const IDENTIFIER_SUFFIX = /(_id|id|_key|name|code)$/i;
 
+// A suggestion is only useful if it is the question someone actually wanted
+// to ask. Given a table of ecommerce columns, "forecast monthly revenue" is
+// the obvious ask and "forecast monthly quantity" is not - so outcome-shaped
+// measures sort ahead of incidental ones. Purely a ranking of SUGGESTIONS;
+// every column stays listed and every column stays askable.
+// Ranked, not partitioned: on an ecommerce table both `revenue` and
+// `unit_price` are outcome-shaped, but only one of them is the question
+// anyone actually asks. A per-row unit measure is an INPUT to the outcome,
+// so it sorts below it.
+const OUTCOME_TIERS: Array<[RegExp, number]> = [
+  [/^(revenue|sales|profit|turnover|gmv)$/i, 0],
+  [/(_|^)(revenue|sales|profit)$/i, 1],
+  [/^(amount|total|value|spend|margin|volume)$/i, 2],
+  [/(_|^)(amount|total|value|spend)$/i, 3],
+  [/^(price|cost|score|rating|count|quantity)$/i, 4],
+  [/(price|cost|value|count)$/i, 5],
+];
+
+function outcomeRank(column: string): number {
+  for (const [pattern, rank] of OUTCOME_TIERS) if (pattern.test(column)) return rank;
+  return 6;
+}
+
 function preferDescriptive(columns: string[]): string[] {
   const descriptive = columns.filter((c) => !IDENTIFIER_LIKE.test(c) && !IDENTIFIER_SUFFIX.test(c));
-  return descriptive.length > 0 ? descriptive : columns;
+  const pool = descriptive.length > 0 ? descriptive : columns;
+  // Stable within a tier, so a table with no outcome-shaped column keeps its
+  // natural column order.
+  return pool
+    .map((c, i) => ({ c, rank: outcomeRank(c), i }))
+    .sort((a, b) => a.rank - b.rank || a.i - b.i)
+    .map((e) => e.c);
 }
 
 export function exampleQuestions(columnTypes: Record<string, string> | null, mode: "ask" | "predict"): string[] {
