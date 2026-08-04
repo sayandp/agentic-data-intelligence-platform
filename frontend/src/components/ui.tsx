@@ -7,7 +7,7 @@ import type { ToastState } from "../hooks/useToast";
 // needing internal grouping uses `surface-sunken` or a divider instead.
 export function Card({ title, subtitle, children, className = "" }: { title?: string; subtitle?: string; children: ReactNode; className?: string }) {
   return (
-    <div className={`mb-6 rounded-md border border-border bg-white p-5 ${className}`}>
+    <div className={`mb-6 rounded-md border border-border bg-surface p-5 ${className}`}>
       {title && <h2 className="mb-1 text-[15px] font-semibold text-ink">{title}</h2>}
       {subtitle && <p className="mb-4 text-sm text-ink-muted">{subtitle}</p>}
       {children}
@@ -93,12 +93,12 @@ export function Button({
   loadingText?: string;
 }) {
   const styles = {
-    default: "border border-border-strong bg-white text-ink hover:bg-surface-sunken",
-    primary: "bg-brand-600 text-white hover:bg-brand-700",
+    default: "border border-border-strong bg-surface text-ink hover:bg-surface-sunken",
+    primary: "bg-brand-600 text-on-accent hover:bg-brand-700",
     // Reserved for the single irreversible action (discard run) - its color
     // alone signals "this one is different" before a reader reaches the
     // label. Never used for an ordinary reject/dismiss decision.
-    danger: "border border-status-negative bg-white text-status-negative hover:bg-status-negative-tint",
+    danger: "border border-status-negative bg-surface text-status-negative hover:bg-status-negative-tint",
   }[variant];
   return (
     <button
@@ -230,7 +230,7 @@ export function ErrorMessage({ error }: { error: unknown }) {
 }
 
 export function CodeBlock({ children }: { children: string }) {
-  return <pre className="overflow-x-auto rounded-md bg-ink p-4 font-mono text-sm text-white">{children}</pre>;
+  return <pre className="overflow-x-auto rounded-md bg-code p-4 font-mono text-sm text-code-ink">{children}</pre>;
 }
 
 export function Muted({ children }: { children: ReactNode }) {
@@ -244,11 +244,11 @@ export function Muted({ children }: { children: ReactNode }) {
 // exception to Flat-By-Default), so it keeps a small ambient shadow.
 export function Toast({ toast, onDismiss }: { toast: ToastState | null; onDismiss: () => void }) {
   if (!toast) return null;
-  const styles = toast.kind === "success" ? "bg-status-positive text-white" : "bg-status-negative text-white";
+  const styles = toast.kind === "success" ? "bg-status-positive text-on-accent" : "bg-status-negative text-on-accent";
   return (
-    <div className={`fixed right-6 bottom-6 z-50 flex max-w-sm items-start gap-3 rounded-md px-4 py-3 shadow-md ${styles}`} role="status">
+    <div className={`fixed right-6 bottom-6 z-50 flex max-w-sm items-start gap-3 rounded-md px-4 py-3 shadow-float ${styles}`} role="status">
       <span className="text-sm font-medium">{toast.message}</span>
-      <button onClick={onDismiss} aria-label="Dismiss" className="ml-2 text-white/80 hover:text-white">
+      <button onClick={onDismiss} aria-label="Dismiss" className="ml-2 text-on-accent/80 hover:text-on-accent">
         &times;
       </button>
     </div>

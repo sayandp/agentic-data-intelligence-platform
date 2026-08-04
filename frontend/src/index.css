@@ -1,39 +1,208 @@
 @import "tailwindcss";
 
-/* Design system: DESIGN.md ("The Instrument Panel"). One accent (signal
-   teal, replacing the prior violet), a fixed four-color status vocabulary
-   never reused for anything else, and a separate graphite nav palette
-   distinct from the accent - the previous system conflated "sidebar dark
-   color" and "brand accent" into the same violet scale. */
-@theme {
-  --color-brand-50: #e3f1f1;
-  --color-brand-100: #cfe7e7;
-  --color-brand-200: #a9d4d4;
-  --color-brand-500: #12807e;
-  --color-brand-600: #0b6e6e;
-  --color-brand-700: #095a5a;
-  --color-brand-900: #0a3d3d;
-  --color-brand-950: #072b2b;
+/* ===========================================================================
+   THEME CONTRACT
+   ---------------------------------------------------------------------------
+   Every color, shadow, radius and blur in this app resolves through one of the
+   custom properties below. A theme is ONE `data-theme` attribute on <html>
+   that swaps this variable set - there is no conditional rendering and no
+   per-component theme branching anywhere in the codebase, so a component
+   cannot know (or care) which theme it is in.
 
-  --color-nav-bg: #141922;
-  --color-nav-ink: #b8c0cc;
+   The `@theme inline` block underneath binds Tailwind's utility names to these
+   properties. `inline` is what makes runtime theming work: it emits
+   `background: var(--surface-raised)` into `.bg-surface`, rather than baking
+   the literal value in, so re-declaring the property under a `[data-theme]`
+   selector re-colors every existing utility with no rebuild.
 
-  --color-ink: #12161c;
-  --color-ink-muted: #4b5563;
-  --color-ink-faint: #6b7280;
-  --color-paper: #f7f8fa;
-  --color-surface-sunken: #f1f3f6;
-  --color-border: #e2e5ea;
-  --color-border-strong: #c7ccd4;
+   Default is an OPERATE surface (see PRODUCT.md) and ships as the default.
+   =========================================================================== */
 
-  --color-status-positive: #15803d;
-  --color-status-positive-tint: #e8f5ec;
-  --color-status-negative: #b91c1c;
-  --color-status-negative-tint: #fbebeb;
-  --color-status-caution: #9a6700;
-  --color-status-caution-tint: #fbf2de;
-  --color-status-active: #1e40af;
-  --color-status-active-tint: #e9eefb;
+:root,
+:root[data-theme="default"] {
+  color-scheme: light;
+
+  /* -- surfaces -- */
+  --surface: #f7f8fa;          /* page ground */
+  --surface-raised: #ffffff;   /* cards, panels, table bodies, inputs */
+  --surface-sunken: #f1f3f6;   /* inset regions: table headers, code frames */
+  --nav-surface: #141922;      /* the sidebar rail */
+
+  /* -- text -- */
+  --text-primary: #12161c;
+  --text-muted: #4b5563;
+  --text-faint: #686f7c;   /* 4.57:1 on surface-sunken (was #6b7280 = 4.35, below AA) */
+  --text-on-accent: #ffffff;   /* a label sitting ON an accent/status fill */
+  --nav-text: #b8c0cc;
+  --nav-text-active: #ffffff;
+
+  /* -- lines -- */
+  --border: #e2e5ea;
+  --border-strong: #c7ccd4;
+
+  /* -- accent -- */
+  --accent: #0b6e6e;
+  --accent-hover: #095a5a;
+  --accent-tint: #e3f1f1;
+  /* Default is an OPERATE surface with ONE accent (DESIGN.md's One Accent
+     Rule), so the secondary slot deliberately resolves to the same hue rather
+     than introducing a second voice. Aurora is where it becomes a real
+     second accent. */
+  --accent-secondary: #0b6e6e;
+
+  /* -- status: the fixed four-role vocabulary, never reused for anything else -- */
+  --success: #157d3c;      /* 4.62:1 on its tint (was #15803d = 4.47) */
+  --success-tint: #e8f5ec;
+  --danger: #b91c1c;
+  --danger-tint: #fbebeb;
+  --warning: #956400;      /* 4.59:1 on its tint (was #9a6700 = 4.37) */
+  --warning-tint: #fbf2de;
+  --info: #1e40af;
+  --info-tint: #e9eefb;
+
+  /* -- nav interaction -- */
+  --nav-hover-bg: rgba(255, 255, 255, 0.05);
+  --nav-active-bg: rgba(255, 255, 255, 0.08);
+
+  /* Code/JSON frames need their own pair rather than borrowing ink+white:
+     `ink` flips to a LIGHT value in dark themes, which would leave white
+     text on a white frame. */
+  --code-surface: #12161c;
+  --code-text: #f5f7fa;
+
+  /* -- chart palette: consumed by lib/plotly.ts. Colors only - a chart's TYPE
+        is chosen deterministically by the backend and is never themed. -- */
+  --chart-1: #0b6e6e;
+  --chart-2: #4b5563;
+  --chart-3: #1e40af;
+  --chart-4: #9a6700;
+  --chart-5: #15803d;
+  --chart-6: #b91c1c;
+  --chart-grid: #e2e5ea;
+  --chart-axis: #6b7280;
+  --chart-ink: #12161c;
+  --chart-band: rgba(11, 110, 110, 0.15);  /* forecast uncertainty fill */
+
+  /* -- effects -- */
+  --radius-control: 4px;       /* buttons, badges, inputs */
+  --radius-panel: 6px;         /* cards, panels */
+  --blur: 0px;                 /* no frosting on an operate surface */
+  --glow: none;                /* no glow on an operate surface */
+  --page-backdrop: none;       /* flat ground, no gradient */
+  /* The one shadow in the system: the toast genuinely floats above the page.
+     Ordinary content is flat by default. */
+  --shadow-float: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+/* ===========================================================================
+   DARK - the same sober instrument in a dark room. Still OPERATE: no glow,
+   no gradients, no translucency. Every value is re-derived for a dark ground
+   rather than naively inverted, so status colors keep both their meaning and
+   their contrast (measured ratios recorded in DESIGN.md).
+   =========================================================================== */
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --surface: #0f1319;
+  --surface-raised: #171c24;
+  --surface-sunken: #1e242e;
+  --nav-surface: #0b0e13;
+
+  --text-primary: #e8ecf2;
+  --text-muted: #b3bcc9;
+  --text-faint: #8d97a5;
+  --text-on-accent: #04120f;
+  --nav-text: #b3bcc9;
+  --nav-text-active: #ffffff;
+
+  --border: #2b333f;
+  --border-strong: #414b5a;
+
+  --accent: #3fc3bd;
+  --accent-hover: #63d6d0;
+  --accent-tint: #11312f;
+  --accent-secondary: #3fc3bd;
+
+  --success: #56d68a;
+  --success-tint: #10281a;
+  --danger: #ff8a8a;
+  --danger-tint: #331416;
+  --warning: #e9b455;
+  --warning-tint: #2e2210;
+  --info: #8fb0ff;
+  --info-tint: #151f38;
+
+  --nav-hover-bg: rgba(255, 255, 255, 0.06);
+  --nav-active-bg: rgba(255, 255, 255, 0.10);
+
+  --code-surface: #0a0d12;
+  --code-text: #dfe5ee;
+
+  --chart-1: #3fc3bd;
+  --chart-2: #b3bcc9;
+  --chart-3: #8fb0ff;
+  --chart-4: #e9b455;
+  --chart-5: #56d68a;
+  --chart-6: #ff8a8a;
+  --chart-grid: #2b333f;
+  --chart-axis: #8d97a5;
+  --chart-ink: #e8ecf2;
+  --chart-band: rgba(63, 195, 189, 0.20);
+
+  --radius-control: 4px;
+  --radius-panel: 6px;
+  --blur: 0px;
+  --glow: none;
+  --page-backdrop: none;
+  --shadow-float: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.5);
+}
+
+/* ===========================================================================
+   Tailwind utility bindings. `inline` keeps the var() reference in the emitted
+   utility, which is what lets a `data-theme` swap re-color the whole app at
+   runtime. Utility names are unchanged from the pre-theme system, so no
+   component had to be rewritten to gain theming.
+   =========================================================================== */
+
+@theme inline {
+  --color-paper: var(--surface);
+  --color-surface: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+
+  --color-ink: var(--text-primary);
+  --color-ink-muted: var(--text-muted);
+  --color-ink-faint: var(--text-faint);
+  --color-on-accent: var(--text-on-accent);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-brand-50: var(--accent-tint);
+  --color-brand-600: var(--accent);
+  --color-brand-700: var(--accent-hover);
+  --color-accent-secondary: var(--accent-secondary);
+
+  --color-status-positive: var(--success);
+  --color-status-positive-tint: var(--success-tint);
+  --color-status-negative: var(--danger);
+  --color-status-negative-tint: var(--danger-tint);
+  --color-status-caution: var(--warning);
+  --color-status-caution-tint: var(--warning-tint);
+  --color-status-active: var(--info);
+  --color-status-active-tint: var(--info-tint);
+
+  --color-nav-bg: var(--nav-surface);
+  --color-nav-ink: var(--nav-text);
+  --color-nav-ink-active: var(--nav-text-active);
+  --color-nav-hover: var(--nav-hover-bg);
+  --color-nav-active: var(--nav-active-bg);
+
+  --color-code: var(--code-surface);
+  --color-code-ink: var(--code-text);
+
+  --radius-sm: var(--radius-control);
+  --radius-md: var(--radius-panel);
 
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -46,8 +215,10 @@ body,
 
 body {
   margin: 0;
-  background: var(--color-paper);
-  color: var(--color-ink);
+  background: var(--surface);
+  background-image: var(--page-backdrop);
+  background-attachment: fixed;
+  color: var(--text-primary);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 13px;
 }
@@ -55,4 +226,19 @@ body {
 pre {
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* The toast is the one element that genuinely floats. */
+.shadow-float {
+  box-shadow: var(--shadow-float);
+}
+
+/* A theme swap shouldn't hard-cut, but nothing should animate on first paint
+   either - so the transition is scoped to the two properties a theme change
+   actually moves, and skipped entirely for anyone who asked for reduced
+   motion. Nothing in this system animates at rest. */
+@media (prefers-reduced-motion: no-preference) {
+  body {
+    transition: background-color 160ms ease, color 160ms ease;
+  }
 }

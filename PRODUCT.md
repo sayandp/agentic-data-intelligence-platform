@@ -45,9 +45,43 @@ Long-running steps (ingest, resolving an escalation, training a model) run in th
 
 ## Brand Commitments
 
-- **Voice:** clinical, evidence-first, no hype, no marketing language. This is an operational tool, not something trying to persuade or sell.
-- **Mode:** the interface operates (a working dashboard for completing tasks and reading evidence) - it never persuades. Nothing in the UI should read as marketing copy, a pitch, or a call to action beyond the task at hand.
-- **Anti-references (explicitly ruled out):** purple gradients, glassmorphism, hero eyebrow chips, italic serif display type, "AI beige," nested cards, icon-tile stacks, numbered section labels, pulsing "AI is thinking" dots.
+- **Voice:** clinical, evidence-first, no hype, no marketing language. This is an operational tool, not something trying to persuade or sell. The voice does NOT vary by surface - see below.
+
+### Surfaces and their modes
+
+This app now ships more than one surface, and they do not share an intent.
+A surface's mode governs its *visual* register only; it never governs
+correctness, copy, or information hierarchy, all of which are fixed
+across every surface (see Product Principles and the non-negotiables
+recorded in DESIGN.md).
+
+| Surface | Mode | Intent |
+| --- | --- | --- |
+| **Default** (ships as the default) | **OPERATE** | Design serves the task. Sober, high-contrast, no decoration. |
+| **Dark** | **OPERATE** | The same sober instrument in a dark room. No glow, no gradients. |
+| **Aurora** | **EXPERIENCE**, deliberately opt-in | Exists to look striking in a live demo. **Not the default**, never auto-selected. |
+
+- **Default and Dark are OPERATE:** nothing decorative earns its place.
+  A pixel either helps someone complete a task or read evidence, or it
+  goes. These two carry the anti-references below.
+- **Aurora is EXPERIENCE and opt-in:** it is chosen deliberately by a
+  human for a demo audience, so it is permitted an atmosphere the
+  operate surfaces refuse - a gradient ground, frosted translucency,
+  cyan/magenta accents, soft glow on chart lines and active states.
+  Aurora is a *skin over the same information architecture*: it may
+  change how a surface looks, never what it says, what it emphasises, or
+  what it lets a human do.
+- **Anti-references (binding on Default and Dark):** purple gradients,
+  glassmorphism, hero eyebrow chips, italic serif display type, "AI
+  beige," nested cards, icon-tile stacks, numbered section labels,
+  pulsing "AI is thinking" dots.
+- **Aurora's deliberate exceptions:** Aurora knowingly adopts three of
+  those anti-references - a violet-family gradient ground, glassmorphic
+  translucency, and glow. This is a scoped, opt-in exception recorded
+  here so it reads as a decision rather than a lapse; it does not relax
+  them for any other surface. Everything else on that list stays refused
+  in Aurora too, and the pulsing-dots ban in particular is absolute: no
+  theme animates to imply activity that isn't happening.
 
 ## Evidence on Hand
 

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./themed-test";
 
 // Dashboard demo pass, Part 2/3: data/demo_full.csv (backend/scripts/
 // generate_demo_full.py) is the one fixture in this repo with a real trend

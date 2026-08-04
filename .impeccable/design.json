@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-04T00:00:00Z",
+  "title": "Design System: Agentic Data Intelligence Platform",
+  "extensions": {
+    "colorMeta": {
+      "signal-teal": {
+        "role": "primary",
+        "displayName": "Signal Teal",
+        "canonical": "#0B6E6E",
+        "tonalRamp": ["#072B2B", "#0A3D3D", "#095A5A", "#0B6E6E", "#12807E", "#A9D4D4", "#CFE7E7", "#E3F1F1"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#12161C",
+        "tonalRamp": ["#12161C", "#242A33", "#374151", "#4B5563", "#6B7280", "#9AA2AE", "#C7CCD4", "#E2E5EA"]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#F7F8FA",
+        "tonalRamp": ["#12161C", "#2A2F38", "#4B5563", "#6B7280", "#C7CCD4", "#E2E5EA", "#F1F3F6", "#F7F8FA"]
+      },
+      "status-positive": {
+        "role": "tertiary",
+        "displayName": "Verdict Green",
+        "canonical": "#15803D",
+        "tonalRamp": ["#052E16", "#0A4A22", "#15803D", "#1E9E4E", "#4ABE77", "#8FD9AC", "#C6ECD5", "#E8F5EC"]
+      },
+      "status-negative": {
+        "role": "tertiary",
+        "displayName": "Verdict Red",
+        "canonical": "#B91C1C",
+        "tonalRamp": ["#450A0A", "#7A1212", "#B91C1C", "#DC2F2F", "#E86A6A", "#F1A3A3", "#F8D2D2", "#FBEBEB"]
+      },
+      "status-caution": {
+        "role": "tertiary",
+        "displayName": "Verdict Amber",
+        "canonical": "#9A6700",
+        "tonalRamp": ["#3D2900", "#6B4700", "#9A6700", "#C08200", "#DDA23A", "#EBC178", "#F5DFB4", "#FBF2DE"]
+      },
+      "status-active": {
+        "role": "tertiary",
+        "displayName": "Verdict Blue",
+        "canonical": "#1E40AF",
+        "tonalRamp": ["#0B1B4D", "#132B7A", "#1E40AF", "#2B54D4", "#5B7CE6", "#93A9F0", "#C4D0F7", "#E9EEFB"]
+      },
+      "nav-bg": {
+        "role": "neutral",
+        "displayName": "Graphite",
+        "canonical": "#141922",
+        "tonalRamp": ["#0A0D12", "#141922", "#1F2733", "#2E3846", "#4B5563", "#8B93A1", "#B8C0CC", "#E2E5EA"]
+      }
+    },
+    "typographyMeta": {
+      "ui": { "displayName": "UI", "purpose": "Every control, label, table cell and heading in the app chrome." },
+      "narrative": { "displayName": "Narrative", "purpose": "A report's prose only - larger, looser, measured to ~72ch so it reads as a document rather than another panel." },
+      "data": { "displayName": "Data", "purpose": "Anything a reader copies, compares digit-by-digit, or verifies: ids, timestamps, scores, counts, code." }
+    },
+    "shadows": [
+      {
+        "name": "toast-ambient",
+        "value": "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)",
+        "purpose": "The ONLY shadow in the system. Reserved for the toast, which genuinely floats above the page. Ordinary content is flat by default."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state-transition",
+        "value": "transition-colors 150ms",
+        "purpose": "Color-only transitions on hover/active. Nothing animates position, size, or opacity at rest - no ambient motion implying activity that isn't happening."
+      }
+    ],
+    "breakpoints": [
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one affirmative action on a surface - Load, Register, Ask, Predict, Approve.",
+      "html": "<button class=\"ds-btn-primary\">Load</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 8px; background: var(--color-brand-600, #0B6E6E); color: #fff; border: none; border-radius: 4px; padding: 6px 14px; font: 500 13px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; cursor: pointer; transition: background-color 150ms; } .ds-btn-primary:hover { background: var(--color-brand-700, #095A5A); } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-brand-600, #0B6E6E); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Reserved for the single irreversible action, 'Discard run (permanent)'. Never used for an ordinary reject or dismiss - its colour is what tells a reader this one cannot be undone, before they read the label.",
+      "html": "<button class=\"ds-btn-danger\">Discard run (permanent)</button>",
+      "css": ".ds-btn-danger { display: inline-flex; align-items: center; gap: 8px; background: #fff; color: #B91C1C; border: 1px solid #B91C1C; border-radius: 4px; padding: 6px 14px; font: 500 13px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; cursor: pointer; transition: background-color 150ms; } .ds-btn-danger:hover { background: #FBEBEB; } .ds-btn-danger:focus-visible { outline: 2px solid #B91C1C; outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "status-badge",
+      "description": "A verdict, readable at a glance. A filled dot carries the state by shape and colour before the word is read - the label is always present too, so status never depends on colour alone.",
+      "html": "<span class=\"ds-badge ds-badge-positive\"><span class=\"ds-badge-dot\"></span>completed</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 9999px; padding: 2px 10px; font: 500 12px system-ui, -apple-system, sans-serif; } .ds-badge-dot { width: 6px; height: 6px; border-radius: 9999px; background: currentColor; } .ds-badge-positive { background: #E8F5EC; color: #15803D; }"
+    },
+    {
+      "name": "Card / Panel",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The default container. Flat, 1px-bordered, 6px radius, no shadow - depth comes from tone and stroke, never a floating illusion. Cards never nest.",
+      "html": "<div class=\"ds-card\"><h2 class=\"ds-card-title\">Registered sources</h2><p class=\"ds-card-sub\">30 sources</p></div>",
+      "css": ".ds-card { background: #fff; border: 1px solid #E2E5EA; border-radius: 6px; padding: 20px; } .ds-card-title { margin: 0 0 4px; font: 600 15px system-ui, sans-serif; color: #12161C; } .ds-card-sub { margin: 0; font: 400 13px system-ui, sans-serif; color: #4B5563; }"
+    },
+    {
+      "name": "Quality Context Panel",
+      "kind": "custom",
+      "refersTo": "quality-context",
+      "description": "The most important panel in the product. Renders FIRST on a report, above the narrative, in a full-perimeter caution border with a tinted fill - structurally a different card, not a decorated one. A fluent report reading as authoritative over repaired or unvalidated data is the single most harmful thing this UI can render, so this treatment is a hard product constraint, not a style choice.",
+      "html": "<div class=\"ds-quality\"><h2 class=\"ds-quality-title\">Data quality context</h2><div class=\"ds-quality-body\">The active baseline for this source is still PROVISIONAL.</div></div>",
+      "css": ".ds-quality { border: 1px solid #9A6700; background: #FBF2DE; border-radius: 6px; padding: 24px; } .ds-quality-title { margin: 0 0 8px; font: 600 15px system-ui, sans-serif; color: #9A6700; } .ds-quality-body { max-width: 68ch; font: 400 13px/1.6 system-ui, sans-serif; color: #12161C; white-space: pre-wrap; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Form controls read as controls: a stroke and a small radius, never a filled pill.",
+      "html": "<input class=\"ds-input\" placeholder=\"run number (e.g. 17) or full run id\" />",
+      "css": ".ds-input { width: 100%; background: #fff; border: 1px solid #C7CCD4; border-radius: 4px; padding: 6px 12px; font: 400 13px system-ui, sans-serif; color: #12161C; } .ds-input::placeholder { color: #6B7280; } .ds-input:focus-visible { outline: 2px solid var(--color-brand-600, #0B6E6E); outline-offset: 1px; border-color: var(--color-brand-600, #0B6E6E); }"
+    },
+    {
+      "name": "Sidebar Navigation",
+      "kind": "nav",
+      "refersTo": "nav",
+      "description": "Fixed graphite rail. Active state is carried by text/icon colour plus a background lift - no accent bar, because a decorative colour bar is refused everywhere else in this system and the nav gets no exception.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-item ds-nav-item-active\" href=\"#\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5.5 2.5h6l3 3v12a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1Z\"/><path d=\"M7.5 11h5M7.5 14h5M7.5 8h2\"/></svg>Reports</a><a class=\"ds-nav-item\" href=\"#\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8.75\" cy=\"8.75\" r=\"5.25\"/><path d=\"M16 16l-3.4-3.4\"/></svg>Audit</a></nav>",
+      "css": ".ds-nav { display: flex; flex-direction: column; gap: 2px; background: #141922; padding: 12px; width: 220px; } .ds-nav-item { display: flex; align-items: center; gap: 12px; border-radius: 4px; padding: 8px 12px; color: #B8C0CC; font: 500 13px system-ui, sans-serif; text-decoration: none; transition: background-color 150ms, color 150ms; } .ds-nav-item:hover { background: rgba(255,255,255,0.05); color: #fff; } .ds-nav-item-active { background: rgba(255,255,255,0.08); color: #fff; }"
+    },
+    {
+      "name": "Data Table",
+      "kind": "custom",
+      "refersTo": "table",
+      "description": "Sunken header row, 1px row dividers, no zebra striping. Numerics right-aligned and tabular; ids monospaced and de-emphasised. Always inside its own horizontal-scroll container so the page body never scrolls sideways.",
+      "html": "<div class=\"ds-table-wrap\"><table class=\"ds-table\"><thead><tr><th>ID</th><th>Source</th><th class=\"ds-num\">Rows</th></tr></thead><tbody><tr><td class=\"ds-id\">1b1641b1-c93b-41f6</td><td>orders.csv</td><td class=\"ds-num\">5497</td></tr></tbody></table></div>",
+      "css": ".ds-table-wrap { overflow-x: auto; } .ds-table { width: 100%; border-collapse: collapse; font: 400 13px system-ui, sans-serif; color: #12161C; } .ds-table th { background: #F1F3F6; color: #4B5563; font-weight: 500; text-align: left; padding: 8px 12px; border-bottom: 1px solid #E2E5EA; } .ds-table td { padding: 8px 12px; border-bottom: 1px solid #E2E5EA; } .ds-table .ds-num { text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; } .ds-table .ds-id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: #6B7280; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Instrument Panel",
+    "overview": "This is a diagnostic instrument, not a product pitch. The system ingests data, decides what it can safely fix and what it can't, and shows a human exactly why - the interface's job is to make that reasoning legible at a glance, the same way a calibrated lab instrument or an avionics status panel reads: quiet at rest, unambiguous the moment something needs attention, never decorative for its own sake.\n\nThe prior implementation used a violet/purple accent (#7c5cff) inherited from an unmodified Tailwind starter palette, rounded-2xl cards with soft shadows stacked in undifferentiated columns, and no typographic distinction between a report's prose and its surrounding chrome. All three read as generic AI-dashboard default rather than a considered instrument, and are retired by this system.",
+    "keyCharacteristics": [
+      "Flat, bordered surfaces - no drop shadows on ordinary content, depth comes from tone and a 1px border, never a floating card illusion.",
+      "One accent color (a deep signal teal) used sparingly for actions and active state; everything else is ink, paper, and border grays.",
+      "Status is color- and shape-coded (a filled dot plus a muted pill), never plain text a reader has to parse.",
+      "Data (ids, timestamps, scores, counts) is monospaced and visually quieter than the judgment it supports; prose (a report's narrative) is set larger and looser than the UI chrome around it."
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "Signal teal appears on primary actions, the active nav item, links, and focus rings only - never as a decorative fill, never as a background wash. If a screen has more than a few teal elements, something has drifted into decoration.", "section": "colors" },
+      { "name": "The Status-Never-Accent Rule", "body": "The four status colors and the one accent color are never the same hue family. A reader must be able to tell 'this is the brand color' from 'this is a verdict' without reading the label.", "section": "colors" },
+      { "name": "The Reading vs. Scanning Rule", "body": "A report's narrative and recommendations are set at reading scale with a measured width and no card chrome, so they read as a document. Charts, evidence and tables stay at UI/data scale inside bordered panels, so they read as instruments. The two are never the same weight.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces are flat. The only shadow in the system belongs to the toast, which genuinely floats above the page.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do render Quality Context first on every report, in the caution-tinted panel, above the narrative - never a footnote.",
+      "Do keep generation mode (llm/template) visible as a plain badge near the report title on every report, in every mode.",
+      "Do right-align every numeric table column and monospace-mute every id column.",
+      "Do show a live elapsed-time counter on every long-running action (ingest, resolve, predict) - never a bare spinner with no sense of progress.",
+      "Do list every gate reason in full on an escalated item - this is the accountability argument; it is never truncated, collapsed, or hidden behind a tooltip.",
+      "Do render a correlated group of validation failures as exactly one item with one set of decision buttons."
+    ],
+    "donts": [
+      "Don't use purple, violet, or any gradient anywhere in this system.",
+      "Don't add a drop shadow to an element that isn't genuinely floating above the page.",
+      "Don't nest a card inside another card - use a sunken sub-region or a divider instead.",
+      "Don't use caused, drove, impact, because of, or any causal phrasing in UI copy, empty states, or labels - correlation is never presented as causation, in the chrome any more than in a report's prose.",
+      "Don't let 'Discard run (permanent)' read as a fourth variant of the three recoverable decisions - it keeps its own color (danger), its own visual separation, and its confirmation step.",
+      "Don't give a card a corner radius larger than 6px, or a button/badge larger than 4px."
+    ]
+  }
+}

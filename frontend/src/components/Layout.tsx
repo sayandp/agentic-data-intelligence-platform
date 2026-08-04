@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
+import ThemeSwitcher from "./ThemeSwitcher";
 
 // One consistent stroke (1.6px, round caps/joins) across every nav icon -
 // drawn, not emoji (DESIGN.md: "unicode glyphs standing in for an icon
@@ -70,9 +71,9 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen">
       <aside className="flex w-64 shrink-0 flex-col bg-nav-bg text-nav-ink">
         <div className="flex items-center gap-3 px-6 py-6">
-          <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-brand-600 text-lg font-bold text-white">A</div>
+          <div className="flex h-9 w-9 items-center justify-center rounded-sm bg-brand-600 text-lg font-bold text-on-accent">A</div>
           <div>
-            <div className="text-sm font-semibold text-white">Agentic Data</div>
+            <div className="text-sm font-semibold text-nav-ink-active">Agentic Data</div>
             <div className="text-xs text-nav-ink">Intelligence Platform</div>
           </div>
         </div>
@@ -83,7 +84,7 @@ export default function Layout({ children }: { children: ReactNode }) {
               to={to}
               className={({ isActive }) =>
                 `flex items-center gap-3 rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
-                  isActive ? "bg-white/8 text-white" : "text-nav-ink hover:bg-white/5 hover:text-white"
+                  isActive ? "bg-nav-active text-nav-ink-active" : "text-nav-ink hover:bg-nav-hover hover:text-nav-ink-active"
                 }`
               }
             >
@@ -92,8 +93,11 @@ export default function Layout({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <div className="mt-auto px-6 py-6 text-xs text-nav-ink/70">
-          Every screen here calls the same JSON API you can hit with curl - nothing is hidden behind this UI.
+        <div className="mt-auto">
+          <ThemeSwitcher />
+          <div className="px-6 pb-6 text-xs text-nav-ink/70">
+            Every screen here calls the same JSON API you can hit with curl - nothing is hidden behind this UI.
+          </div>
         </div>
       </aside>
       <div className="flex min-h-screen flex-1 flex-col">

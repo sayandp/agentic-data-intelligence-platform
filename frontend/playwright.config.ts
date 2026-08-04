@@ -24,4 +24,17 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
+  // One project per theme. The project NAME is the theme: e2e/themed-test.ts
+  // reads it and seeds localStorage before any page script runs, so each
+  // spec runs unmodified against every theme. Locators are text/role based,
+  // so a theme that breaks a spec has made a structural change, not a
+  // visual one - which is the point of running all three.
+  //
+  // They run in sequence (workers: 1 above) because all three projects hit
+  // the same shared dev backend.
+  projects: [
+    { name: "default" },
+    { name: "dark" },
+    { name: "aurora" },
+  ],
 });

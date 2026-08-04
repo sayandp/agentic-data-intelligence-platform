@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./themed-test";
 
 // REGRESSION COVERAGE for the "run '48' not found" report.
 //

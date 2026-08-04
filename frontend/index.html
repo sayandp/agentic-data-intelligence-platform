@@ -5,6 +5,34 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Agentic Data Intelligence Platform</title>
+    <script>
+      // Sets data-theme BEFORE first paint, so a dark/Aurora user never sees
+      // a flash of the light default while the JS bundle loads. Deliberately
+      // inline and blocking: a deferred module (main.tsx) runs AFTER the
+      // first paint, which is exactly the flash this avoids.
+      //
+      // Duplicates a few lines of src/lib/theme.ts on purpose - importing
+      // that module here would make it a render-blocking network request.
+      // Keep the storage key and theme names in sync with it.
+      (function () {
+        var THEMES = ["default", "dark", "aurora"];
+        var theme = null;
+        try {
+          var stored = localStorage.getItem("adip-theme");
+          if (THEMES.indexOf(stored) !== -1) theme = stored;
+        } catch (e) {
+          /* storage unavailable - fall through to the media query */
+        }
+        if (!theme) {
+          // Aurora is opt-in and is never auto-selected (see PRODUCT.md).
+          theme =
+            window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "default";
+        }
+        document.documentElement.setAttribute("data-theme", theme);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

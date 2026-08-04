@@ -4,7 +4,7 @@ import { apiPostJson, pollPredictStatus } from "../api/client";
 import type { ForecastSeries, PredictAck, PredictResult } from "../api/types";
 import { Badge, Button, Card, ErrorMessage, Muted } from "../components/ui";
 import { RunNotFoundHelp, RunPicker, exampleQuestions, useRunSelection } from "../components/RunPicker";
-import { CHART_ACCENT, loadPlotly } from "../lib/plotly";
+import { chartAccent, chartBand, chartNeutral, loadPlotly, themedLayout } from "../lib/plotly";
 
 // Dashboard UX pass, Part 1: "the real missing feature" - the Modeling
 // Agent (POST /predict, GET /models/{run_id}) had no UI at all despite
@@ -26,7 +26,7 @@ function buildForecastFigure(series: ForecastSeries) {
   // is reserved for Forecast (the model's own output) - the one thing on
   // this chart that's actually new information, same "one accent, used for
   // what matters" reasoning as everywhere else in this system.
-  const data: unknown[] = [{ x: historicalX, y: historicalY, mode: "lines", name: "Actual", line: { color: "#4b5563" } }];
+  const data: unknown[] = [{ x: historicalX, y: historicalY, mode: "lines", name: "Actual", line: { color: chartNeutral() } }];
 
   if (hasInterval) {
     const upperY = series.forecast.map((p) => p.upper ?? p.value);
@@ -39,17 +39,17 @@ function buildForecastFigure(series: ForecastSeries) {
         mode: "lines",
         line: { width: 0 },
         fill: "tonexty",
-        fillcolor: "rgba(11,110,110,0.15)",
+        fillcolor: chartBand(),
         name: "Interval",
       }
     );
   }
-  data.push({ x: forecastX, y: forecastY, mode: "lines", name: "Forecast", line: { color: CHART_ACCENT, dash: "dash" } });
+  data.push({ x: forecastX, y: forecastY, mode: "lines", name: "Forecast", line: { color: chartAccent(), dash: "dash" } });
 
   // No native Plotly title - the Card wrapper's own "Forecast chart" caption
   // is the only title shown (same duplicate-chrome fix already applied to
   // the report charts on ReportsPage.tsx).
-  const layout = { xaxis: { title: "Period" }, yaxis: { title: "Value" }, margin: { t: 16, r: 16, b: 40, l: 48 } };
+  const layout = themedLayout({ xaxis: { title: "Period" }, yaxis: { title: "Value" }, margin: { t: 16, r: 16, b: 40, l: 48 } });
   return { data, layout };
 }
 

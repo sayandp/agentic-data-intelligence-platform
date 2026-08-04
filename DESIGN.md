@@ -13,6 +13,12 @@ colors:
   signal-teal: "#0B6E6E"
   signal-teal-hover: "#095A5A"
   signal-teal-tint: "#E3F1F1"
+  signal-teal-50: "#E3F1F1"
+  signal-teal-100: "#CFE7E7"
+  signal-teal-200: "#A9D4D4"
+  signal-teal-500: "#12807E"
+  signal-teal-900: "#0A3D3D"
+  signal-teal-950: "#072B2B"
   status-positive: "#15803D"
   status-positive-tint: "#E8F5EC"
   status-negative: "#B91C1C"
@@ -92,13 +98,14 @@ Restrained strategy: neutrals carry the interface; one accent (signal teal) mark
 
 ### Primary
 - **Signal Teal** (`#0B6E6E`): the one accent. Primary buttons, active nav item, links, focus rings, chart accent lines. Nothing else uses this hue - it must always mean "action" or "current."
+  - Implemented as an 8-step ramp (`--color-brand-50/100/200/500/600/700/900/950`) rather than a single value, because a Tailwind utility scale needs stops. **600 is Signal Teal itself** and is the only stop that carries the accent's meaning; 700 is its hover, 50-200 are tints used for quiet fills (a file-input chip, a hover wash). The `brand-*` name is a Tailwind-utility artifact, not a second identity - there is exactly one accent hue in this system.
 
 ### Neutral
 - **Ink** (`#12161C`): primary text, headings.
 - **Ink Muted** (`#4B5563`): secondary text, labels, table headers.
 - **Ink Faint** (`#6B7280`): tertiary/disabled text, placeholder copy.
 - **Paper** (`#F7F8FA`): page background.
-- **Surface** (`#FFFFFF`): card and table background.
+- **Surface** (`#FFFFFF`): card and table background. Currently emitted as the literal `bg-white` utility rather than a named token - the one neutral without a variable behind it.
 - **Surface Sunken** (`#F1F3F6`): nested/inset regions (a table's header row, a code block's frame) - the ONE permitted "layer inside a card," used for structural grouping, never as a second decorative card.
 - **Border** (`#E2E5EA`): default dividers and card borders.
 - **Border Strong** (`#C7CCD4`): input borders, emphasis dividers.
@@ -178,6 +185,14 @@ Small, consistent corner radius: 4px for buttons/badges/inputs, 6px for cards an
 - **Body rows:** `Surface` background, 1px bottom `Border` divider, no zebra striping (striping adds visual noise this system doesn't need; a hovered row gets a subtle `Surface Sunken` tint instead).
 - **Numeric columns:** right-aligned, `Data` font.
 - **Id columns:** `Data` font, `Ink Faint` color (present but visually quiet - it is the app's job to make the id copyable/linkable, not the reader's job to parse it character by character).
+- **Overflow:** every table sits in its own `overflow-x: auto` container. A wide table scrolls inside its own frame; the page body never scrolls sideways.
+
+### Run Picker (signature component)
+
+The app's answer to "which run is this about," used identically on Ask and Predict. A labelled `<select>` of recent completed runs (`Run #48 - orders.csv - completed 9h ago`) paired with a narrow free-text field for a run number, so selection is the primary act and typing is the fallback. Beneath it, the selected run's own column names render as quiet `Data`-font chips.
+
+- **Shape/colors:** standard input treatment (4px radius, `Border Strong` stroke, `Surface` fill) - it is a form control, not a feature card.
+- **Rule:** a run is CHOSEN, never transcribed. No surface in this system asks a human to retype an identifier the app already knows, and no surface asks for a raw UUID.
 
 ### Navigation
 - **Style:** fixed left sidebar, `nav-bg` (#141922) background, `nav-ink` (#B8C0CC) default label color.

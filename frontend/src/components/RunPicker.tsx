@@ -178,7 +178,7 @@ export function RunPicker({ selection, idPrefix }: { selection: RunSelection; id
           id={selectId}
           value={selectedRun ? runRefOf(selectedRun) : ""}
           onChange={(e) => setRunRef(e.target.value)}
-          className="min-w-0 flex-1 rounded-sm border border-border-strong bg-white px-2 py-1.5 text-sm"
+          className="min-w-0 flex-1 rounded-sm border border-border-strong bg-surface px-2 py-1.5 text-sm"
         >
           {runs === null && <option value="">Loading runs...</option>}
           {runs !== null && runs.length === 0 && <option value="">No completed runs yet - ingest a source first</option>}

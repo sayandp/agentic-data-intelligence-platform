@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { apiFetch } from "../api/client";
 import type { ReportRecord } from "../api/types";
 import { Badge, Button, ErrorMessage, RunLabel } from "../components/ui";
-import { loadPlotly, withDesignColors } from "../lib/plotly";
+import { loadPlotly, themedLayout, withDesignColors } from "../lib/plotly";
 import { askLink, predictLink } from "../lib/runLinks";
 
 // Mirrors app/narrative/models.py::NarrativeReport.rendered_text()'s fixed
@@ -113,7 +113,7 @@ export default function ReportsPage() {
             // rendered a second time inside the SVG in its own font, was
             // pure redundant chrome (the same string, twice, in two
             // different typefaces).
-            const layout = { ...(chart.figure_json.layout as Record<string, unknown>), title: undefined, margin: { t: 16, r: 16, b: 40, l: 48 } };
+            const layout = themedLayout({ ...(chart.figure_json.layout as Record<string, unknown>), title: undefined, margin: { t: 16, r: 16, b: 40, l: 48 } });
             const data = withDesignColors(chart.figure_json.data as unknown[]);
             window.Plotly.newPlot(el, data, layout, { responsive: true, displayModeBar: false });
           } catch {
@@ -151,18 +151,18 @@ export default function ReportsPage() {
               regardless of mode (hard constraint, never demoted). */}
           <div className="mb-6 flex flex-wrap items-center gap-3 text-sm">
             <RunLabel runNumber={report!.run_number} runId={report!.run_id} />
-            <span className="text-border-strong">/</span>
+            <span className="text-ink-faint" aria-hidden="true">/</span>
             <span className="text-ink-muted">Generation mode:</span>
             <Badge value={report!.generation_mode} />
             {/* Carry this exact run into Ask/Predict (?run=), the same way
                 Sources does - reading a report is the most likely moment to
                 want to interrogate or forecast the same data, and neither
                 screen should need an id pasted to do it. */}
-            <span className="text-border-strong">/</span>
+            <span className="text-ink-faint" aria-hidden="true">/</span>
             <Link className="text-brand-600 hover:underline" to={askLink(report!.run_id, report!.run_number)}>
               Ask about this run
             </Link>
-            <span className="text-border-strong">&middot;</span>
+            <span className="text-ink-faint" aria-hidden="true">&middot;</span>
             <Link className="text-brand-600 hover:underline" to={predictLink(report!.run_id, report!.run_number)}>
               Predict from this run
             </Link>
@@ -212,7 +212,7 @@ export default function ReportsPage() {
               <h2 className="mb-3 text-[15px] font-semibold text-ink">Charts</h2>
               <div ref={chartsContainerRef} className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {report.chart_refs.map((chart, i) => (
-                  <div key={chart.chart_id} className="rounded-md border border-border bg-white p-4">
+                  <div key={chart.chart_id} className="rounded-md border border-border bg-surface p-4">
                     <p className="text-sm font-medium text-ink">{chart.title}</p>
                     <div id={`chart-${i}`} className="mt-1" />
                   </div>
@@ -225,7 +225,7 @@ export default function ReportsPage() {
               always last - it backs the narrative above, it doesn't compete
               with it for the reader's first attention. */}
           {report?.grounded_claims && report.grounded_claims.length > 0 && (
-            <div className="rounded-md border border-border bg-white p-5">
+            <div className="rounded-md border border-border bg-surface p-5">
               <details id="evidence-section">
                 <summary className="cursor-pointer text-sm font-medium text-brand-600">
                   {report.grounded_claims.length} grounded claim{report.grounded_claims.length === 1 ? "" : "s"} - click to expand

@@ -1,4 +1,4 @@
-import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
+import { test, expect, type Page, type ConsoleMessage } from "./themed-test";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 // Drives the REAL React dashboard end to end against the REAL, already

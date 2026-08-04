@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./themed-test";
 
 // Covers the property STEP 3 of the ingest-hang investigation required:
 // "an ingest that escalates with the LLM unavailable/exhausted must still
