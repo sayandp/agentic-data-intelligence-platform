@@ -467,3 +467,50 @@ def test_approve_reruns_and_resolves_a_low_confidence_escalation(client, tmp_pat
 
     pending = client.get("/approvals/pending").json()
     assert pending["escalated_queries"] == []
+
+
+# --- module-level names are not reachable from generated code ---
+#
+# Reported from the dashboard: a question about a currency column produced
+# `pd.to_numeric(...)` and escalated with "name 'pd' is not allowed". The
+# validator was right - app/query/sandbox.py binds ONLY `df` plus a small
+# builtin allowlist, so admitting `pd` would hand generated code
+# pd.read_csv/pd.eval and the filesystem with them. The fix was to stop the
+# model reaching for it: the prompt now states the module is absent and
+# teaches the Series-method equivalent. These pin both halves.
+
+
+def test_module_level_names_are_rejected():
+    from app.query.pandas_validation import validate_pandas_code
+
+    for code in (
+        "result = pd.to_numeric(df['price'])",
+        "result = np.mean(df['price'])",
+        "result = pandas.to_numeric(df['price'])",
+    ):
+        assert not validate_pandas_code(code).valid, code
+
+
+def test_the_currency_idiom_the_prompt_teaches_actually_validates():
+    """The prompt tells the model to parse "$1,234.50" with Series methods
+    instead of pd.to_numeric. If that idiom did not validate, the guidance
+    would just move the escalation somewhere else."""
+    from app.query.pandas_validation import validate_pandas_code
+
+    code = (
+        "prices = df['price'].astype(str).str.replace('$', '', regex=False)"
+        ".str.replace(',', '', regex=False).astype(float); "
+        "result = df.loc[prices.idxmax()]"
+    )
+    result = validate_pandas_code(code)
+    assert result.valid, result.errors
+
+
+def test_prompt_names_the_absent_modules_and_the_replacement():
+    """Guidance the model cannot see is guidance that does not exist."""
+    from app.query.agent import _system_prompt
+    from app.query.models import QueryKind
+
+    prompt = _system_prompt(QueryKind.PANDAS)
+    assert "`pd` AND `np` DO NOT EXIST" in prompt
+    assert "astype(float)" in prompt

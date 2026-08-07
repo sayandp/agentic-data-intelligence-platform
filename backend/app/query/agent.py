@@ -53,7 +53,20 @@ a variable literally named `result`. Use only `df`'s own methods/attributes
 (groupby, agg, sort_values, head, loc, mean, sum, ...), plain
 arithmetic/comparison, and the columns named in the schema below - never
 import, exec, eval, open, any dunder attribute access, or any name other
-than `df` and ordinary Python builtins (len, sum, min, max, round, ...)."""
+than `df` and ordinary Python builtins (len, sum, min, max, round, ...).
+
+`pd` AND `np` DO NOT EXIST in the execution namespace. The module itself is
+not bound to any name, so `pd.to_numeric(...)`, `pd.isna(...)`,
+`np.mean(...)` and every other module-level call WILL be rejected before
+running. Everything you need is reachable as a method on `df` or on one of
+its columns:
+- text -> number (including currency like "$1,234.50"):
+  `df['col'].astype(str).str.replace('$', '', regex=False).str.replace(',', '', regex=False).astype(float)`
+  Use `.str.extract(r'([0-9.]+)')` first if other characters may be present.
+- missing values: `df['col'].isna()` / `.notna()` / `.fillna(0)`
+- row of the maximum: `df.loc[df['col'].idxmax()]`
+- unique/counts: `df['col'].nunique()`, `df['col'].value_counts()`
+- date parts: `df['col'].dt.year` (datetime columns are already typed)"""
 
     return f"""You are the Query Agent in an automated data intelligence platform. You
 answer a user's question about a dataset by GENERATING CODE - never a
