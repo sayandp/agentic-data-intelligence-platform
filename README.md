@@ -1859,6 +1859,17 @@ a score the statistics already established - a column called `customer_id`
 holding one distinct value per row is not an entity identifier whatever it
 is called.
 
+A monetary column may contain a **small fraction of negatives**. Returns,
+refunds and bad-debt adjustments are ordinary transaction data, and an
+any-negative rule rejected `Price` on Online Retail II over 5 rows in
+1,067,371 (0.0005%) - taking four analyses down with it. The rule's real job
+is excluding profit/delta/change/variance columns, which run 30-50%
+negative, so the ceiling is a configurable fraction (`DEFAULT_MAX_NEGATIVE_
+FRACTION`, 5%) sitting an order of magnitude clear of both populations. The
+negative count and fraction are recorded on the detection and shown next to
+the role, so a column accepted *with returns in it* never looks like one
+that had none.
+
 Confidence is banded. Only `medium` and above is consumable; anything weaker
 is surfaced as a candidate for a human to confirm rather than used silently.
 `confirmed` is never machine-produced, so a reader can always tell a
@@ -1889,6 +1900,50 @@ is the failure mode that layer exists to prevent.
 | Market basket | transaction + item | Apriori (mlxtend), lift > 1 only, capped itemset size and rule count. Skips entirely, with a reason, when transactions are mostly single-item. |
 | Retention / churn | entity + date | Repeat rate, gap distribution, and an inactivity flag from a **configurable window that is always stated**. |
 | Historical CLV | entity + date + monetary | Labelled HISTORICAL and descriptive, never predictive. Reports revenue-based value and says so when no margin rate is supplied. |
+
+### Entities that net to zero or below
+
+Admitting returns into a monetary column creates a real case the analyses
+have to answer for: an entity that returned everything nets to zero, one
+issued a credit nets below it. Returns **net off** - a line of -100 reduces
+its entity's total, it is never dropped - and the two analyses that treat
+that total differently say so:
+
+| Analysis | Behaviour | Why |
+| --- | --- | --- |
+| ABC / Pareto | Held out of the bands and the curve, reported as a `non_contributing_entities` finding with counts, combined net, and named examples | A cumulative share is only well-defined over non-negative parts. Ranking descending over mixed signs sends the curve **above 100% and back down** (measured at 106.8%). And a full returner is not a small buyer - filing it in band C would say something false about both. |
+| RFM / CLV | Kept and ranked; a net-negative entity scores in the lowest monetary quintile | These **rank** entities rather than decomposing a total, so "returned more than they bought" is a meaningful position, not a broken one. |
+
+Both denominators are published side by side - `total_value` over the ranked
+contributors, `combined_value_total` over everything - so the two figures
+reconcile instead of looking like an arithmetic error. When *every* entity
+nets to zero or below, Pareto refuses with that as the stated reason rather
+than drawing an empty chart. RFM reports `value_shares_meaningful: false`
+when the overall total is not positive, because dividing by a negative
+denominator would present a net-negative segment as holding a positive share.
+
+On Online Retail II this quarantines 284 products: 283 with a recorded unit
+price of 0.00, and one named `Adjust bad debt` netting -147,614.08.
+
+### Encoding is detected from a sample, applied to the whole file
+
+`chardet` sees only the first 64KB. On a large export whose header and first
+thousands of rows are plain ASCII, it answers `ascii` with confidence 1.0 -
+a true statement about the sample and a false one about the file. The first
+`£` megabytes later then killed the read, and the run surfaced as a bare
+`failed` with `UnicodeDecodeError` buried in an AgentTrace.
+
+Two things fix that, and the second is the general one:
+
+- An `ascii` verdict is widened to `utf-8`. UTF-8 is a strict superset, so
+  every byte the sample saw decodes identically and the bytes it never saw
+  now decode too. The validation rule that treats a substituted encoding as
+  a corruption signal knows this pair is equivalent, so widening does not
+  raise a false alarm - a genuine `latin-1` last resort still does.
+- The candidate chain guards the **actual full-file parse**, not a 64KB
+  sample of it. Verifying a sample and then parsing 94MB checks a different,
+  smaller file that happens to share a prefix. Reaching `latin-1` cannot
+  raise, and is reported as a warning rather than passed off as a clean read.
 
 ### Reporting when a method's own premise fails
 

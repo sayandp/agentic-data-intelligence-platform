@@ -27,6 +27,7 @@ from enum import Enum
 import numpy as np
 import pandas as pd
 
+from app.connectors.file_connector import encodings_are_equivalent
 from app.contract import DataContract
 from app.profiling import TOP_N_CATEGORIES
 
@@ -553,7 +554,16 @@ class ValidationEngine:
                 "encoding_used": encoding_used,
                 "confidence": contract.encoding_confidence,
             }
-            status = RuleStatus.FAILED if encoding_used != contract.detected_encoding else RuleStatus.PASSED
+            # Equivalence, not string identity. The connector widens an
+            # `ascii` detection to utf-8 because chardet only ever saw the
+            # first sample bytes - and utf-8 decodes ASCII identically, so
+            # nothing was overruled and nothing can be corrupt. Comparing
+            # the names literally flagged every plain-ASCII-prefixed file as
+            # a corruption suspect. A genuine substitution (latin-1 last
+            # resort) still fails here, which is the case this rule is for.
+            equivalent = encodings_are_equivalent(contract.detected_encoding, encoding_used)
+            detail["equivalent_encoding"] = equivalent
+            status = RuleStatus.PASSED if equivalent else RuleStatus.FAILED
             outcomes.append(RuleOutcome(fallback_rule_id, status, detail=detail))
 
         return outcomes

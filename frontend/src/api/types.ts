@@ -437,6 +437,15 @@ export interface RoleCandidateRecord {
   score: number;
   confidence: "confirmed" | "high" | "medium" | "low";
   reasons: string[];
+  // Role-specific measurements. For `monetary` this carries how much of the
+  // column is negative, so a column accepted WITH returns in it never looks
+  // identical to one that had none.
+  details?: {
+    negative_count?: number;
+    negative_fraction?: number;
+    non_null_count?: number;
+    max_negative_fraction?: number;
+  };
 }
 
 export interface ApplicabilityRecord {

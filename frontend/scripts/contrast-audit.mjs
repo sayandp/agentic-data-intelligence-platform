@@ -21,6 +21,10 @@ import { chromium } from "playwright";
 import { PNG } from "pngjs";
 
 const BASE = "http://localhost:5173";
+const VIEWPORT_WIDTH = 1400;
+//: Tall enough for every page in this app; a page beyond it reports its
+//: unmeasured nodes rather than quietly sampling pixels outside the capture.
+const MAX_CAPTURE_HEIGHT = 12000;
 const THEMES = (process.argv.includes("--theme")
   ? process.argv[process.argv.indexOf("--theme") + 1]
   : "default,dark,aurora"
@@ -38,6 +42,11 @@ const PAGES = [
   // report a clean pass over text that was never on screen.
   { path: "/analytics?run=LATEST", name: "Analytics" },
 ];
+
+// --only <substring> restricts the run to matching pages, for checking one
+// screen against a specific run without waiting on the others.
+const ONLY = process.argv.includes("--only") ? process.argv[process.argv.indexOf("--only") + 1].toLowerCase() : null;
+const ACTIVE_PAGES = ONLY ? PAGES.filter((p) => p.name.toLowerCase().includes(ONLY)) : PAGES;
 
 function srgbToLinear(c) {
   const s = c / 255;
@@ -84,6 +93,20 @@ const COLLECT = () => {
 
     const cs = getComputedStyle(el);
     if (cs.visibility === "hidden" || cs.display === "none" || parseFloat(cs.opacity) === 0) continue;
+
+    // Laid out but NOT PAINTED. Content inside a collapsed <details> keeps a
+    // real bounding rect while nothing of it is on screen, so the pixel
+    // sampler read whatever else occupied those coordinates - which is how
+    // "Baseline for source" (inside the closed "Recently resolved"
+    // disclosure) reported 3.36:1 against a composite of 17.33:1. Neither
+    // number described anything a user could see.
+    //
+    // A closed <details> still paints its <summary>, so that stays measured.
+    const closedDisclosure = el.closest("details:not([open])");
+    if (closedDisclosure && !el.closest("summary")) continue;
+    if (typeof el.checkVisibility === "function" &&
+        !el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true, contentVisibilityAuto: true })) continue;
+
     const rect = el.getBoundingClientRect();
     if (rect.width < 2 || rect.height < 2) continue;
 
@@ -136,7 +159,12 @@ const COLLECT = () => {
       fontSize: parseFloat(cs.fontSize),
       fontWeight: cs.fontWeight,
       needsPixel,
-      rect: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
+      // DOCUMENT coordinates. The viewport is grown to the whole page
+      // before this runs, so scroll offsets are zero and these index
+      // directly into the capture. Pairing a viewport-relative rect with a
+      // shorter capture sampled a clipped sliver for anything straddling
+      // the fold, which invented a 3.35:1 failure on text measuring 17:1.
+      rect: { x: rect.x + window.scrollX, y: rect.y + window.scrollY, w: rect.width, h: rect.height },
     });
   }
   return out;
@@ -192,19 +220,46 @@ for (const theme of THEMES) {
   await page.addInitScript((t) => localStorage.setItem("adip-theme", t), theme);
 
   if (latestRun === null) {
-    const resp = await page.request.get("http://localhost:8000/runs?limit=1");
-    const runs = await resp.json();
-    latestRun = runs[0]?.run_number ?? "";
+    // --run pins LATEST to a specific run. The newest run is usually a small
+    // test fixture, which renders none of the conditional panels (weak
+    // concentration, held-out entities, a monetary column with returns).
+    // Auditing those needs a run that actually has them.
+    const pinned = process.argv.includes("--run") ? process.argv[process.argv.indexOf("--run") + 1] : null;
+    if (pinned) {
+      latestRun = pinned;
+    } else {
+      const resp = await page.request.get("http://localhost:8000/runs?limit=1");
+      const runs = await resp.json();
+      latestRun = runs[0]?.run_number ?? "";
+    }
   }
 
   const themeFailures = [];
   const exempt = [];
   let checked = 0;
+  let skippedOffscreen = 0;
 
-  for (const spec of PAGES) {
+  for (const spec of ACTIVE_PAGES) {
     const url = BASE + spec.path.replace("LATEST", String(latestRun));
-    await page.goto(url);
-    await page.waitForTimeout(1800);
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+    // Wait for the DATA, not a fixed guess. A flat timeout let a slow
+    // /analytics fetch finish in one theme and not another, so the same page
+    // was audited at 403 nodes in one pass and 77 in the next - and a PASS
+    // over 77 nodes is a pass over the loading shell, not the page.
+    await page.waitForLoadState("networkidle", { timeout: 45000 }).catch(() => {});
+    await page.waitForTimeout(1200);
+
+    // Grow the viewport to the whole document instead of stitching a
+    // fullPage screenshot (which hangs on the Plotly pages). With no scroll
+    // offset, viewport coordinates ARE document coordinates, so every rect
+    // indexes correctly into the capture - including everything that used to
+    // sit below the fold and go unmeasured.
+    const pageHeight = await page.evaluate(() =>
+      Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)
+    );
+    const captureHeight = Math.min(pageHeight + 40, MAX_CAPTURE_HEIGHT);
+    await page.setViewportSize({ width: VIEWPORT_WIDTH, height: captureHeight });
+    await page.waitForTimeout(700); // reflow before positions are read
 
     const nodes = await page.evaluate(COLLECT);
     const shot = await page.screenshot({ fullPage: false });
@@ -215,7 +270,15 @@ for (const theme of THEMES) {
         exempt.push({ page: spec.name, reason: n.exempt, text: n.text });
         continue;
       }
-      if (n.rect.y < 0 || n.rect.y > 1000) continue; // outside the captured viewport
+      // Only skip what genuinely falls outside the capture. The old bound
+      // was a hardcoded 1000px that matched no actual viewport: nodes
+      // between the fold and 1000 were sampled from pixels the screenshot
+      // never contained (inventing failures), and everything past 1000 was
+      // silently never audited at all.
+      if (n.rect.y < 0 || n.rect.y + n.rect.h > captureHeight) {
+        skippedOffscreen++;
+        continue;
+      }
       const need = required(n.fontSize, n.fontWeight);
       const cComposite = contrast(n.fg, n.bgComposite);
       // Frosted/gradient surfaces are judged on real pixels, and on the
@@ -245,7 +308,7 @@ for (const theme of THEMES) {
     }
   }
 
-  results[theme] = { checked, failures: themeFailures, exempt };
+  results[theme] = { checked, failures: themeFailures, exempt, skippedOffscreen };
   await ctx.close();
 }
 

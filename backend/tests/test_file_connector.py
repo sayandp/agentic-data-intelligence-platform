@@ -1,6 +1,6 @@
 import pytest
 
-from app.connectors.file_connector import FileConnector
+from app.connectors.file_connector import SNIFF_SAMPLE_BYTES, FileConnector, encodings_are_equivalent
 from app.contract import SourceType
 
 
@@ -112,3 +112,95 @@ def test_unsupported_extension_raises(tmp_path):
 
     with pytest.raises(ValueError):
         FileConnector(source_id="src-5", file_path=str(path)).fetch()
+
+
+# ---- Encoding detected from a SAMPLE, applied to the WHOLE file ----
+
+
+def _ascii_prefixed_utf8_csv(path, non_ascii_text: str = "Gift Voucher £80.00") -> int:
+    """A CSV whose first SNIFF_SAMPLE_BYTES are pure ASCII and whose first
+    non-ASCII character appears well past that window.
+
+    This is the shape of every large real-world export: an ASCII header and
+    thousands of ASCII rows, with a currency symbol or accented product name
+    appearing much later. It is also the shape that defeats sniffing.
+    """
+    rows = ["id,description"]
+    filler = "x" * 60
+    # Comfortably past the 65536-byte sniff window before anything non-ASCII.
+    while sum(len(r) + 1 for r in rows) < SNIFF_SAMPLE_BYTES * 2:
+        rows.append(f"{len(rows)},{filler}")
+    marker_row = len(rows) - 1
+    rows.append(f"{len(rows)},{non_ascii_text}")
+    path.write_bytes(("\n".join(rows) + "\n").encode("utf-8"))
+    return marker_row
+
+
+def test_a_non_ascii_byte_past_the_sniff_window_still_reads(tmp_path):
+    """The bug this pins: chardet saw only the first 65536 bytes, reported
+    `ascii` with confidence 1.0, and the full read then died on a `£`
+    megabytes later - failing the whole ingest with a bare UnicodeDecodeError.
+
+    An `ascii` verdict is a statement about the sample, never about the file.
+    """
+    path = tmp_path / "ascii_prefix.csv"
+    _ascii_prefixed_utf8_csv(path)
+
+    contract = FileConnector(source_id="src-sniff", file_path=str(path)).fetch()
+
+    # Detection still honestly reports what it saw...
+    assert contract.detected_encoding == "ascii"
+    # ...but the file was read as UTF-8, of which ASCII is a strict subset,
+    # so nothing is lost and the later bytes decode.
+    assert contract.connector_metadata["encoding_used"] == "utf-8"
+    assert contract.data.iloc[-1]["description"] == "Gift Voucher £80.00"
+    # Genuinely the pound sign, not a replacement character.
+    assert "�" not in contract.data.iloc[-1]["description"]
+
+
+def test_an_encoding_that_fails_only_late_falls_back_and_says_so(tmp_path):
+    """Even with the ascii->utf-8 promotion, a file can decode cleanly for
+    65536 bytes and then not. The fallback has to guard the REAL read, not a
+    sample of it - and reaching latin-1 means the text may be mojibake, so
+    it is reported rather than passed off as a clean read."""
+    path = tmp_path / "late_cp1252.csv"
+    rows = ["id,description"]
+    filler = "x" * 60
+    while sum(len(r) + 1 for r in rows) < SNIFF_SAMPLE_BYTES * 2:
+        rows.append(f"{len(rows)},{filler}")
+    # 0x92 is a valid cp1252/latin-1 byte and an INVALID utf-8 start byte.
+    blob = ("\n".join(rows) + "\n").encode("ascii") + b"99999,Bob\x92s Widgets\n"
+    path.write_bytes(blob)
+
+    contract = FileConnector(source_id="src-late", file_path=str(path)).fetch()
+
+    assert contract.connector_metadata["encoding_used"] == "latin-1"
+    warnings = contract.connector_metadata.get("warnings", [])
+    assert warnings and "did not decode as utf-8" in warnings[0]
+    assert "may be misrepresented" in warnings[0]
+    assert len(contract.data) == len(rows)
+
+
+def test_a_clean_utf8_read_reports_no_fallback_warning(tmp_path):
+    """The warning must mean something - it cannot appear on a normal read."""
+    path = tmp_path / "clean.csv"
+    path.write_text("name,city\nJosé,São Paulo\n", encoding="utf-8")
+
+    contract = FileConnector(source_id="src-clean", file_path=str(path)).fetch()
+
+    assert contract.connector_metadata["encoding_used"] == "utf-8"
+    assert "warnings" not in contract.connector_metadata
+
+
+def test_widening_ascii_to_utf8_is_not_reported_as_a_fallback():
+    """The connector widens an `ascii` detection to utf-8 because chardet
+    only saw the sample. That is not a substitution and must not trip the
+    corruption rule - a genuine latin-1 last resort still must."""
+    assert encodings_are_equivalent("ascii", "utf-8")
+    assert encodings_are_equivalent("US-ASCII", "utf-8")
+    assert encodings_are_equivalent("utf-8", "utf-8")
+    # Narrow on purpose: only ASCII -> UTF-8, only in that direction.
+    assert not encodings_are_equivalent("utf-8", "latin-1")
+    assert not encodings_are_equivalent("ascii", "latin-1")
+    assert not encodings_are_equivalent("utf-8", "ascii")
+    assert not encodings_are_equivalent(None, "utf-8")

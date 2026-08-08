@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ApiError, apiFetch } from "../api/client";
-import type { AnalysisFindingRecord, AnalysisResultRecord, AnalyticsRecord } from "../api/types";
+import type { AnalysisFindingRecord, AnalysisResultRecord, AnalyticsRecord, RoleCandidateRecord } from "../api/types";
 import { Badge, Button, Card, ErrorMessage, Muted, RunLabel, type BadgeTone } from "../components/ui";
 import { RunNotFoundHelp, RunPicker, useRunSelection } from "../components/RunPicker";
 import { chartForFinding, clusterScatter, segmentBar, type ChartSpec } from "../lib/analyticsCharts";
@@ -141,6 +141,43 @@ function ConcentrationNote({ finding }: { finding: AnalysisFindingRecord }) {
     );
   }
   return <p className="mb-4 text-sm text-ink-muted">{note}</p>;
+}
+
+/** A monetary column is allowed a small share of negatives - returns and
+ *  refunds are ordinary transaction data. When any are present the count is
+ *  stated NEXT TO THE ROLE, so "accepted despite returns" never looks the
+ *  same as "had none". Silence here would hide the one fact that changes how
+ *  every summed figure below should be read. */
+function NegativeValueNote({ candidate }: { candidate: RoleCandidateRecord }) {
+  const count = candidate.details?.negative_count ?? 0;
+  const fraction = candidate.details?.negative_fraction;
+  if (count <= 0) return null;
+  const pct = typeof fraction === "number" ? `${(fraction * 100).toFixed(fraction < 0.001 ? 4 : 2)}%` : null;
+  return (
+    <span className="ml-1 text-ink-faint">
+      {count.toLocaleString()} negative{pct ? ` (${pct})` : ""} &mdash; returns net off
+    </span>
+  );
+}
+
+/** Who is NOT in the A/B/C bands, and why. An entity that returned
+ *  everything nets to zero and is held out of the ranking; leaving that
+ *  unsaid would make the bands look like they covered everyone. */
+function NonContributingNote({ finding }: { finding: AnalysisFindingRecord }) {
+  const p = finding.payload;
+  return (
+    <div className="mt-3 rounded-md border border-border bg-surface-sunken p-4">
+      <p className="text-sm font-medium text-ink">
+        {String(p.entity_count)} held out of the bands (net zero or below)
+      </p>
+      <p className="mt-1 text-sm text-ink-muted">{String(p.note)}</p>
+      {Array.isArray(p.examples) && p.examples.length > 0 && (
+        <p className="mt-1 text-xs text-ink-faint">
+          For example: <span className="font-mono">{(p.examples as string[]).slice(0, 5).join(", ")}</span>
+        </p>
+      )}
+    </div>
+  );
 }
 
 /** The detector deliberately refuses to promote a low-confidence candidate
@@ -311,6 +348,7 @@ function ResultCard({ result }: { result: AnalysisResultRecord }) {
 
   const repeat = result.findings.find((f) => f.finding_type === "repeat_behaviour");
   const concentration = result.findings.find((f) => f.finding_type === "concentration_curve");
+  const nonContributing = result.findings.find((f) => f.finding_type === "non_contributing_entities");
 
   return (
     <Card title={title}>
@@ -356,6 +394,8 @@ function ResultCard({ result }: { result: AnalysisResultRecord }) {
           </table>
         </div>
       )}
+
+      {nonContributing && <NonContributingNote finding={nonContributing} />}
 
       {chart && <AnalyticsChart spec={chart} id={`chart-${result.analysis}`} />}
 
@@ -428,6 +468,7 @@ export default function AnalyticsPage() {
                 <span className="text-ink-muted">{role}</span>{" "}
                 <span className="font-mono text-ink">{candidate.column}</span>{" "}
                 <Badge value={candidate.confidence} tone={CONFIDENCE_TONES[candidate.confidence]} />
+                <NegativeValueNote candidate={candidate} />
               </span>
             ))}
           </div>

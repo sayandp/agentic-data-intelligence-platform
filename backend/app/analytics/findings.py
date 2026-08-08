@@ -35,6 +35,7 @@ class AnalysisFindingType(str, Enum):
     REPEAT_BEHAVIOUR = "repeat_behaviour"        # repeat rate, gaps, inactivity flag
     ASSOCIATION_RULE = "association_rule"        # basket rule with support/confidence/lift
     LIFETIME_VALUE = "lifetime_value"            # historical, descriptive CLV
+    NON_CONTRIBUTING_ENTITIES = "non_contributing_entities"  # net <= 0 over the period
 
 
 class AnalysisEvidence(BaseModel):
@@ -190,10 +191,40 @@ class LifetimeValuePayload(BaseModel):
     margin_rate: float | None = None
 
 
+class NonContributingEntitiesPayload(BaseModel):
+    """Entities whose value over the period nets to zero or below.
+
+    A real and ordinary case once returns and refunds are admitted into a
+    monetary column: an entity that returned everything it bought nets to
+    zero, one issued a credit nets below it.
+
+    These are held OUT of the A/B/C bands and the concentration curve, and
+    reported here instead. Two reasons, both about not misleading a reader:
+    a cumulative share is only well-defined over non-negative parts (mixing
+    signs in a descending cumulative sum sends the curve above 100% and back
+    down), and an entity that returned everything is not a small buyer -
+    filing it in band C beside genuinely small ones would say something
+    false about both.
+    """
+
+    finding_type: Literal[AnalysisFindingType.NON_CONTRIBUTING_ENTITIES] = AnalysisFindingType.NON_CONTRIBUTING_ENTITIES
+    entity_count: int
+    zero_net_count: int          # netted to exactly 0
+    negative_net_count: int      # netted below 0
+    #: Sum of these entities' nets. Zero or below by construction.
+    net_value_total: float
+    #: What the ranked total would have been with these included, so a
+    #: reader can reconcile the two numbers rather than wonder.
+    combined_value_total: float
+    examples: list[str] = Field(default_factory=list)
+    note: str = ""
+
+
 AnalysisFindingPayload = Annotated[
     Union[
         ConcentrationBandPayload,
         ConcentrationCurvePayload,
+        NonContributingEntitiesPayload,
         SegmentProfilePayload,
         RetentionMatrixPayload,
         RepeatBehaviourPayload,

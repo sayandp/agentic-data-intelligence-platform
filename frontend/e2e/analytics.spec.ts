@@ -21,7 +21,14 @@ const ANALYTICS_FIXTURE = {
     minimum_usable_confidence: "medium",
     assigned: {
       entity_id: { column: "customer_id", role: "entity_id", score: 0.8, confidence: "high", reasons: [] },
-      monetary: { column: "revenue", role: "monetary", score: 0.85, confidence: "high", reasons: [] },
+      monetary: {
+        column: "revenue",
+        role: "monetary",
+        score: 0.85,
+        confidence: "high",
+        reasons: [],
+        details: { negative_count: 5, negative_fraction: 5e-6, non_null_count: 1067371, max_negative_fraction: 0.05 },
+      },
     },
     unconfirmed_candidates: [],
   },
@@ -81,6 +88,24 @@ const ANALYTICS_FIXTURE = {
               "The top 20% of customer_id hold 37.4% of total value. That is below the 50% floor this check uses, so concentration is weak for this data and the A/B/C bands separate it less sharply than the method's name implies.",
           },
           evidence: { sample_size: 500, entity_count: 500, total_value: 10000, parameters: {} },
+        },
+        {
+          id: "abc_pareto-non_contributing_entities-2",
+          analysis: "abc_pareto",
+          finding_type: "non_contributing_entities",
+          columns: ["customer_id", "revenue"],
+          payload: {
+            finding_type: "non_contributing_entities",
+            entity_count: 284,
+            zero_net_count: 283,
+            negative_net_count: 1,
+            net_value_total: -147614.08,
+            combined_value_total: 4962621.63,
+            examples: ["Adjust bad debt", "17129c", "20713"],
+            note:
+              "284 customer_id value(s) net to zero or below over this period - 283 netting to exactly zero and 1 netting below zero (-147,614.08 combined). They are held out of the A/B/C bands and the concentration curve, which describe how positive value is distributed. Ranking them alongside small contributors would present a full return as a small purchase.",
+          },
+          evidence: { sample_size: 500, entity_count: 284, total_value: -147614.08, parameters: {} },
         },
       ],
     },
@@ -242,5 +267,29 @@ test.describe("Confirming a column role", () => {
     expect(posted).toEqual({ role: "item_id", column: "customer_id" });
     // The confirmation is shown as a human decision, with a way back.
     await expect(page.getByRole("button", { name: "Clear" })).toBeVisible();
+  });
+});
+
+test.describe("Returns in a monetary column", () => {
+  test("says the monetary role was accepted WITH negatives present", async ({ page }) => {
+    await stub(page);
+    await page.goto("/analytics?run=901");
+
+    // Next to the role, not buried in a details pane: this is the one fact
+    // that changes how every summed figure on the page should be read.
+    const rolesLine = page.locator("div").filter({ hasText: /^Run #901.*Roles detected:/ }).last();
+    await expect(rolesLine).toContainText("5 negative");
+    await expect(rolesLine).toContainText("returns net off");
+  });
+
+  test("reports entities held out of the bands instead of hiding them", async ({ page }) => {
+    await stub(page);
+    await page.goto("/analytics?run=901");
+
+    const card = page.locator("section, div").filter({ hasText: "ABC / Pareto concentration" }).last();
+    await expect(card.getByText("284 held out of the bands (net zero or below)", { exact: true })).toBeVisible();
+    await expect(card.getByText(/283 netting to exactly zero and 1 netting below zero/)).toBeVisible();
+    // Named, so a reader can go and look at them.
+    await expect(card.getByText(/Adjust bad debt/)).toBeVisible();
   });
 });

@@ -16,7 +16,13 @@ import pytest
 from app.analytics.applicability import AnalysisKind, build_applicability_report
 from app.analytics.findings import AnalysisFindingType, BusinessAnalyticsFindings
 from app.analytics.pareto import run_abc_pareto
-from app.analytics.roles import ColumnRole, Confidence, SemanticColumnDetector, apply_confirmed_roles
+from app.analytics.roles import (
+    DEFAULT_MAX_NEGATIVE_FRACTION,
+    ColumnRole,
+    Confidence,
+    SemanticColumnDetector,
+    apply_confirmed_roles,
+)
 
 
 def _wide_orders(n: int = 400, seed: int = 0) -> pd.DataFrame:
@@ -107,7 +113,11 @@ def test_a_row_counter_is_not_an_entity_identifier():
     assert entity is None or entity.column != "row_num"
 
 
-def test_a_negative_column_is_never_monetary():
+def test_a_mostly_negative_column_is_never_monetary():
+    """Renamed from "a negative column is never monetary": the rule is now a
+    FRACTION ceiling, so a few refunds no longer disqualify a price column.
+    The assertion is unchanged - `balance_change` is ~50% negative, which is
+    what this always actually tested and is still rejected."""
     df = pd.DataFrame({"customer": ["a", "b"] * 30, "balance_change": np.linspace(-50, 50, 60)})
     detection = SemanticColumnDetector().detect(df)
 
@@ -431,3 +441,58 @@ def test_an_unknown_role_string_is_skipped_rather_than_crashing():
     detection = apply_confirmed_roles(SemanticColumnDetector().detect(df), {"vibes": "units"}, df.columns)
 
     assert detection.stale_confirmations[0]["role"] == "vibes"
+
+
+# ---- Monetary: a negative FRACTION ceiling, not a presence test ----
+
+
+def test_a_column_with_0_0005_percent_negatives_qualifies_and_records_the_fraction():
+    """Online Retail II's shape: 5 negatives in 1,067,371 rows, from bad-debt
+    adjustments. An any-negative rule rejected `Price` - unambiguously the
+    monetary column - and took four analyses down with it."""
+    rng = np.random.default_rng(0)
+    values = np.abs(rng.lognormal(2, 1, 200_000))
+    values[0] = -500.0  # 1 in 200,000 = 0.0005%
+    df = pd.DataFrame({"Price": values})
+
+    detection = SemanticColumnDetector().detect(df)
+    best = detection.best(ColumnRole.MONETARY)
+
+    assert best is not None and best.column == "Price"
+    assert best.details["negative_count"] == 1
+    assert best.details["negative_fraction"] == pytest.approx(5e-06)
+    # Recorded, not silent: the reason says it was accepted WITH returns.
+    assert "negative value" in best.reasons[0]
+
+
+def test_a_column_that_is_40_percent_negative_is_still_rejected():
+    """The rule's real job: keeping profit/delta/change/variance columns out
+    of the monetary slot. Those run 30-50% negative, an order of magnitude
+    clear of transactional noise."""
+    rng = np.random.default_rng(1)
+    df = pd.DataFrame({"profit_delta": rng.normal(0, 50, 10_000)})
+
+    detection = SemanticColumnDetector().detect(df)
+
+    assert detection.best(ColumnRole.MONETARY) is None
+    rejected = [c for c in detection.rejected(ColumnRole.MONETARY) if c.column == "profit_delta"][0]
+    assert "over the 5% ceiling" in rejected.reasons[0]
+    # The measurement travels with the rejection too, not only the verdict.
+    assert rejected.details["negative_fraction"] > 0.4
+
+
+def test_the_negative_ceiling_is_configurable():
+    df = pd.DataFrame({"amount": [10.0] * 90 + [-1.0] * 10})  # exactly 10% negative
+
+    assert SemanticColumnDetector(max_negative_fraction=0.2).detect(df).best(ColumnRole.MONETARY) is not None
+    assert SemanticColumnDetector(max_negative_fraction=0.05).detect(df).best(ColumnRole.MONETARY) is None
+
+
+def test_the_ceiling_is_reported_alongside_the_measurement():
+    """A fraction with no ceiling beside it is not something a reader can
+    judge - they would have to know the rule to interpret the number."""
+    df = pd.DataFrame({"amount": [10.0] * 99 + [-1.0]})
+
+    best = SemanticColumnDetector().detect(df).best(ColumnRole.MONETARY)
+
+    assert best.details["max_negative_fraction"] == DEFAULT_MAX_NEGATIVE_FRACTION

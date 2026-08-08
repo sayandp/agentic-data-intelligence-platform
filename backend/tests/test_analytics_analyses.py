@@ -637,3 +637,156 @@ def test_the_concentration_note_carries_no_causal_vocabulary():
         note = _curve(_pareto(values)).concentration_note.lower()
         for word in _CAUSAL_WORDS:
             assert word not in note, f"causal vocabulary {word!r} reached the concentration note"
+
+
+# ---- Entities that net to zero or below ----
+
+
+def _netting_frame():
+    """alice/bob/carol contribute; `returner` bought and returned the same
+    amount (nets 0); `refunder` was credited more than they bought (nets -70)."""
+    rows = [
+        ("alice", 500.0), ("alice", 300.0),
+        ("bob", 200.0),
+        ("carol", 100.0),
+        ("returner", 100.0), ("returner", -100.0),
+        ("refunder", 50.0), ("refunder", -120.0),
+    ]
+    return pd.DataFrame(rows, columns=["customer", "amount"])
+
+
+def _run_netting_pareto():
+    df = _netting_frame()
+    return run_abc_pareto(df, confirmed_detection(len(df), entity_id="customer", monetary="amount"))
+
+
+def test_the_concentration_curve_stays_monotonic_when_returns_are_present():
+    """THE defect this behaviour exists for. Ranking descending and taking a
+    cumulative sum over mixed signs climbs past 100% on the positives and
+    descends back on the negatives - measured at 106.8% before the fix. A
+    cumulative share above 1.0 is not a Pareto curve."""
+    curve = _curve(_run_netting_pareto())
+
+    shares = curve.cumulative_value_share
+    assert shares == sorted(shares), "a cumulative share must never decrease"
+    assert max(shares) <= 1.0 + 1e-9, "a cumulative share must never exceed 100%"
+    assert shares[-1] == pytest.approx(1.0)
+
+
+def test_an_entity_netting_to_zero_does_not_land_in_band_c():
+    """A full returner is not a small buyer. Filing it beside genuinely small
+    contributors would say something false about both."""
+    result = _run_netting_pareto()
+    banded = {
+        entity
+        for f in result.findings
+        if f.finding_type is AnalysisFindingType.CONCENTRATION_BAND
+        for entity in f.payload.top_entities
+    }
+
+    assert "returner" not in banded
+    assert "refunder" not in banded
+    assert {"alice", "bob", "carol"} <= banded
+
+
+def test_entities_netting_to_zero_or_below_are_reported_not_dropped():
+    """Held out of the ranking, never out of the OUTPUT - the difference
+    between a documented exclusion and a silent one."""
+    result = _run_netting_pareto()
+    held = [f for f in result.findings if f.finding_type is AnalysisFindingType.NON_CONTRIBUTING_ENTITIES]
+
+    assert len(held) == 1
+    p = held[0].payload
+    assert p.entity_count == 2
+    assert p.zero_net_count == 1        # returner
+    assert p.negative_net_count == 1    # refunder
+    assert p.net_value_total == pytest.approx(-70.0)
+    assert set(p.examples) == {"returner", "refunder"}
+    assert "held out of the A/B/C bands" in p.note
+
+
+def test_both_denominators_are_reported_so_they_can_be_reconciled():
+    """The ranked total (1100, contributors only) and the combined total
+    (1030, everything) legitimately differ. Publishing one without the other
+    would look like an arithmetic error."""
+    result = _run_netting_pareto()
+
+    assert result.parameters["total_value"] == pytest.approx(1100.0)
+    assert result.parameters["combined_value_total"] == pytest.approx(1030.0)
+    assert result.parameters["non_contributing_entity_count"] == 2
+
+
+def test_band_shares_still_sum_to_one_over_the_contributing_entities():
+    result = _run_netting_pareto()
+    bands = [f.payload for f in result.findings if f.finding_type is AnalysisFindingType.CONCENTRATION_BAND]
+
+    assert sum(b.value_share for b in bands) == pytest.approx(1.0)
+    assert sum(b.entity_count for b in bands) == 3
+
+
+def test_pareto_refuses_when_every_entity_nets_to_zero_or_below():
+    """Not a crash and not an empty chart - a stated refusal naming the
+    situation, like every other unmet precondition in this agent."""
+    df = pd.DataFrame(
+        [("a", 100.0), ("a", -100.0), ("b", 50.0), ("b", -80.0)],
+        columns=["customer", "amount"],
+    )
+
+    result = run_abc_pareto(df, confirmed_detection(len(df), entity_id="customer", monetary="amount"))
+
+    assert result.ran is False
+    assert "net to zero or below" in result.not_run_reason
+    assert result.parameters["non_contributing_entity_count"] == 2
+
+
+def test_returns_net_off_rather_than_being_dropped():
+    """A returned line reduces its entity's total; it is not ignored. alice
+    has no returns and totals 800; a customer who bought 300 and returned
+    100 must total 200, not 300."""
+    df = pd.DataFrame(
+        [("alice", 500.0), ("alice", 300.0), ("mixed", 300.0), ("mixed", -100.0)],
+        columns=["customer", "amount"],
+    )
+
+    result = run_abc_pareto(df, confirmed_detection(len(df), entity_id="customer", monetary="amount"))
+    bands = {b.payload.top_entities[0]: b.payload.value_total for b in result.findings
+             if b.finding_type is AnalysisFindingType.CONCENTRATION_BAND}
+
+    assert result.parameters["total_value"] == pytest.approx(1000.0)  # 800 + 200, not 800 + 300
+    assert bands["alice"] == pytest.approx(800.0)
+
+
+def test_rfm_reports_that_value_shares_are_meaningless_on_a_negative_total():
+    """Dividing by a negative denominator reported a net-negative segment as
+    holding a POSITIVE share of value. Shares are zeroed and the parameters
+    say why, rather than publishing a confident wrong number."""
+    base = pd.Timestamp("2024-01-01")
+    rows = []
+    for cust, amounts in [("a", [100.0, -300.0]), ("b", [50.0, -50.0])]:
+        for i, amount in enumerate(amounts):
+            rows.append((cust, base + pd.Timedelta(days=i * 10), amount))
+    df = pd.DataFrame(rows, columns=["customer", "ts", "amount"])
+
+    result = run_rfm(df, confirmed_detection(len(df), entity_id="customer", event_date="ts", monetary="amount"))
+
+    assert result.ran
+    assert result.parameters["value_shares_meaningful"] is False
+    assert all(f.payload.value_share == 0.0 for f in result.findings)
+
+
+def test_rfm_ranks_a_net_returner_into_the_lowest_monetary_band():
+    """RFM ranks rather than decomposing a total, so a net-negative entity is
+    meaningful here and is NOT held out - it belongs at the bottom."""
+    base = pd.Timestamp("2024-01-01")
+    rows = []
+    spec = [("big", [900.0, 800.0]), ("mid", [300.0]), ("small", [40.0]), ("returner", [100.0, -160.0])]
+    for cust, amounts in spec:
+        for i, amount in enumerate(amounts):
+            rows.append((cust, base + pd.Timedelta(days=i * 5), amount))
+    df = pd.DataFrame(rows, columns=["customer", "ts", "amount"])
+
+    result = run_rfm(df, confirmed_detection(len(df), entity_id="customer", event_date="ts", monetary="amount"))
+    entities = {e for f in result.findings for e in [f.payload.segment]}
+
+    assert result.ran and entities, "the returner is segmented, not discarded"
+    assert result.parameters["net_negative_entity_count"] == 1

@@ -132,6 +132,14 @@ def run_rfm(
     scored = score_entities(features)
     total_value = float(scored["monetary"].sum())
     entity_count = int(len(scored))
+    # RFM RANKS entities, it does not decompose a total, so a net-negative
+    # entity is meaningful here: it scores in the lowest monetary quintile,
+    # which is exactly where a customer who returned everything belongs.
+    # `value_share` is the one figure that stops meaning anything when the
+    # OVERALL total is zero or below - dividing by a negative denominator
+    # would report a net-negative segment as holding a positive share. In
+    # that case shares are reported as 0.0 and the parameters say why.
+    shares_are_meaningful = total_value > 0
 
     findings: list[AnalysisFinding] = []
     # Deterministic order: largest segment first, ties by name.
@@ -150,7 +158,7 @@ def run_rfm(
                     entity_count=int(len(members)),
                     entity_share=round(len(members) / entity_count, 6),
                     value_total=round(value_total, 6),
-                    value_share=round(value_total / total_value, 6) if total_value else 0.0,
+                    value_share=round(value_total / total_value, 6) if shares_are_meaningful else 0.0,
                     centre={
                         "recency_days": round(float(members["recency_days"].mean()), 3),
                         "frequency": round(float(members["frequency"].mean()), 3),
@@ -187,5 +195,10 @@ def run_rfm(
                 for n, r, f, m in segment_rules
             ],
             "unsegmented_name": UNSEGMENTED_NAME,
+            "total_value": round(total_value, 6),
+            # Says so rather than quietly emitting zeros. Only ever False on
+            # data whose monetary column nets to zero or below overall.
+            "value_shares_meaningful": shares_are_meaningful,
+            "net_negative_entity_count": int((scored["monetary"] < 0).sum()),
         },
     )

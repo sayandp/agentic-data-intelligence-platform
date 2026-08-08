@@ -100,25 +100,67 @@ _COST_NAME = re.compile(r"(cost|expense|cogs|fee|charge|discount|refund|tax)", r
 #: a quantity does, so the name is the only thing that separates them.
 _IDENTIFIER_NAME = re.compile(r"(^|_)(id|key|code|uuid|guid|number|no)$|^(id|key|code)$", re.I)
 
+#: Share of negative values above which a numeric column is not a monetary
+#: magnitude.
+#:
+#: This rule's real job is keeping profit/delta/change/variance columns out
+#: of the monetary slot, and those run 30-50% negative. Real transaction
+#: data is not remotely near that: returns, refunds and bad-debt
+#: adjustments are normal and rare. Online Retail II has 5 negatives in
+#: 1,067,371 rows - 0.0005% - and an any-negative rule rejected `Price`,
+#: which is unambiguously the monetary column, taking four analyses down
+#: with it.
+#:
+#: 5% sits an order of magnitude clear of both populations, so the
+#: separation does not depend on where exactly inside that gap the line is
+#: drawn.
+DEFAULT_MAX_NEGATIVE_FRACTION = 0.05
+
+
+def negative_value_stats(series: pd.Series) -> dict:
+    """How much of a numeric column is negative.
+
+    One place, used both to DECIDE the monetary role and to REPORT it, so
+    the number a user is shown is by construction the number the rule
+    tested. Computed over non-null values: nulls are absent, not negative.
+    """
+    non_null = series.dropna()
+    if non_null.empty:
+        return {"negative_count": 0, "negative_fraction": 0.0, "non_null_count": 0}
+    negative_count = int((non_null < 0).sum())
+    return {
+        "negative_count": negative_count,
+        "negative_fraction": round(negative_count / len(non_null), 6),
+        "non_null_count": int(len(non_null)),
+    }
+
 
 class RoleCandidate:
     """One column's fitness for one role, with the reasoning kept."""
 
-    def __init__(self, column: str, role: ColumnRole, score: float, reasons: list[str]):
+    def __init__(self, column: str, role: ColumnRole, score: float, reasons: list[str], details: dict | None = None):
         self.column = column
         self.role = role
         self.score = round(score, 3)
         self.confidence = _band(score)
         self.reasons = reasons
+        #: Role-specific measurements a reader needs alongside the verdict.
+        #: For MONETARY this carries the negative count and fraction, so a
+        #: column accepted WITH returns present says so rather than looking
+        #: like a clean non-negative column.
+        self.details = details or {}
 
     def to_dict(self) -> dict:
-        return {
+        payload = {
             "column": self.column,
             "role": self.role.value,
             "score": self.score,
             "confidence": self.confidence.value,
             "reasons": self.reasons,
         }
+        if self.details:
+            payload["details"] = self.details
+        return payload
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"RoleCandidate({self.column!r}, {self.role.value}, {self.score}, {self.confidence.value})"
@@ -267,18 +309,36 @@ def _score_event_date(series: pd.Series, column: str, rows: int) -> tuple[float,
     return min(1.0, score + _name_bonus(column, ColumnRole.EVENT_DATE)), reasons
 
 
-def _score_monetary(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+def _score_monetary(
+    series: pd.Series,
+    column: str,
+    rows: int,
+    max_negative_fraction: float = DEFAULT_MAX_NEGATIVE_FRACTION,
+) -> tuple[float, list[str]]:
     if column_kind(series) is not ColumnKind.NUMERIC:
         return 0.0, ["not a numeric column"]
     non_null = series.dropna()
     if non_null.empty:
         return 0.0, ["column is entirely null"]
-    if bool((non_null < 0).any()):
-        return 0.0, ["contains negative values - not a monetary magnitude"]
+
+    # A FRACTION, not a presence test. A handful of refunds does not stop a
+    # price column being money; a column that is a third negative is a
+    # profit/delta/change measure, which is a different thing entirely.
+    negatives = negative_value_stats(series)
+    if negatives["negative_fraction"] > max_negative_fraction:
+        return 0.0, [
+            f"{negatives['negative_fraction']:.1%} of values are negative "
+            f"(over the {max_negative_fraction:.0%} ceiling) - reads as a profit/change measure, "
+            "not a monetary magnitude"
+        ]
     if float(non_null.max()) <= 0:
         return 0.0, ["no positive values"]
 
-    reasons = ["non-negative numeric"]
+    reasons = ["non-negative numeric"] if not negatives["negative_count"] else [
+        f"numeric, with {negatives['negative_count']:,} negative value(s) "
+        f"({negatives['negative_fraction']:.4%}) - within the {max_negative_fraction:.0%} ceiling, "
+        "consistent with returns or refunds"
+    ]
     score = 0.4
     named_monetary = bool(_NAME_HINTS[ColumnRole.MONETARY].search(column))
     # Integer-valued and small reads as a count, not money - UNLESS the name
@@ -366,23 +426,49 @@ class SemanticColumnDetector:
     from "no column was even considered".
     """
 
-    def __init__(self, minimum_usable: Confidence = MINIMUM_USABLE_CONFIDENCE):
+    def __init__(
+        self,
+        minimum_usable: Confidence = MINIMUM_USABLE_CONFIDENCE,
+        max_negative_fraction: float = DEFAULT_MAX_NEGATIVE_FRACTION,
+    ):
         self.minimum_usable = minimum_usable
+        self.max_negative_fraction = max_negative_fraction
+
+    def _scorers(self):
+        """Monetary is bound to this detector's negative ceiling; the rest
+        take no configuration."""
+        bound = dict(_SCORERS)
+        bound[ColumnRole.MONETARY] = lambda series, column, rows: _score_monetary(
+            series, column, rows, max_negative_fraction=self.max_negative_fraction
+        )
+        return bound
 
     def detect(self, df: pd.DataFrame) -> "RoleDetection":
         rows = len(df)
         candidates: list[RoleCandidate] = []
+        scorers = self._scorers()
 
         for column in df.columns:
             series = df[column]
-            for role, scorer in _SCORERS.items():
+            for role, scorer in scorers.items():
                 score, reasons = scorer(series, str(column), rows)
+                # The negative count/fraction travels WITH the monetary
+                # candidate, accepted or rejected. A `Price` column taken
+                # despite 5 refunds must not look identical to one that
+                # never had a negative in it.
+                details = (
+                    negative_value_stats(series)
+                    if role is ColumnRole.MONETARY and column_kind(series) is ColumnKind.NUMERIC
+                    else None
+                )
+                if details is not None:
+                    details["max_negative_fraction"] = self.max_negative_fraction
                 # Zero-score candidates are RETAINED. They carry the reason a
                 # column was ruled out, and the applicability report needs
                 # exactly that to say "closest candidate: `x` - rejected
                 # because ...". They can never be used: _best() filters on
                 # the confidence band, not on presence in this list.
-                candidates.append(RoleCandidate(str(column), role, score, reasons))
+                candidates.append(RoleCandidate(str(column), role, score, reasons, details=details))
 
         # ITEM_ID is the one role that cannot be judged from a column alone:
         # it is defined by grouping WITHIN a transaction, so it needs the

@@ -23,6 +23,7 @@ from app.analytics.findings import (
     BusinessAnalysisResult,
     ConcentrationBandPayload,
     ConcentrationCurvePayload,
+    NonContributingEntitiesPayload,
 )
 from app.analytics.roles import ColumnRole, RoleDetection
 
@@ -77,6 +78,21 @@ def _concentration_note(top_share: float, entity_label: str, taken_over: int, en
     return (
         f"{headline} That is below the {floor:.0%} floor this check uses, so concentration is weak for this "
         "data and the A/B/C bands separate it less sharply than the method's name implies."
+    )
+
+
+def _non_contributing_note(entity_label: str, zero_net: int, negative_net: int, net_total: float) -> str:
+    """States what was held out and why, in one sentence a reader can act on."""
+    parts = []
+    if zero_net:
+        parts.append(f"{zero_net} netting to exactly zero")
+    if negative_net:
+        parts.append(f"{negative_net} netting below zero ({net_total:,.2f} combined)")
+    breakdown = " and ".join(parts)
+    return (
+        f"{zero_net + negative_net} {entity_label} value(s) net to zero or below over this period - {breakdown}. "
+        "They are held out of the A/B/C bands and the concentration curve, which describe how positive value is "
+        "distributed. Ranking them alongside small contributors would present a full return as a small purchase."
     )
 
 
@@ -136,13 +152,34 @@ def run_abc_pareto(
         totals = frame.groupby(entity_column, observed=True)[value_column].sum()
         entity_label = entity_column
 
+    # Entities that net to zero or below are held out of the ranking. A
+    # monetary column may now contain returns (app/analytics/roles.py's
+    # negative-fraction ceiling), and a descending cumulative sum over mixed
+    # signs is not a concentration curve: it climbs past 100% on the
+    # positives and descends back on the negatives. They are reported as
+    # their own finding below - never dropped silently, never filed in band
+    # C where a full returner would read as a small buyer.
+    combined_value_total = float(totals.sum())
+    non_contributing = totals[totals <= 0]
+    totals = totals[totals > 0]
+
     total_value = float(totals.sum())
     if total_value <= 0:
+        detail = (
+            f"all {len(non_contributing)} {entity_label} value(s) net to zero or below"
+            if len(non_contributing)
+            else f"`{value_column}` sums to {total_value:g}"
+        )
         return BusinessAnalysisResult(
             analysis=analysis,
             ran=False,
-            not_run_reason=f"`{value_column}` sums to {total_value:g}; concentration is undefined without positive total value",
-            parameters={"band_cutoffs": list(band_cutoffs), "value_column": value_column},
+            not_run_reason=f"{detail}; concentration is undefined without positive total value",
+            parameters={
+                "band_cutoffs": list(band_cutoffs),
+                "value_column": value_column,
+                "non_contributing_entity_count": int(len(non_contributing)),
+                "combined_value_total": round(combined_value_total, 6),
+            },
         )
 
     # Deterministic order: value descending, ties broken by entity name so
@@ -247,6 +284,35 @@ def run_abc_pareto(
         )
     )
 
+    if len(non_contributing):
+        zero_net = int((non_contributing == 0).sum())
+        negative_net = int((non_contributing < 0).sum())
+        # Most negative first: the largest net returns are the ones worth
+        # naming, and a reader scanning examples wants those.
+        worst = non_contributing.sort_index().sort_values(kind="mergesort")
+        findings.append(
+            AnalysisFinding(
+                analysis=analysis,
+                finding_type=AnalysisFindingType.NON_CONTRIBUTING_ENTITIES,
+                columns=columns_used,
+                payload=NonContributingEntitiesPayload(
+                    entity_count=int(len(non_contributing)),
+                    zero_net_count=zero_net,
+                    negative_net_count=negative_net,
+                    net_value_total=round(float(non_contributing.sum()), 6),
+                    combined_value_total=round(combined_value_total, 6),
+                    examples=[str(i) for i in worst.head(TOP_ENTITIES_PER_BAND).index],
+                    note=_non_contributing_note(entity_label, zero_net, negative_net, float(non_contributing.sum())),
+                ),
+                evidence=AnalysisEvidence(
+                    sample_size=int(len(frame)),
+                    entity_count=int(len(non_contributing)),
+                    total_value=round(float(non_contributing.sum()), 6),
+                    parameters={"grouped_by": entity_label, "value_column": value_column},
+                ),
+            )
+        )
+
     return BusinessAnalysisResult(
         analysis=analysis,
         ran=True,
@@ -263,5 +329,12 @@ def run_abc_pareto(
             "concentration_floor": concentration_floor,
             "top_20_percent_value_share": round(top_20_share, 6),
             "concentration_is_weak": concentration_is_weak,
+            # Both denominators, side by side. `total_value` is what the
+            # bands and shares are computed against (contributing entities
+            # only); `combined_value_total` includes the held-out ones, so
+            # the two numbers can be reconciled instead of silently
+            # disagreeing.
+            "non_contributing_entity_count": int(len(non_contributing)),
+            "combined_value_total": round(combined_value_total, 6),
         },
     )

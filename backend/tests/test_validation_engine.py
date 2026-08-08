@@ -490,3 +490,45 @@ def test_fully_coerced_datetime_column_passes():
 def test_no_datetime_parse_attempts_produces_no_outcomes_for_this_rule(clean_df, baseline_profile):
     outcomes = ValidationEngine().evaluate(_contract(clean_df), baseline_profile)
     assert not [o for o in outcomes if o.rule_id.startswith(f"{DATETIME_PARTIAL_PARSE}:")]
+
+
+def test_an_ascii_detection_read_as_utf8_does_not_flag_encoding_corruption():
+    """Regression: a large CSV whose first 64KB is plain ASCII is detected
+    as `ascii` and deliberately read as utf-8. Comparing the two names
+    literally reported every such file as a corruption suspect on its
+    second ingest, escalating a problem that did not exist."""
+    import pandas as pd
+    from app.contract import DataContract, SourceType
+
+    contract = DataContract(
+        data=pd.DataFrame({"a": [1]}),
+        source_type=SourceType.FILE,
+        source_id="s",
+        connector_metadata={"encoding_used": "utf-8"},
+        detected_encoding="ascii",
+        encoding_confidence=1.0,
+    )
+
+    outcomes = {o.rule_id: o for o in ValidationEngine()._check_encoding(contract)}
+    fallback = [o for rid, o in outcomes.items() if rid.startswith("encoding_fallback_overruled")][0]
+    assert fallback.status is RuleStatus.PASSED
+    assert fallback.detail["equivalent_encoding"] is True
+
+
+def test_a_real_latin1_fallback_is_still_flagged():
+    """The rule must keep its teeth: reaching latin-1 means bytes appeared
+    that utf-8 could not decode, which is the corruption signal."""
+    import pandas as pd
+    from app.contract import DataContract, SourceType
+
+    contract = DataContract(
+        data=pd.DataFrame({"a": [1]}),
+        source_type=SourceType.FILE,
+        source_id="s",
+        connector_metadata={"encoding_used": "latin-1"},
+        detected_encoding="utf-8",
+        encoding_confidence=0.99,
+    )
+
+    fallback = [o for o in ValidationEngine()._check_encoding(contract) if o.rule_id.startswith("encoding_fallback_overruled")][0]
+    assert fallback.status is RuleStatus.FAILED
