@@ -497,4 +497,21 @@ export interface AnalyticsRecord {
   };
   applicability: ApplicabilityRecord[];
   results: AnalysisResultRecord[];
+  // How a per-row "value" was arrived at. `derived` means the monetary
+  // column is a unit price and was multiplied by a quantity; otherwise the
+  // column was summed as-is. Absent on rows written before this existed.
+  value_definition?: {
+    monetary_column: string;
+    quantity_column: string | null;
+    derived: boolean;
+    label: string;
+    note: string;
+  } | null;
+  // Present when the monetary column reads as a unit price but no quantity
+  // cleared the confidence floor - a question for a human, not a guess.
+  quantity_confirmation?: {
+    role: string;
+    reason: string;
+    candidates: RoleCandidateRecord[];
+  } | null;
 }

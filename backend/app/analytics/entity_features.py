@@ -15,6 +15,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from app.analytics.value_basis import ValueBasis
+
 
 @dataclass(frozen=True)
 class EntityFeatures:
@@ -25,10 +27,19 @@ class EntityFeatures:
     entity_column: str
     date_column: str
     value_column: str | None
+    #: How `monetary` was arrived at. None only when no value was summed at
+    #: all. Carried so RFM/CLV can report which quantity they ranked by
+    #: rather than leaving a reader to assume it was revenue.
+    value_basis: ValueBasis | None = None
 
     @property
     def entity_count(self) -> int:
         return int(len(self.frame))
+
+
+#: Internal per-row value column, distinct so it cannot collide with a real
+#: source column.
+_VALUE = "__value__"
 
 
 def build_entity_features(
@@ -36,6 +47,7 @@ def build_entity_features(
     entity_column: str,
     date_column: str,
     value_column: str | None,
+    value_basis: ValueBasis | None = None,
 ) -> EntityFeatures | None:
     """Returns None when there is nothing to measure.
 
@@ -44,8 +56,16 @@ def build_entity_features(
     otherwise report every customer as long-lapsed, which is an artefact of
     when the file was read rather than anything about the customers.
     """
-    columns = [entity_column, date_column] + ([value_column] if value_column else [])
-    frame = df[columns].dropna(subset=[entity_column, date_column])
+    # `value_basis` supersedes `value_column`: when the monetary column is a
+    # unit price and a quantity exists, `monetary` must be the LINE TOTAL,
+    # not the price of one unit. Summing unit prices ranked customers by how
+    # expensive their items were rather than by what they spent.
+    frame = df[[entity_column, date_column]].copy()
+    if value_basis is not None:
+        frame[_VALUE] = value_basis.series(df)
+    elif value_column:
+        frame[_VALUE] = pd.to_numeric(df[value_column], errors="coerce")
+    frame = frame.dropna(subset=[entity_column, date_column])
     if frame.empty:
         return None
 
@@ -65,8 +85,8 @@ def build_entity_features(
             "last_seen": grouped[date_column].max(),
         }
     )
-    if value_column:
-        features["monetary"] = grouped[value_column].sum().astype(float)
+    if _VALUE in frame.columns:
+        features["monetary"] = grouped[_VALUE].sum().astype(float)
     else:
         features["monetary"] = 0.0
 
@@ -77,5 +97,6 @@ def build_entity_features(
         observation_end=observation_end,
         entity_column=entity_column,
         date_column=date_column,
-        value_column=value_column,
+        value_column=value_basis.label if value_basis is not None else value_column,
+        value_basis=value_basis,
     )

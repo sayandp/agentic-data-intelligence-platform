@@ -19,6 +19,7 @@ import pandas as pd
 
 from app.analytics.applicability import AnalysisKind
 from app.analytics.entity_features import build_entity_features
+from app.analytics.value_basis import resolve_value_basis
 from app.analytics.findings import (
     AnalysisEvidence,
     AnalysisFinding,
@@ -74,7 +75,11 @@ def run_behavioural_segmentation(
             analysis=analysis, ran=False, not_run_reason=f"needs {', '.join(missing)}; not detected"
         )
 
-    features = build_entity_features(df, entity.column, date.column, monetary.column)
+    # Same value definition as RFM - clustering on a different monetary
+    # quantity than RFM ranks by would make the two disagree about the same
+    # customer, which is exactly what entity_features exists to prevent.
+    value_basis = resolve_value_basis(detection)
+    features = build_entity_features(df, entity.column, date.column, monetary.column, value_basis=value_basis)
     if features is None or features.entity_count < MIN_ENTITIES:
         found = 0 if features is None else features.entity_count
         return BusinessAnalysisResult(

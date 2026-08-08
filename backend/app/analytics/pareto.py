@@ -26,6 +26,7 @@ from app.analytics.findings import (
     NonContributingEntitiesPayload,
 )
 from app.analytics.roles import ColumnRole, RoleDetection
+from app.analytics.value_basis import resolve_value_basis
 
 #: Cumulative value share at which each band closes. A closes at 80%, B at
 #: 95%, C is the remainder. Configurable per the brief; the values actually
@@ -59,6 +60,10 @@ DEFAULT_CONCENTRATION_FLOOR = 0.5
 #: convention and is not configurable - changing it would make the reported
 #: number incomparable to every other statement of the "80/20 rule".
 TOP_SHARE_QUANTILE = 0.2
+
+#: Internal column name for the per-row value. Named distinctly so it can
+#: never collide with a real column from the source table.
+VALUE_SERIES = "__value__"
 
 
 def _concentration_note(top_share: float, entity_label: str, taken_over: int, entity_count: int, floor: float, weak: bool) -> str:
@@ -111,8 +116,12 @@ def run_abc_pareto(
     if not (0 < lower < upper < 1):
         raise ValueError(f"band cutoffs must satisfy 0 < lower < upper < 1, got {band_cutoffs}")
 
-    monetary = detection.best(ColumnRole.MONETARY)
-    if monetary is None:
+    # What "value" MEANS here - a line total when the monetary column is a
+    # unit price and a quantity exists, the column itself otherwise. Decided
+    # in one shared place (app/analytics/value_basis.py) so Pareto, RFM and
+    # CLV cannot end up ranking by different quantities.
+    basis = resolve_value_basis(detection)
+    if basis is None:
         return BusinessAnalysisResult(
             analysis=analysis,
             ran=False,
@@ -130,26 +139,31 @@ def run_abc_pareto(
         or detection.best(ColumnRole.ENTITY_ID)
         or detection.best(ColumnRole.TRANSACTION_ID)
     )
-    value_column = monetary.column
+    value_column = basis.label
 
-    frame = df[[value_column]].copy() if grouping is None else df[[grouping.column, value_column]].copy()
-    frame = frame.dropna(subset=[value_column])
+    # VALUE_SERIES is the per-row figure, already multiplied when derived.
+    # A row missing either factor has no line total, so it drops out - the
+    # same rule a missing monetary value always followed.
+    frame = pd.DataFrame({VALUE_SERIES: basis.series(df)}, index=df.index)
+    if grouping is not None:
+        frame[grouping.column] = df[grouping.column]
+    frame = frame.dropna(subset=[VALUE_SERIES])
     if frame.empty:
         return BusinessAnalysisResult(
             analysis=analysis,
             ran=False,
             not_run_reason=f"`{value_column}` has no non-null values to rank",
-            parameters={"band_cutoffs": list(band_cutoffs), "value_column": value_column},
+            parameters={"band_cutoffs": list(band_cutoffs), "value_column": value_column, "value_definition": basis.to_dict()},
         )
 
     if grouping is None:
-        totals = frame[value_column].reset_index(drop=True)
+        totals = frame[VALUE_SERIES].reset_index(drop=True)
         totals.index = totals.index.map(lambda i: f"row {i}")
         entity_label = "row"
         entity_column = None
     else:
         entity_column = grouping.column
-        totals = frame.groupby(entity_column, observed=True)[value_column].sum()
+        totals = frame.groupby(entity_column, observed=True)[VALUE_SERIES].sum()
         entity_label = entity_column
 
     # Entities that net to zero or below are held out of the ranking. A
@@ -205,7 +219,9 @@ def run_abc_pareto(
         bands.iloc[0] = "A"
 
     findings: list[AnalysisFinding] = []
-    columns_used = [c for c in (entity_column, value_column) if c]
+    # The SOURCE columns this rests on - including the quantity factor when
+    # the value was derived, since a reader tracing the number needs both.
+    columns_used = [c for c in (entity_column, basis.monetary_column, basis.quantity_column) if c]
 
     running_share = 0.0
     for band in ("A", "B", "C"):
@@ -326,6 +342,10 @@ def run_abc_pareto(
             # Echoed here too, not only on the curve payload: the threshold
             # that decided the flag has to be visible next to the other
             # knobs, or the verdict is not reproducible from the result.
+            # Which quantity these figures describe. A revenue total and a
+            # unit-price total differ by orders of magnitude and look
+            # equally plausible alone.
+            "value_definition": basis.to_dict(),
             "concentration_floor": concentration_floor,
             "top_20_percent_value_share": round(top_20_share, 6),
             "concentration_is_weak": concentration_is_weak,

@@ -18,6 +18,7 @@ import pandas as pd
 
 from app.analytics.applicability import AnalysisKind
 from app.analytics.entity_features import EntityFeatures, build_entity_features
+from app.analytics.value_basis import resolve_value_basis
 from app.analytics.findings import (
     AnalysisEvidence,
     AnalysisFinding,
@@ -123,7 +124,10 @@ def run_rfm(
             analysis=analysis, ran=False, not_run_reason=f"needs {', '.join(missing)}; not detected"
         )
 
-    features = build_entity_features(df, entity.column, date.column, monetary.column)
+    # The monetary quintile must rank by what an entity SPENT, not by how
+    # expensive one of its units was.
+    value_basis = resolve_value_basis(detection)
+    features = build_entity_features(df, entity.column, date.column, monetary.column, value_basis=value_basis)
     if features is None or features.entity_count == 0:
         return BusinessAnalysisResult(
             analysis=analysis, ran=False, not_run_reason="no rows with both an entity and a usable date"
@@ -184,7 +188,8 @@ def run_rfm(
         parameters={
             "entity_column": entity.column,
             "date_column": date.column,
-            "value_column": monetary.column,
+            "value_column": value_basis.label if value_basis else monetary.column,
+            "value_definition": value_basis.to_dict() if value_basis else None,
             "score_levels": SCORE_LEVELS,
             "observation_end": str(features.observation_end),
             # The rule table is echoed IN FULL. A segment name with no

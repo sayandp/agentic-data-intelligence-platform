@@ -1901,6 +1901,43 @@ is the failure mode that layer exists to prevent.
 | Retention / churn | entity + date | Repeat rate, gap distribution, and an inactivity flag from a **configurable window that is always stated**. |
 | Historical CLV | entity + date + monetary | Labelled HISTORICAL and descriptive, never predictive. Reports revenue-based value and says so when no margin rate is supplied. |
 
+### What "value" means: unit price vs line total
+
+The monetary role names a numeric column. It does not say whether that
+column holds a LINE TOTAL or a UNIT PRICE, and the difference decides
+whether summing it means anything. On Online Retail II the monetary column
+is `Price` - the price of ONE unit - so ABC/Pareto ranked by how expensive
+an item is. Its Band A was led by `Manual` and `AMAZON FEE`: bookkeeping
+entries with high unit prices and negligible volume. Computed as
+`Price x Quantity` the same data leads with `REGENCY CAKESTAND 3 TIER`,
+the dataset's actual best seller.
+
+`app/analytics/value_basis.py` resolves this ONCE and every value-summing
+analysis (Pareto, RFM's monetary quintile, CLV, behavioural segmentation)
+takes its series from there, so they cannot end up ranking by different
+quantities.
+
+**The asymmetry that drives the design.** Two errors are available and they
+are not equally bad. Summing a unit price understates volume sellers -
+wrong, and obvious once seen. Multiplying a column that is ALREADY a line
+total inflates every figure by the quantity, silently, and the result still
+looks plausible. So derivation requires POSITIVE evidence that the column is
+unit-price-shaped (`price`, `unit_price`, `rate`, `unit_cost`), never merely
+the absence of evidence that it is a total. Names are checked total-first,
+so `total_price` is a total that happens to contain "price". An unrecognised
+name (`cost`, which could be either) is used as-is.
+
+Which basis was used is reported in every result's `parameters` and stated
+at the top of the Analytics page before any figure that depends on it -
+"Value computed as `Price` x `Quantity`" or "Value taken directly from
+`Amount`". A revenue total and a unit-price total look equally plausible in
+isolation, so this is never left implicit.
+
+When the monetary column reads as a unit price and NO quantity clears the
+confidence floor, the analyses still run on the unit price and the gap is
+raised in the confirm-a-role flow rather than filled with a guessed
+multiplier.
+
 ### Entities that net to zero or below
 
 Admitting returns into a monetary column creates a real case the analyses
@@ -2003,3 +2040,34 @@ A test asserts the ban over every schema in the module and over a real
 result payload. It is strict enough that a docstring *explaining* the
 prohibition had to be reworded, because Pydantic copies class docstrings
 into the JSON schema.
+
+
+## Known issues
+
+**`GET /ingest/{run_id}/status` is O(source size).** `_serialize_run_response`
+rebuilds the repaired frame through the connector on every call, purely to
+compute `metadata` (row count, column types, encoding). On a 1.07M-row,
+94MB CSV that is 30.9 seconds of the 30.8-second response. Measured:
+
+| endpoint | time | payload |
+| --- | --- | --- |
+| `GET /audit/6` | 0.35s | 3.9 KB |
+| `GET /analytics/6` | 0.28s | 67 KB |
+| `GET /ingest/6/status` | **30.8s** | 1.2 KB |
+
+The audit query itself is fine (6 trace rows, 0 validation events). Every
+page using the run picker pays this to populate its column hints, which is
+why `/audit?run=6` appears to hang. Fixing it means either caching the
+metadata on the Run row at ingest time, making it opt-in behind a query
+parameter, or giving the picker a cheaper endpoint - a contract decision,
+so it is recorded here rather than chosen unilaterally.
+
+**Quantity detection rejects real wholesale data.** `Quantity` on Online
+Retail II fails three guards written for small-basket retail: it contains
+negatives (22,950 returns), its maximum is 80,995 (cap 1,000), and it has
+1,057 distinct values (cap 50). The line-total derivation therefore does not
+fire on that dataset until a human confirms the role - which the
+confirm-a-role flow offers, listing `Quantity` first with the detector's own
+reason for rejecting it. Relaxing all three thresholds would let the
+inflating error in through a wrongly-detected multiplier, so it is a
+deliberate open question rather than a quiet re-tune.

@@ -24,6 +24,7 @@ from app.analytics.findings import BusinessAnalysisResult, BusinessAnalyticsFind
 from app.analytics.pareto import run_abc_pareto
 from app.analytics.rfm import run_rfm
 from app.analytics.roles import SemanticColumnDetector, apply_confirmed_roles
+from app.analytics.value_basis import quantity_needs_confirmation, resolve_value_basis
 from app.analytics.segmentation import run_behavioural_segmentation
 
 #: Fixed order: simplest first, so a reader scanning the page meets the
@@ -51,6 +52,13 @@ def run_business_analytics(
     stays applicable for the reason it always was."""
     detection = apply_confirmed_roles(SemanticColumnDetector().detect(df), confirmed_roles or {}, df.columns)
     applicability = build_applicability_report(detection)
+    # What "value" means for this table, resolved once and reported at the
+    # top level so a reader sees it before any figure that depends on it.
+    basis = resolve_value_basis(detection)
+    # A unit-price monetary column with no quantity to multiply by: the
+    # analyses still run, on the unit price, but the gap is surfaced for
+    # confirmation rather than papered over with a guessed multiplier.
+    quantity_gap = quantity_needs_confirmation(detection)
 
     results: list[BusinessAnalysisResult] = []
     for kind, runner in _ANALYSES:
@@ -77,4 +85,6 @@ def run_business_analytics(
         detected_roles=detection.to_dict(),
         applicability=[a.to_dict() for a in applicability],
         results=results,
+        value_definition=basis.to_dict() if basis else None,
+        quantity_confirmation=quantity_gap,
     )

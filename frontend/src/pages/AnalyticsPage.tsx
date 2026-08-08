@@ -143,6 +143,26 @@ function ConcentrationNote({ finding }: { finding: AnalysisFindingRecord }) {
   return <p className="mb-4 text-sm text-ink-muted">{note}</p>;
 }
 
+/** WHICH quantity every summed figure on this page describes.
+ *
+ *  A revenue total and a unit-price total look equally plausible in
+ *  isolation and differ by orders of magnitude, so this is stated once, at
+ *  the top, before any number that depends on it - not left for a reader to
+ *  infer from a column name in a parameters blob. */
+function ValueDefinitionNote({ data }: { data: AnalyticsRecord }) {
+  const vd = data.value_definition;
+  if (!vd) return null;
+  return (
+    <div className="mb-6 rounded-md border border-border bg-surface-sunken p-4">
+      <p className="text-sm text-ink">
+        <span className="font-medium">Value {vd.derived ? "computed as" : "taken directly from"}</span>{" "}
+        <span className="font-mono">{vd.label}</span>
+      </p>
+      <p className="mt-1 text-sm text-ink-muted">{vd.note}</p>
+    </div>
+  );
+}
+
 /** A monetary column is allowed a small share of negatives - returns and
  *  refunds are ordinary transaction data. When any are present the count is
  *  stated NEXT TO THE ROLE, so "accepted despite returns" never looks the
@@ -212,7 +232,7 @@ function RoleConfirmation({
   const stale = data.detected_roles.stale_confirmations ?? [];
 
   // Distinct missing roles, each carrying what it would unlock.
-  const wanted = new Map<string, { description: string; unlocks: string[] }>();
+  const wanted = new Map<string, { description: string; unlocks: string[]; changesValue?: boolean; candidates?: RoleCandidateRecord[] }>();
   for (const entry of data.applicability) {
     if (entry.applicable) continue;
     for (const { role, description } of entry.missing_roles ?? []) {
@@ -221,6 +241,23 @@ function RoleConfirmation({
       wanted.set(role, seen);
     }
   }
+  // The quantity gap is NOT a missing requirement of any analysis - every
+  // analysis still ran. It changes what "value" MEANS, which is why it has
+  // to be merged in here explicitly rather than arriving via missing_roles.
+  const gap = data.quantity_confirmation;
+  if (gap) {
+    wanted.set(gap.role, {
+      description: gap.reason,
+      unlocks: [],
+      changesValue: true,
+      // The detector's own reason for rejecting each candidate. That
+      // sentence is what lets a person overrule it with confidence -
+      // "contains negative values" on a returns column is a reason to
+      // confirm anyway, not a reason to stay away.
+      candidates: gap.candidates,
+    });
+  }
+
   // A role already answered is not still a question, even if the answer is
   // stale - the stale entry gets a Clear action below instead.
   for (const role of Object.keys(confirmed)) wanted.delete(role);
@@ -287,7 +324,7 @@ function RoleConfirmation({
       )}
 
       {columns.length > 0 &&
-        [...wanted.entries()].map(([role, { description, unlocks }]) => {
+        [...wanted.entries()].map(([role, { description, unlocks, changesValue, candidates }]) => {
           const selectId = `confirm-role-${role}`;
           return (
             <div key={role} className="mt-3 flex flex-wrap items-end gap-3">
@@ -295,7 +332,22 @@ function RoleConfirmation({
                 <label htmlFor={selectId} className="block text-sm text-ink">
                   <span className="font-mono">{role}</span> &mdash; {description}
                 </label>
-                <p className="text-xs text-ink-faint">Would let {unlocks.join(", ")} run.</p>
+                <p className="text-xs text-ink-faint">
+                  {changesValue
+                    ? "Would change how value is summed on every analysis below."
+                    : `Would let ${unlocks.join(", ")} run.`}
+                </p>
+                {candidates && candidates.length > 0 && (
+                  <p className="mt-1 text-xs text-ink-faint">
+                    Closest:{" "}
+                    {candidates.slice(0, 2).map((c, i) => (
+                      <span key={c.column}>
+                        {i > 0 && "; "}
+                        <span className="font-mono">{c.column}</span> &mdash; {c.reasons[0]}
+                      </span>
+                    ))}
+                  </p>
+                )}
               </div>
               <select
                 id={selectId}
@@ -472,6 +524,8 @@ export default function AnalyticsPage() {
               </span>
             ))}
           </div>
+
+          <ValueDefinitionNote data={data} />
 
           {/* The refusals, FIRST and in full. A reader arriving at a page
               with four analyses must immediately see that the other three

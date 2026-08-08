@@ -32,6 +32,15 @@ const ANALYTICS_FIXTURE = {
     },
     unconfirmed_candidates: [],
   },
+  value_definition: {
+    monetary_column: "Price",
+    quantity_column: "Quantity",
+    derived: true,
+    label: "Price x Quantity",
+    note:
+      "Value computed as `Price` x `Quantity`. `Price` reads as a unit price, so summing it alone would rank by how expensive one unit is rather than by how much value changed hands.",
+  },
+  quantity_confirmation: null,
   applicability: [
     { analysis: "abc_pareto", applicable: true, resolved_columns: { monetary: "revenue" }, missing_requirements: [], near_misses: [] },
     {
@@ -291,5 +300,69 @@ test.describe("Returns in a monetary column", () => {
     await expect(card.getByText(/283 netting to exactly zero and 1 netting below zero/)).toBeVisible();
     // Named, so a reader can go and look at them.
     await expect(card.getByText(/Adjust bad debt/)).toBeVisible();
+  });
+});
+
+test.describe("Which quantity the numbers describe", () => {
+  test("states the value definition above every figure that depends on it", async ({ page }) => {
+    await stub(page);
+    await page.goto("/analytics?run=901");
+
+    await expect(page.getByText("Value computed as", { exact: true })).toBeVisible();
+    await expect(page.getByText("Price x Quantity", { exact: true })).toBeVisible();
+    await expect(page.getByText(/summing it alone would rank by how expensive one unit is/)).toBeVisible();
+
+    // Above the results, not below them: a reader who takes a revenue total
+    // at face value when it is really a unit-price total has been misled by
+    // the time a footnote reaches them.
+    const note = await page.getByText("Value computed as", { exact: true }).boundingBox();
+    const firstResult = await page.getByRole("heading", { name: "ABC / Pareto concentration" }).boundingBox();
+    expect(note!.y).toBeLessThan(firstResult!.y);
+  });
+
+  test("a column used as-is says so rather than staying silent", async ({ page }) => {
+    await stub(page);
+    await page.route(`${API_ORIGIN}/analytics/*`, async (route) => {
+      const direct = JSON.parse(JSON.stringify(ANALYTICS_FIXTURE));
+      direct.value_definition = {
+        monetary_column: "Amount",
+        quantity_column: null,
+        derived: false,
+        label: "Amount",
+        note: "Value taken directly from `Amount` - `Amount` reads as a line total already, so it is NOT multiplied by `Quantity`.",
+      };
+      await route.fulfill({ json: direct });
+    });
+    await page.goto("/analytics?run=901");
+
+    await expect(page.getByText("Value taken directly from", { exact: true })).toBeVisible();
+    await expect(page.getByText(/is NOT multiplied by/)).toBeVisible();
+  });
+
+  test("an undetected quantity is asked about, not guessed", async ({ page }) => {
+    await stub(page);
+    await page.route(`${API_ORIGIN}/analytics/*`, async (route) => {
+      const gap = JSON.parse(JSON.stringify(ANALYTICS_FIXTURE));
+      gap.value_definition = {
+        monetary_column: "Price",
+        quantity_column: null,
+        derived: false,
+        label: "Price",
+        note: "Value taken directly from `Price` - no quantity column was detected, so there is nothing to multiply by.",
+      };
+      gap.quantity_confirmation = {
+        role: "quantity",
+        reason:
+          "`Price` reads as a unit price, so these analyses would normally rank by `Price` x quantity. No quantity column was detected, so value is being summed from `Price` alone.",
+        candidates: [],
+      };
+      await route.fulfill({ json: gap });
+    });
+    await page.goto("/analytics?run=901");
+
+    const select = page.getByLabel(/quantity/);
+    await expect(select).toBeVisible();
+    await expect(select).toHaveValue("");
+    await expect(page.getByText(/Would change how value is summed/)).toBeVisible();
   });
 });

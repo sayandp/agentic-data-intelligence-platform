@@ -270,6 +270,16 @@ class BusinessAnalyticsFindings(BaseModel):
     #: Every analysis, applicable or not - the refusals are first-class.
     applicability: list[dict] = Field(default_factory=list)
     results: list[BusinessAnalysisResult] = Field(default_factory=list)
+    #: How a per-row "value" was arrived at - the monetary column as-is, or
+    #: monetary x quantity when the column is a unit price. Reported at the
+    #: top level because every summed figure below depends on it, and a
+    #: revenue total and a unit-price total look equally plausible alone.
+    #: None on a row written before this existed.
+    value_definition: dict | None = None
+    #: Set when the monetary column reads as a unit price but no quantity
+    #: cleared the confidence floor - the analyses ran on the unit price and
+    #: this is the question a human should answer.
+    quantity_confirmation: dict | None = None
 
     def all_findings(self) -> list[AnalysisFinding]:
         return [f for r in self.results for f in r.findings]

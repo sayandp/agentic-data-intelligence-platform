@@ -45,6 +45,15 @@ const PAGES = [
 
 // --only <substring> restricts the run to matching pages, for checking one
 // screen against a specific run without waiting on the others.
+//: A PASS is only meaningful over the page a user actually sees. Two things
+//: previously let a measurement over a loading shell report success: a fixed
+//: wait that finished before the data did (403 nodes in one theme, 77 in
+//: another, both "PASS"), and the fact that nothing compared the themes to
+//: each other. Both are now assertions, not observations.
+//:
+//: The floor is per PAGE, not per theme total, so a single page failing to
+//: load cannot hide behind six that did.
+const MIN_NODES_PER_PAGE = 12;
 const ONLY = process.argv.includes("--only") ? process.argv[process.argv.indexOf("--only") + 1].toLowerCase() : null;
 const ACTIVE_PAGES = ONLY ? PAGES.filter((p) => p.name.toLowerCase().includes(ONLY)) : PAGES;
 
@@ -238,6 +247,7 @@ for (const theme of THEMES) {
   const exempt = [];
   let checked = 0;
   let skippedOffscreen = 0;
+  const perPage = {};
 
   for (const spec of ACTIVE_PAGES) {
     const url = BASE + spec.path.replace("LATEST", String(latestRun));
@@ -292,6 +302,7 @@ for (const theme of THEMES) {
       }
       const ratio = Math.min(cComposite, cPixel);
       checked++;
+      perPage[spec.name] = (perPage[spec.name] || 0) + 1;
       if (ratio < need) {
         themeFailures.push({
           page: spec.name,
@@ -308,11 +319,54 @@ for (const theme of THEMES) {
     }
   }
 
-  results[theme] = { checked, failures: themeFailures, exempt, skippedOffscreen };
+  results[theme] = { checked, failures: themeFailures, exempt, skippedOffscreen, perPage };
   await ctx.close();
 }
 
 await browser.close();
+
+// --- Guards on the MEASUREMENT itself, before any verdict on the pages ---
+//
+// These fail the run. An audit that cannot vouch for what it measured must
+// not be allowed to report PASS - that is exactly how the 77-node result
+// slipped through as a clean bill of health.
+const measurementProblems = [];
+const themeNames = Object.keys(results);
+
+for (const [theme, r] of Object.entries(results)) {
+  for (const spec of ACTIVE_PAGES) {
+    const n = r.perPage[spec.name] || 0;
+    if (n < MIN_NODES_PER_PAGE) {
+      measurementProblems.push(
+        `[${theme}] ${spec.name}: only ${n} node(s) measured (floor ${MIN_NODES_PER_PAGE}) - the page almost certainly had not finished loading`
+      );
+    }
+  }
+  if (r.skippedOffscreen) {
+    measurementProblems.push(`[${theme}] ${r.skippedOffscreen} node(s) fell outside the capture and were never measured`);
+  }
+}
+
+// The same pages in three themes must yield the same node count. Themes
+// change colour, never content, so a divergence means one pass saw a
+// different page than another - a timing artefact, and grounds to distrust
+// every ratio in that run.
+if (themeNames.length > 1) {
+  for (const spec of ACTIVE_PAGES) {
+    const counts = themeNames.map((t) => results[t].perPage[spec.name] || 0);
+    if (new Set(counts).size > 1) {
+      measurementProblems.push(
+        `${spec.name}: node counts differ across themes (${themeNames.map((t, i) => `${t}=${counts[i]}`).join(", ")}) - ` +
+          "themes change colour, not content, so one pass measured a different page"
+      );
+    }
+  }
+}
+
+if (measurementProblems.length) {
+  console.log("\n=== MEASUREMENT NOT TRUSTWORTHY ===");
+  for (const problem of measurementProblems) console.log(`  ${problem}`);
+}
 
 let bad = 0;
 for (const [theme, r] of Object.entries(results)) {
@@ -332,4 +386,10 @@ for (const [theme, r] of Object.entries(results)) {
   }
 }
 console.log(`\nTOTAL FAILURES: ${bad}`);
-process.exit(bad ? 1 : 0);
+if (measurementProblems.length) {
+  console.log(`MEASUREMENT PROBLEMS: ${measurementProblems.length} - a PASS above cannot be trusted`);
+}
+// An audit that cannot vouch for WHAT it measured must not exit 0. The
+// 77-node run reported a clean bill of health over a loading shell; that
+// now fails here rather than being reported as success.
+process.exit(bad || measurementProblems.length ? 1 : 0);

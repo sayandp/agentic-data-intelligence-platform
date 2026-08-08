@@ -14,6 +14,7 @@ import pandas as pd
 
 from app.analytics.applicability import AnalysisKind
 from app.analytics.entity_features import build_entity_features
+from app.analytics.value_basis import resolve_value_basis
 from app.analytics.findings import (
     AnalysisEvidence,
     AnalysisFinding,
@@ -272,9 +273,13 @@ def run_historical_clv(
 
     entity_col = resolved[ColumnRole.ENTITY_ID].column
     date_col = resolved[ColumnRole.EVENT_DATE].column
-    value_col = resolved[ColumnRole.MONETARY].column
+    # Historical value must be what was actually paid. On a unit-price
+    # column that means price x quantity, or every per-entity figure below
+    # understates a volume buyer and overstates a buyer of one costly item.
+    value_basis = resolve_value_basis(detection)
+    value_col = value_basis.label if value_basis else resolved[ColumnRole.MONETARY].column
 
-    features = build_entity_features(df, entity_col, date_col, value_col)
+    features = build_entity_features(df, entity_col, date_col, resolved[ColumnRole.MONETARY].column, value_basis=value_basis)
     if features is None or features.entity_count == 0:
         return BusinessAnalysisResult(analysis=analysis, ran=False, not_run_reason="no rows with both an entity and a usable date")
 
@@ -298,7 +303,7 @@ def run_historical_clv(
             AnalysisFinding(
                 analysis=analysis,
                 finding_type=AnalysisFindingType.LIFETIME_VALUE,
-                columns=[entity_col, date_col, value_col],
+                columns=[c for c in (entity_col, date_col, value_basis.monetary_column if value_basis else value_col, value_basis.quantity_column if value_basis else None) if c],
                 payload=LifetimeValuePayload(
                     segment=str(segment),
                     entity_count=int(len(members)),
@@ -331,6 +336,10 @@ def run_historical_clv(
             "entity_column": entity_col,
             "date_column": date_col,
             "value_column": value_col,
+            # `value_basis` (revenue vs margin) and `value_definition`
+            # (how the per-row figure was arrived at) are different
+            # questions; they had the same key and one silently won.
+            "value_definition": value_basis.to_dict() if value_basis else None,
             "value_basis": basis,
             "margin_rate": margin_rate,
             "descriptive_not_predictive": True,
