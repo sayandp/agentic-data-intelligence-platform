@@ -42,6 +42,7 @@ from app.baseline_sanity import BaselineSanityError, assert_baseline_sane
 from app.connectors.factory import build_connector
 from app.correlation import CorrelatedGroup, correlate_events
 from app.db import SessionLocal
+from app.analytics.pipeline import run_business_analytics_for_run
 from app.exploration.pipeline import run_exploration_for_run
 from app.gate import DEFAULT_CONFIDENCE_THRESHOLD
 from app.graph.state import IngestState
@@ -393,6 +394,15 @@ def explore_node(state: IngestState, config: RunnableConfig) -> dict:
         connector = build_connector(source)
         contract = repaired_contract_for_run(run, source, connector, baseline.profile_json if baseline else None)
         exploration_record = run_exploration_for_run(db, run, contract.data, baseline_is_provisional=(baseline.is_provisional if baseline else False))
+        # Business analytics runs AFTER exploration, on the same REPAIRED
+        # frame, only for a completed run. Wrapped because it is additive
+        # reporting: a failure here must never fail an ingest that already
+        # produced valid exploration findings and is about to produce a
+        # report. The failure is recorded on the analytics side.
+        try:
+            run_business_analytics_for_run(db, run, contract.data)
+        except Exception as exc:  # noqa: BLE001 - additive reporting never fails a run
+            print(f"[analytics] business analytics failed for run {run.id}: {type(exc).__name__}: {exc}")
         db.commit()
 
     return {"route": "narrate" if exploration_record is not None else "done"}

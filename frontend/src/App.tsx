@@ -6,6 +6,7 @@ import ReportsPage from "./pages/ReportsPage";
 import AuditPage from "./pages/AuditPage";
 import AskPage from "./pages/AskPage";
 import PredictPage from "./pages/PredictPage";
+import AnalyticsPage from "./pages/AnalyticsPage";
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
           <Route path="/audit" element={<AuditPage />} />
           <Route path="/ask" element={<AskPage />} />
           <Route path="/predict" element={<PredictPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
         </Routes>
       </Layout>
     </BrowserRouter>

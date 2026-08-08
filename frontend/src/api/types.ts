@@ -424,3 +424,59 @@ export interface PredictResult {
   state: string;
   redirected_query_run_id: string | null;
 }
+
+// GET /analytics/{run_id} - the Business Analytics Agent's output.
+//
+// `applicability` is as important as `results`: an analysis that could not
+// run carries the precise requirement it was missing, so an empty-looking
+// page never leaves a reader guessing whether an analysis found nothing or
+// was never eligible.
+export interface RoleCandidateRecord {
+  column: string;
+  role: string;
+  score: number;
+  confidence: "confirmed" | "high" | "medium" | "low";
+  reasons: string[];
+}
+
+export interface ApplicabilityRecord {
+  analysis: string;
+  applicable: boolean;
+  resolved_columns: Record<string, string>;
+  missing_requirements: string[];
+  near_misses: Array<{ role: string; column: string; confidence: string; score: number; why_rejected: string }>;
+}
+
+export interface AnalysisFindingRecord {
+  id: string;
+  analysis: string;
+  finding_type: string;
+  columns: string[];
+  // Discriminated on payload.finding_type server-side; the page narrows by
+  // that field rather than by analysis name.
+  payload: Record<string, unknown>;
+  evidence: { sample_size: number; entity_count: number | null; total_value: number | null; parameters: Record<string, unknown> };
+}
+
+export interface AnalysisResultRecord {
+  analysis: string;
+  ran: boolean;
+  findings: AnalysisFindingRecord[];
+  not_run_reason: string | null;
+  parameters: Record<string, unknown>;
+}
+
+export interface AnalyticsRecord {
+  run_id: string;
+  run_number: number | null;
+  schema_version: number;
+  generated_at: string | null;
+  detected_roles: {
+    row_count: number;
+    minimum_usable_confidence: string;
+    assigned: Record<string, RoleCandidateRecord>;
+    unconfirmed_candidates: RoleCandidateRecord[];
+  };
+  applicability: ApplicabilityRecord[];
+  results: AnalysisResultRecord[];
+}

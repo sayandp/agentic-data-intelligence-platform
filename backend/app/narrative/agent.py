@@ -129,12 +129,26 @@ class NarrativeAgent:
 
     # -- stage 1: grounding --
 
-    def generate_claims(self, findings: ExplorationFindings) -> ClaimsOutcome:
+    def generate_claims(self, findings: ExplorationFindings, analytics_findings=None) -> ClaimsOutcome:
+        """`analytics_findings` are the Business Analytics Agent's findings,
+        offered as ADDITIONAL claim sources on exactly the same terms as
+        exploration's: same schema family, same stable ids, the same
+        grounding check afterwards, the same post-checks on the prose. There
+        is no separate or looser path for them - a claim citing an analytics
+        finding id is validated by app/narrative/grounding.py identically."""
         system = STAGE1_SYSTEM_PROMPT
         user = (
             f"FINDINGS ({len(findings.findings)} finding(s), schema_version={findings.schema_version}):\n"
             f"{SAMPLE_START_MARKER}\n{json.dumps(findings.model_dump(mode='json'), default=str)}\n{SAMPLE_END_MARKER}"
         )
+        analysis_findings = list(analytics_findings.all_findings()) if analytics_findings is not None else []
+        if analysis_findings:
+            payload = json.dumps([f.model_dump(mode="json") for f in analysis_findings], default=str)
+            user += (
+                f"\n\nBUSINESS ANALYSIS FINDINGS ({len(analysis_findings)} finding(s)) - cite these by id "
+                f"exactly as you would the findings above:\n"
+                f"{SAMPLE_START_MARKER}\n{payload}\n{SAMPLE_END_MARKER}"
+            )
         return self._call_stage1_with_resilience(system, user)
 
     def _call_stage1_with_resilience(self, system: str, user: str) -> ClaimsOutcome:

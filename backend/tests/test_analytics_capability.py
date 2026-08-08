@@ -359,3 +359,22 @@ def test_a_datetime_is_never_an_identifier():
     for role in (ColumnRole.ENTITY_ID, ColumnRole.TRANSACTION_ID, ColumnRole.ITEM_ID):
         best = detection.best(role)
         assert best is None or best.column != "order_date"
+
+
+def test_revenue_outranks_cost_for_the_monetary_slot():
+    """REGRESSION, caught on demo_full.csv: `revenue` and `cost` both match
+    the monetary name hint, so a flat bonus left the choice to an
+    alphabetical tie-break - `cost` won, and ABC/Pareto ranked products by
+    what they consumed rather than by what they returned."""
+    df = pd.DataFrame(
+        {
+            "product": [f"p{i}" for i in range(30)],
+            "cost": np.linspace(5, 50, 30),
+            "revenue": np.linspace(20, 300, 30),
+        }
+    )
+    detection = SemanticColumnDetector().detect(df)
+
+    assert detection.best(ColumnRole.MONETARY).column == "revenue"
+    result = run_abc_pareto(df, detection)
+    assert result.parameters["value_column"] == "revenue"

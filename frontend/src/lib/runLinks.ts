@@ -28,3 +28,7 @@ export function askLink(runId: string, runNumber: number | null): string {
 export function predictLink(runId: string, runNumber: number | null): string {
   return `/predict?run=${runQueryParam(runId, runNumber)}`;
 }
+
+export function analyticsLink(runId: string, runNumber: number | null): string {
+  return `/analytics?run=${runQueryParam(runId, runNumber)}`;
+}

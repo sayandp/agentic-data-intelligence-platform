@@ -57,6 +57,14 @@ function IconPredict() {
   );
 }
 
+function IconAnalytics() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 17V9M8 17V4M13 17v-6M18 17v-9" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS = [
   { to: "/sources", label: "Sources", Icon: IconSources },
   { to: "/approvals", label: "Approvals", Icon: IconApprovals },
@@ -64,6 +72,7 @@ const NAV_ITEMS = [
   { to: "/audit", label: "Audit", Icon: IconAudit },
   { to: "/ask", label: "Ask", Icon: IconAsk },
   { to: "/predict", label: "Predict", Icon: IconPredict },
+  { to: "/analytics", label: "Analytics", Icon: IconAnalytics },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {

@@ -91,6 +91,11 @@ _NAME_HINTS: dict[ColumnRole, re.Pattern[str]] = {
 #: real-world thing. Used to keep a row counter out of the entity slot.
 _ROW_INDEX_NAME = re.compile(r"^(row|line)?[_\- ]?(index|idx|num|number|no|seq|rank|rk|id)$|^row$|^line$", re.I)
 
+#: Revenue-side vs cost-side. Both are monetary; only one is the measure a
+#: business ranks by when asking "what accounts for most of the total".
+_REVENUE_NAME = re.compile(r"(revenue|sales|turnover|gmv|income|amount|total|price|value|spend|payment)", re.I)
+_COST_NAME = re.compile(r"(cost|expense|cogs|fee|charge|discount|refund|tax)", re.I)
+
 #: Anything that reads as a key. An integer key satisfies every numeric test
 #: a quantity does, so the name is the only thing that separates them.
 _IDENTIFIER_NAME = re.compile(r"(^|_)(id|key|code|uuid|guid|number|no)$|^(id|key|code)$", re.I)
@@ -293,9 +298,22 @@ def _score_monetary(series: pd.Series, column: str, rows: int) -> tuple[float, l
         if skew > 0.2:
             score += 0.15
             reasons.append(f"positively skewed (skew {skew:.2f}) as monetary values usually are")
-    bonus = _name_bonus(column, ColumnRole.MONETARY)
-    if bonus:
+    # Tiered, not flat. `revenue` and `cost` BOTH match the monetary hint,
+    # so a flat bonus left the choice to an alphabetical tie-break - which
+    # picked `cost` on the demo table and had ABC/Pareto ranking products by
+    # what they consumed rather than by what they returned. Revenue-shaped
+    # names are the outcome; cost-shaped ones are an input to it.
+    if _REVENUE_NAME.search(column):
+        bonus = 0.3
+        reasons.append("name suggests a revenue-side measure")
+    elif _COST_NAME.search(column):
+        bonus = 0.1
+        reasons.append("name suggests a cost-side measure")
+    elif _NAME_HINTS[ColumnRole.MONETARY].search(column):
+        bonus = 0.2
         reasons.append("name suggests a monetary measure")
+    else:
+        bonus = 0.0
     return max(0.0, score + bonus), reasons
 
 
@@ -458,3 +476,29 @@ class RoleDetection:
             "assigned": {role.value: c.to_dict() for role, c in self.assigned().items()},
             "unconfirmed_candidates": [c.to_dict() for c in self.unconfirmed_candidates()],
         }
+
+
+def confirmed_detection(row_count: int, **roles: str) -> RoleDetection:
+    """Build a RoleDetection from roles a HUMAN has confirmed.
+
+    The brief requires low-confidence detections to be surfaced "as
+    candidates for the user to confirm", which only means something if the
+    system can then accept that confirmation - this is that path. Confirmed
+    roles carry Confidence.CONFIRMED, which detection itself never produces,
+    so a downstream reader can always tell a person's decision from a
+    machine's inference.
+
+    Also what lets an analysis be unit-tested on a fixture too small for
+    detection to fire on: the analysis logic and the detector's tuning stay
+    independently testable.
+
+        confirmed_detection(120, entity_id="customer", event_date="ts",
+                            monetary="revenue")
+    """
+    candidates: list[RoleCandidate] = []
+    for role_name, column in roles.items():
+        role = ColumnRole(role_name)
+        candidate = RoleCandidate(column, role, score=1.0, reasons=["confirmed by a human"])
+        candidate.confidence = Confidence.CONFIRMED
+        candidates.append(candidate)
+    return RoleDetection(candidates=candidates, minimum_usable=MINIMUM_USABLE_CONFIDENCE, row_count=row_count)

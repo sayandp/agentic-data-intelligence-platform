@@ -21,7 +21,8 @@ import pandas as pd
 from sqlalchemy.orm import Session
 
 from app.exploration.findings import ExplorationFindings
-from app.models import AgentTrace, ExplorationFinding, Report, Run
+from app.analytics.findings import BusinessAnalyticsFindings
+from app.models import AgentTrace, BusinessAnalysis, ExplorationFinding, Report, Run
 from app.narrative.agent import NarrativeAgent
 from app.narrative.charts import build_charts
 from app.narrative.config import NarrativeConfig
@@ -48,7 +49,20 @@ def run_narrative_for_run(
         return existing
 
     findings = ExplorationFindings.model_validate(exploration_record.findings_json)
-    report = generate_narrative_report(findings, repaired_df, narrative_agent, config)
+
+    # Business analytics findings, when this run produced them, are offered
+    # to stage 1 as additional claim sources on identical terms. Absent (an
+    # older run, or a table no analysis applied to) the report is exactly
+    # what it was before.
+    analytics_findings = None
+    analytics_record = db.query(BusinessAnalysis).filter(BusinessAnalysis.run_id == run.id).one_or_none()
+    if analytics_record is not None:
+        try:
+            analytics_findings = BusinessAnalyticsFindings.model_validate(analytics_record.findings_json)
+        except Exception:  # noqa: BLE001 - a stale payload must not block a report
+            analytics_findings = None
+
+    report = generate_narrative_report(findings, repaired_df, narrative_agent, config, analytics_findings)
 
     record = Report(
         run_id=run.id,
@@ -86,6 +100,7 @@ def generate_narrative_report(
     repaired_df: pd.DataFrame,
     narrative_agent: NarrativeAgent | None,
     config: NarrativeConfig | None = None,
+    analytics_findings=None,
 ) -> NarrativeReport:
     config = config or NarrativeConfig()
     # Deterministic in BOTH generation modes, computed once, up front - Part
@@ -97,7 +112,7 @@ def generate_narrative_report(
     if narrative_agent is None:
         return _template_report(findings, quality_context_summary, charts, reason="no LLM configured for this run")
 
-    attempt = _try_llm_report(findings, narrative_agent, config, quality_context_summary, charts)
+    attempt = _try_llm_report(findings, narrative_agent, config, quality_context_summary, charts, analytics_findings)
     if attempt.report is not None:
         return attempt.report
 
@@ -143,8 +158,9 @@ def _try_llm_report(
     config: NarrativeConfig,
     quality_context_summary: str,
     charts: list[ChartRef],
+    analytics_findings=None,
 ) -> _LLMAttemptResult:
-    claims_outcome = narrative_agent.generate_claims(findings)
+    claims_outcome = narrative_agent.generate_claims(findings, analytics_findings=analytics_findings)
     if claims_outcome.claims is not None and len(claims_outcome.claims) == 0:
         # Parsed cleanly and cited nothing. Distinct from a failed stage:
         # source is "llm" here, so without this branch it read as
@@ -162,7 +178,12 @@ def _try_llm_report(
         _log_stage_failure("stage 1 (grounding)", claims_outcome.source, claims_outcome.rejected_reasons)
         return _LLMAttemptResult(report=None, fallback_reason=_stage_failure_reason("ground the narrative", "stage 1", claims_outcome))
 
+    # BOTH agents' finding ids in one set. Grounding neither knows nor
+    # cares which agent produced an id - a claim citing something neither
+    # produced is rejected identically.
     known_finding_ids = {finding.id for finding in findings.findings}
+    if analytics_findings is not None:
+        known_finding_ids |= {f.id for f in analytics_findings.all_findings()}
     grounding_result = filter_grounded_claims(claims_outcome.claims, known_finding_ids, config)
     if not grounding_result.valid_claims:
         # This branch was already detailed - every rejection names the claim

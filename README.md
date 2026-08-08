@@ -1831,3 +1831,92 @@ is a Vite BUILD-time value, not a runtime one - it has to be a URL the
 BROWSER can reach (the backend's published host port), never the
 backend service's internal docker-network hostname, since API calls
 happen client-side, not from inside the frontend's own container.
+
+## The Business Analytics Agent
+
+A third agent alongside Exploration and Modeling. Exploration answers "what
+does this data look like"; Modeling answers "what will this column do next";
+this one answers "what does this data say about the business".
+
+**No LLM anywhere in method selection or computation.** Every analysis is
+deterministic arithmetic over the repaired frame, seeded where randomness
+exists (k-means). The LLM's only contact with this agent is downstream: the
+Narrative Agent may cite these findings as claim sources, through the same
+two-stage grounded generation and the same post-checks as everything else.
+
+### Capability detection comes first
+
+Each analysis needs a specific data shape, and on arbitrary ingested tables
+most of those shapes are absent. An agent that assumed them would either
+crash or - worse - silently never fire and become dead code nobody noticed.
+This project has already been bitten by that exact failure mode once, in
+datetime handling.
+
+So `app/analytics/roles.py` scores every column for six roles (`entity_id`,
+`transaction_id`, `item_id`, `event_date`, `monetary`, `quantity`) from
+dtype, cardinality, sign, skew and name shape. Name hints only ever *adjust*
+a score the statistics already established - a column called `customer_id`
+holding one distinct value per row is not an entity identifier whatever it
+is called.
+
+Confidence is banded. Only `medium` and above is consumable; anything weaker
+is surfaced as a candidate for a human to confirm rather than used silently.
+`confirmed` is never machine-produced, so a reader can always tell a
+person's decision from an inference.
+
+`app/analytics/applicability.py` then reports every analysis - applicable or
+not - and a refusal names the precise unmet requirement plus the closest
+rejected candidate and why it was rejected. "Not applicable" with no reason
+is the failure mode that layer exists to prevent.
+
+### The seven analyses
+
+| Analysis | Requires | Notes |
+| --- | --- | --- |
+| ABC / Pareto | monetary | Configurable 80/95 cumulative cutoffs; curve downsampled above 500 points, and says when it did. |
+| RFM | entity + date + monetary | Quintile scores; segment names from a rule table that is **data**, echoed in full in the output. |
+| Cohort retention | entity + date | Configurable granularity (month default). Unobserved periods are `null`, never `0.0`. |
+| Behavioural segmentation | entity + date + monetary | k-means on standardized RFM features, k by silhouette, **seeded**. Below the silhouette floor it reports "no stable segmentation found" as a first-class answer. |
+| Market basket | transaction + item | Apriori (mlxtend), lift > 1 only, capped itemset size and rule count. Skips entirely, with a reason, when transactions are mostly single-item. |
+| Retention / churn | entity + date | Repeat rate, gap distribution, and an inactivity flag from a **configurable window that is always stated**. |
+| Historical CLV | entity + date + monetary | Labelled HISTORICAL and descriptive, never predictive. Reports revenue-based value and says so when no margin rate is supplied. |
+
+### Deliberately out of scope
+
+These were considered and **excluded because the data they require does not
+exist in an ingested business table**. This is a scope decision with a
+reason, not an omission - and none of them can be faked from order history
+without inventing the very thing that makes them valid.
+
+| Method | Why it cannot run here |
+| --- | --- |
+| Marketing attribution | Needs touchpoint logs - which channels a customer saw, in order, before converting. An orders table records the conversion and nothing before it. |
+| Marketing mix modelling | Needs channel spend over time. No spend data is ingested. |
+| Uplift modelling | Needs a randomised treatment flag. Nothing here assigns treatment. |
+| A/B testing | Needs experiment assignment and a pre-registered metric. There is no experiment. |
+| Conjoint analysis | Needs a survey instrument with designed attribute trade-offs. |
+| Van Westendorp price sensitivity | Needs the four survey price questions. Observed transaction prices are not a substitute. |
+| Price elasticity | Needs genuine price variation for the same item, ideally exogenous. A single observed price per item identifies nothing. |
+| Causal inference (DiD, synthetic control, RDD, PSM, IV) | All need a treatment/control structure - a policy change, a cutoff, an instrument. An orders table has no such structure, and running these on observational sales data would produce confident numbers with no causal validity at all. |
+| Inventory analytics, working capital | Need stock levels and ledger data. Neither is ingested. |
+
+The pattern is consistent: each excluded method needs *something the
+business did* (an experiment, a price change, a media buy) or *something
+another system holds* (stock, ledger, touchpoints). Reporting them from
+order history alone would be exactly the "assert more confidence than the
+evidence supports" failure this whole project is built to avoid.
+
+### No causal vocabulary, structurally
+
+`app/analytics/findings.py` carries no causal words in any field name, enum
+value or payload key - the same defence `app/exploration/findings.py` uses.
+A segment **accounts for** a share of value. A basket rule is an
+**association**: lift > 1 means two items co-occur more often than
+independence predicts, never that buying one brings about the other. The
+Narrative Agent can only inherit vocabulary these schemas actually contain,
+so causal phrasing is prevented structurally rather than asked for politely.
+
+A test asserts the ban over every schema in the module and over a real
+result payload. It is strict enough that a docstring *explaining* the
+prohibition had to be reworded, because Pydantic copies class docstrings
+into the JSON schema.

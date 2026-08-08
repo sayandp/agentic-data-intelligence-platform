@@ -191,6 +191,32 @@ class ExplorationFinding(Base):
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class BusinessAnalysis(Base):
+    """Written by the Business Analytics Agent - one row per run, only ever
+    for a run that reached 'completed', exactly like ExplorationFinding.
+
+    findings_json is the JSON-serialized BusinessAnalyticsFindings
+    (app/analytics/findings.py). It carries the applicability report as well
+    as the results, because "this analysis did not run, and here is the
+    precise requirement it was missing" is a first-class part of the output,
+    not a debugging aid - a user looking at an empty analytics page must
+    never have to guess whether an analysis found nothing or was never
+    eligible.
+
+    schema_version is duplicated out of the payload into its own column so a
+    consumer can filter or migrate by version without deserializing, the
+    same choice ExplorationFinding made.
+    """
+
+    __tablename__ = "business_analyses"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    run_id: Mapped[str] = mapped_column(String, ForeignKey("runs.id"), nullable=False)
+    schema_version: Mapped[int] = mapped_column(nullable=False)
+    findings_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class QueryRun(Base):
     """Written by the Query Agent (Phase 6) - one row per POST /ask call.
 

@@ -28,8 +28,13 @@ CURRENT_SCHEMA_VERSION = 1
 
 
 class AnalysisFindingType(str, Enum):
-    CONCENTRATION_BAND = "concentration_band"   # ABC/Pareto band membership + share
+    CONCENTRATION_BAND = "concentration_band"    # ABC/Pareto band membership + share
     CONCENTRATION_CURVE = "concentration_curve"  # the cumulative contribution curve
+    SEGMENT_PROFILE = "segment_profile"          # RFM named segment, or a cluster
+    RETENTION_MATRIX = "retention_matrix"        # cohort triangle
+    REPEAT_BEHAVIOUR = "repeat_behaviour"        # repeat rate, gaps, inactivity flag
+    ASSOCIATION_RULE = "association_rule"        # basket rule with support/confidence/lift
+    LIFETIME_VALUE = "lifetime_value"            # historical, descriptive CLV
 
 
 class AnalysisEvidence(BaseModel):
@@ -72,8 +77,112 @@ class ConcentrationCurvePayload(BaseModel):
     top_20_percent_value_share: float
 
 
+class SegmentProfilePayload(BaseModel):
+    """One named RFM segment or one k-means cluster.
+
+    `value_share` is a share OF THE TOTAL - what this segment ACCOUNTS FOR.
+    The schema carries no vocabulary for any stronger relationship, and the
+    module docstring explains why.
+
+    (Worded without naming the forbidden verbs on purpose: Pydantic copies a
+    class docstring into the JSON schema's `description`, so a docstring
+    that spelled them out would put them into the very artefact the ban
+    covers - and would trip the test that enforces it.)
+    """
+
+    finding_type: Literal[AnalysisFindingType.SEGMENT_PROFILE] = AnalysisFindingType.SEGMENT_PROFILE
+    segment: str
+    #: "rfm_rule" when the segment came from the documented rule table,
+    #: "kmeans" when it came from clustering. Never blended.
+    method: str
+    entity_count: int
+    entity_share: float
+    value_total: float
+    value_share: float
+    #: Mean of each feature within the segment, in the feature's own units.
+    centre: dict[str, float] = Field(default_factory=dict)
+    #: Populated for kmeans only.
+    silhouette: float | None = None
+
+
+class RetentionMatrixPayload(BaseModel):
+    """The cohort triangle. `retained_share[i][j]` is the share of cohort i
+    still active j periods after acquisition; index 0 is always 1.0."""
+
+    finding_type: Literal[AnalysisFindingType.RETENTION_MATRIX] = AnalysisFindingType.RETENTION_MATRIX
+    granularity: str                      # "month" | "week" | "day"
+    cohort_labels: list[str]
+    cohort_sizes: list[int]
+    periods_since_acquisition: list[int]
+    retained_share: list[list[float | None]]
+    #: Mean across cohorts at each offset - the headline retention curve.
+    mean_retained_share: list[float | None]
+
+
+class RepeatBehaviourPayload(BaseModel):
+    """Repeat-purchase behaviour and an inactivity flag.
+
+    The inactivity window is NEVER inferred. It is supplied or defaulted,
+    and always stated in `inactivity_window_days` so a reader knows exactly
+    what "inactive" meant here.
+    """
+
+    finding_type: Literal[AnalysisFindingType.REPEAT_BEHAVIOUR] = AnalysisFindingType.REPEAT_BEHAVIOUR
+    entity_count: int
+    repeat_entity_count: int
+    repeat_rate: float
+    inactivity_window_days: int
+    inactive_entity_count: int
+    inactive_share: float
+    #: Days between consecutive events, across all entities with >= 2 events.
+    gap_days_median: float | None = None
+    gap_days_p25: float | None = None
+    gap_days_p75: float | None = None
+    observation_end: str | None = None
+
+
+class AssociationRulePayload(BaseModel):
+    """One basket rule. Lift > 1 means the pair co-occurs MORE OFTEN than
+    independence would give - an association, never a claim that buying the
+    antecedent brings about the consequent."""
+
+    finding_type: Literal[AnalysisFindingType.ASSOCIATION_RULE] = AnalysisFindingType.ASSOCIATION_RULE
+    antecedent: list[str]
+    consequent: list[str]
+    support: float
+    confidence: float
+    lift: float
+    transaction_count: int
+
+
+class LifetimeValuePayload(BaseModel):
+    """HISTORICAL, descriptive lifetime value - observed to date, never a
+    forecast. Named `historical_` throughout so no caller can mistake it for
+    a prediction."""
+
+    finding_type: Literal[AnalysisFindingType.LIFETIME_VALUE] = AnalysisFindingType.LIFETIME_VALUE
+    segment: str
+    entity_count: int
+    average_order_value: float
+    purchase_frequency: float           # orders per entity over the window
+    observed_lifespan_days: float
+    historical_value_per_entity: float
+    #: "revenue" unless a margin rate was supplied. Recorded because a
+    #: revenue-based figure must never be read as profit.
+    value_basis: str
+    margin_rate: float | None = None
+
+
 AnalysisFindingPayload = Annotated[
-    Union[ConcentrationBandPayload, ConcentrationCurvePayload],
+    Union[
+        ConcentrationBandPayload,
+        ConcentrationCurvePayload,
+        SegmentProfilePayload,
+        RetentionMatrixPayload,
+        RepeatBehaviourPayload,
+        AssociationRulePayload,
+        LifetimeValuePayload,
+    ],
     Field(discriminator="finding_type"),
 ]
 
