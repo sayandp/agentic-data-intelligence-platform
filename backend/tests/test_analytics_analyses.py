@@ -14,6 +14,7 @@ import pytest
 from app.analytics.basket import run_market_basket
 from app.analytics.cohorts import run_cohort_retention, run_historical_clv, run_retention_churn
 from app.analytics.engine import run_business_analytics
+from app.analytics.pareto import DEFAULT_CONCENTRATION_FLOOR, run_abc_pareto
 from app.analytics.findings import AnalysisFindingType
 from app.analytics.rfm import DEFAULT_SEGMENT_RULES, assign_segment, run_rfm
 from app.analytics.roles import SemanticColumnDetector, confirmed_detection
@@ -568,3 +569,71 @@ def test_a_claim_citing_no_real_finding_is_still_rejected():
 
     assert report.generation_mode is GenerationMode.TEMPLATE
     assert "no-such-finding" in report.fallback_reason
+
+
+# ---- The concentration flag: does the method's own premise hold here? ----
+
+
+def _curve(result):
+    return [f for f in result.findings if f.finding_type is AnalysisFindingType.CONCENTRATION_CURVE][0].payload
+
+
+def _pareto(values: list[float], **kwargs):
+    df = pd.DataFrame({"product": [f"p{i}" for i in range(len(values))], "revenue": values})
+    detection = confirmed_detection(len(df), item_id="product", monetary="revenue")
+    return run_abc_pareto(df, detection, **kwargs)
+
+
+def test_weak_concentration_is_flagged_and_states_the_figure():
+    """A near-flat distribution: the bands still compute and the numbers are
+    real, but "ABC" and "Pareto" both name an assumption of steep
+    concentration this data does not exhibit. Saying so is the finding."""
+    # 20 entities, top 4 hold barely more than their proportional share.
+    result = _pareto([12.0, 11.0, 11.0, 10.0] + [9.0] * 16)
+    curve = _curve(result)
+
+    assert curve.concentration_is_weak is True
+    assert curve.top_20_percent_value_share < 0.5
+    assert curve.concentration_floor == DEFAULT_CONCENTRATION_FLOOR
+    # The actual number is in the sentence, not merely the verdict - a
+    # reader must see the shape rather than infer it from a warning.
+    assert f"{curve.top_20_percent_value_share:.1%}" in curve.concentration_note
+    assert "weak" in curve.concentration_note
+    assert result.parameters["concentration_is_weak"] is True
+
+
+def test_a_classic_80_20_split_is_not_flagged_but_still_reports_the_figure():
+    """The other direction. The figure is reported either way, so its
+    presence is never itself the signal."""
+    result = _pareto([400.0, 400.0] + [25.0] * 8)
+    curve = _curve(result)
+
+    assert curve.concentration_is_weak is False
+    assert curve.top_20_percent_value_share == pytest.approx(0.8)
+    assert f"{curve.top_20_percent_value_share:.1%}" in curve.concentration_note
+    assert "weak" not in curve.concentration_note
+    assert result.parameters["concentration_is_weak"] is False
+
+
+def test_the_concentration_floor_is_configurable():
+    values = [400.0, 400.0] + [25.0] * 8  # top 20% hold exactly 80%
+    assert _curve(_pareto(values, concentration_floor=0.9)).concentration_is_weak is True
+    assert _curve(_pareto(values, concentration_floor=0.5)).concentration_is_weak is False
+
+
+def test_the_reported_share_names_its_real_denominator_on_a_small_table():
+    """Over 3 entities the "top 20%" cannot land on a whole entity - it is
+    really the top 1, i.e. 33%. Presenting that as a fifth of the population
+    would overstate how concentrated the data is."""
+    curve = _curve(_pareto([70.0, 20.0, 10.0]))
+
+    assert curve.top_20_percent_entity_count == 1
+    assert curve.top_20_percent_entity_share == pytest.approx(1 / 3)
+    assert "the top 1 of 3" in curve.concentration_note
+
+
+def test_the_concentration_note_carries_no_causal_vocabulary():
+    for values in ([9.0] * 20, [400.0, 400.0] + [25.0] * 8):
+        note = _curve(_pareto(values)).concentration_note.lower()
+        for word in _CAUSAL_WORDS:
+            assert word not in note, f"causal vocabulary {word!r} reached the concentration note"

@@ -23,7 +23,7 @@ from app.analytics.cohorts import run_cohort_retention, run_historical_clv, run_
 from app.analytics.findings import BusinessAnalysisResult, BusinessAnalyticsFindings
 from app.analytics.pareto import run_abc_pareto
 from app.analytics.rfm import run_rfm
-from app.analytics.roles import SemanticColumnDetector
+from app.analytics.roles import SemanticColumnDetector, apply_confirmed_roles
 from app.analytics.segmentation import run_behavioural_segmentation
 
 #: Fixed order: simplest first, so a reader scanning the page meets the
@@ -39,8 +39,17 @@ _ANALYSES = (
 )
 
 
-def run_business_analytics(run_id: str, df: pd.DataFrame) -> BusinessAnalyticsFindings:
-    detection = SemanticColumnDetector().detect(df)
+def run_business_analytics(
+    run_id: str,
+    df: pd.DataFrame,
+    confirmed_roles: dict[str, str] | None = None,
+) -> BusinessAnalyticsFindings:
+    """`confirmed_roles` are roles a HUMAN confirmed for this run's source
+    (app/models.py::ConfirmedColumnRole). They are layered on top of a full
+    detection pass rather than replacing it, so the report can still explain
+    what the detector saw - and so an analysis that was already applicable
+    stays applicable for the reason it always was."""
+    detection = apply_confirmed_roles(SemanticColumnDetector().detect(df), confirmed_roles or {}, df.columns)
     applicability = build_applicability_report(detection)
 
     results: list[BusinessAnalysisResult] = []

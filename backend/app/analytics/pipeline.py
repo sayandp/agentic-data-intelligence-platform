@@ -11,35 +11,74 @@ Runs AFTER exploration, on the REPAIRED frame, only for completed runs.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 import pandas as pd
 from sqlalchemy.orm import Session
 
 from app.analytics.engine import run_business_analytics
-from app.models import AgentTrace, BusinessAnalysis, Run
+from app.models import AgentTrace, BusinessAnalysis, ConfirmedColumnRole, Run
 
 
-def run_business_analytics_for_run(db: Session, run: Run, repaired_df: pd.DataFrame) -> BusinessAnalysis | None:
+def confirmed_roles_for_source(db: Session, source_id: str) -> dict[str, str]:
+    """The roles a human confirmed for this SOURCE, as {role: column}.
+
+    Source-scoped is what makes a re-ingest not re-ask: the second run over
+    the same file picks these up on its own, with no user action, because
+    the confirmation describes the source's shape rather than one pass over
+    it.
+    """
+    rows = db.query(ConfirmedColumnRole).filter(ConfirmedColumnRole.source_id == source_id).all()
+    return {row.role: row.column_name for row in rows}
+
+
+def run_business_analytics_for_run(
+    db: Session,
+    run: Run,
+    repaired_df: pd.DataFrame,
+    replace: bool = False,
+) -> BusinessAnalysis | None:
+    """Idempotent by default. `replace=True` is the one path that recomputes
+    an existing row - used when a human confirms a column role, which is
+    precisely the case where the previous answer is known to be stale."""
     existing = db.query(BusinessAnalysis).filter(BusinessAnalysis.run_id == run.id).one_or_none()
-    if existing is not None:
+    if existing is not None and not replace:
         return existing
 
-    findings = run_business_analytics(run.id, repaired_df)
+    confirmed = confirmed_roles_for_source(db, run.source_id)
+    findings = run_business_analytics(run.id, repaired_df, confirmed)
 
-    record = BusinessAnalysis(
-        run_id=run.id,
-        schema_version=findings.schema_version,
-        findings_json=findings.model_dump(mode="json"),
-    )
-    db.add(record)
+    if existing is not None:
+        existing.schema_version = findings.schema_version
+        existing.findings_json = findings.model_dump(mode="json")
+        # These results were computed just now, not when the run first
+        # completed. Leaving the old stamp would misdate them on a page
+        # whose whole subject is what the numbers were computed from.
+        existing.generated_at = datetime.now(timezone.utc)
+        record = existing
+    else:
+        record = BusinessAnalysis(
+            run_id=run.id,
+            schema_version=findings.schema_version,
+            findings_json=findings.model_dump(mode="json"),
+        )
+        db.add(record)
 
     ran = [r.analysis for r in findings.results if r.ran]
     skipped = [r.analysis for r in findings.results if not r.ran]
+    # A trace per computation, including a recompute after a confirmation.
+    # Overwriting the row without a new trace would leave the Audit screen
+    # showing a set of results that no longer exists, with nothing recording
+    # that a person's decision changed them.
+    confirmed_note = f" confirmed_roles={json.dumps(confirmed, sort_keys=True)}" if confirmed else ""
     db.add(
         AgentTrace(
             run_id=run.id,
             agent_name="business_analytics",
-            input_summary=f"columns={len(repaired_df.columns)} rows={len(repaired_df)}",
+            input_summary=(
+                f"columns={len(repaired_df.columns)} rows={len(repaired_df)}"
+                f"{confirmed_note}{' (recomputed)' if existing is not None else ''}"
+            ),
             output_summary=json.dumps(
                 {
                     "analyses_run": ran,

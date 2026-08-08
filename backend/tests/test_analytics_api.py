@@ -106,3 +106,147 @@ def test_analytics_is_idempotent(client, tmp_path):
         db.commit()
         assert db.query(BusinessAnalysis).filter(BusinessAnalysis.run_id == run.id).count() == 1
         assert first is not None
+
+
+# ---- Confirmed column roles ----
+
+
+def _vague_csv(path) -> str:
+    """A table whose monetary column is real but unnameable by the detector.
+
+    `widgets_moved` holds small whole numbers and matches no monetary name
+    hint, so it scores as a quantity and lands below the usable floor for
+    MONETARY - exactly the low-confidence case a human is meant to resolve.
+    """
+    frame = pd.DataFrame(
+        {
+            "cust": [f"c{i % 12}" for i in range(60)],
+            "when": pd.date_range("2024-01-01", periods=60, freq="D").strftime("%Y-%m-%d"),
+            "widgets_moved": [float(3 + (i % 7)) for i in range(60)],
+        }
+    )
+    csv_path = path / "vague.csv"
+    frame.to_csv(csv_path, index=False)
+    return str(csv_path)
+
+
+def _vague_source(client, tmp_path) -> str:
+    return client.post(
+        "/sources", json={"type": "file", "connection_config": {"path": _vague_csv(tmp_path)}}
+    ).json()["id"]
+
+
+def _applicable(body, analysis: str) -> bool:
+    return [a for a in body["applicability"] if a["analysis"] == analysis][0]["applicable"]
+
+
+def test_confirming_a_role_makes_a_not_applicable_analysis_run(client, tmp_path):
+    """The whole point of surfacing a low-confidence candidate: a person can
+    act on it, and the analyses it gates then run."""
+    source_id = _vague_source(client, tmp_path)
+    result = ingest_and_wait(client, source_id)
+
+    before = client.get(f"/analytics/{result['run_number']}").json()
+    assert not _applicable(before, "rfm"), "RFM must be ineligible while no monetary column is detected"
+    assert "monetary" not in before["detected_roles"]["assigned"]
+
+    confirmed = client.post(
+        f"/analytics/{result['run_number']}/confirmed-roles",
+        json={"role": "monetary", "column": "widgets_moved"},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    body = confirmed.json()
+
+    assert _applicable(body, "rfm"), "confirming the monetary role must unlock the analyses that need it"
+    assert body["detected_roles"]["assigned"]["monetary"]["column"] == "widgets_moved"
+    # CONFIRMED, not HIGH: a reader can always tell a person's decision from
+    # the detector's inference.
+    assert body["detected_roles"]["assigned"]["monetary"]["confidence"] == "confirmed"
+    assert [r for r in body["results"] if r["analysis"] == "rfm"][0]["ran"]
+
+    # ...and the recompute is what a plain GET now returns, not a one-off.
+    assert _applicable(client.get(f"/analytics/{result['run_number']}").json(), "rfm")
+
+
+def test_a_confirmation_persists_across_a_second_ingest_of_the_same_source(client, tmp_path):
+    """Confirmations are stored per SOURCE, so re-ingesting the same file
+    does not ask the same question again."""
+    source_id = _vague_source(client, tmp_path)
+    first = ingest_and_wait(client, source_id)
+    client.post(
+        f"/analytics/{first['run_number']}/confirmed-roles",
+        json={"role": "monetary", "column": "widgets_moved"},
+    ).raise_for_status()
+
+    second = ingest_and_wait(client, source_id)
+    body = client.get(f"/analytics/{second['run_number']}").json()
+
+    assert body["run_id"] != first["run_id"], "this must be a genuinely new run"
+    assert body["detected_roles"]["assigned"]["monetary"]["column"] == "widgets_moved"
+    assert body["detected_roles"]["assigned"]["monetary"]["confidence"] == "confirmed"
+    assert _applicable(body, "rfm"), "the second ingest inherits the confirmation with no user action"
+
+
+def test_a_confirmation_naming_a_column_the_run_lacks_is_rejected(client, tmp_path):
+    source_id = _vague_source(client, tmp_path)
+    result = ingest_and_wait(client, source_id)
+
+    response = client.post(
+        f"/analytics/{result['run_number']}/confirmed-roles",
+        json={"role": "monetary", "column": "no_such_column"},
+    )
+
+    assert response.status_code == 400
+    # The error names what IS available, so the next attempt can succeed.
+    assert "widgets_moved" in response.json()["detail"]
+
+
+def test_an_unknown_role_is_rejected_with_the_closed_set(client, tmp_path):
+    source_id = _vague_source(client, tmp_path)
+    result = ingest_and_wait(client, source_id)
+
+    response = client.post(
+        f"/analytics/{result['run_number']}/confirmed-roles",
+        json={"role": "vibes", "column": "widgets_moved"},
+    )
+
+    assert response.status_code == 400
+    assert "monetary" in response.json()["detail"]
+
+
+def test_a_confirmation_can_be_withdrawn(client, tmp_path):
+    """Confirming must not be a one-way door - a wrong answer has to be
+    correctable, and detection alone decides the role again afterwards."""
+    source_id = _vague_source(client, tmp_path)
+    result = ingest_and_wait(client, source_id)
+    client.post(
+        f"/analytics/{result['run_number']}/confirmed-roles",
+        json={"role": "monetary", "column": "widgets_moved"},
+    ).raise_for_status()
+
+    cleared = client.delete(f"/analytics/{result['run_number']}/confirmed-roles/monetary")
+
+    assert cleared.status_code == 200, cleared.text
+    assert not _applicable(cleared.json(), "rfm")
+    assert "monetary" not in cleared.json()["detected_roles"]["assigned"]
+
+
+def test_recomputing_after_a_confirmation_records_a_new_trace(client, tmp_path):
+    """Overwriting the results without a trace would leave Audit showing a
+    set of numbers that no longer exists."""
+    source_id = _vague_source(client, tmp_path)
+    result = ingest_and_wait(client, source_id)
+    client.post(
+        f"/analytics/{result['run_number']}/confirmed-roles",
+        json={"role": "monetary", "column": "widgets_moved"},
+    ).raise_for_status()
+
+    with SessionLocal() as db:
+        traces = (
+            db.query(AgentTrace)
+            .filter(AgentTrace.run_id == result["run_id"], AgentTrace.agent_name == "business_analytics")
+            .all()
+        )
+        assert len(traces) == 2, "the recompute must be traced, not silent"
+        assert any("confirmed_roles" in t.input_summary for t in traces)
+        assert db.query(BusinessAnalysis).filter(BusinessAnalysis.run_id == result["run_id"]).count() == 1

@@ -76,6 +76,7 @@ class AnalysisApplicability:
         resolved_columns: dict[str, str],
         missing: list[str],
         near_misses: list[dict],
+        missing_roles: list[dict] | None = None,
     ):
         self.analysis = analysis
         self.applicable = applicable
@@ -86,6 +87,11 @@ class AnalysisApplicability:
         #: Scored-but-rejected candidates for the unmet roles, so a user can
         #: see what the detector looked at and confirm one if it was right.
         self.near_misses = near_misses
+        #: The same unmet requirements as ROLE NAMES rather than prose. The
+        #: sentences above are for reading; these are what a caller offering
+        #: a "confirm this role" action needs, and deriving them by parsing
+        #: the sentences would be a contract nobody declared.
+        self.missing_roles = missing_roles or []
 
     def to_dict(self) -> dict:
         return {
@@ -93,6 +99,7 @@ class AnalysisApplicability:
             "applicable": self.applicable,
             "resolved_columns": self.resolved_columns,
             "missing_requirements": self.missing,
+            "missing_roles": self.missing_roles,
             "near_misses": self.near_misses,
         }
 
@@ -107,6 +114,7 @@ def build_applicability_report(detection: RoleDetection) -> list[AnalysisApplica
         required = REQUIRED_ROLES[analysis]
         resolved: dict[str, str] = {}
         missing: list[str] = []
+        missing_roles: list[dict] = []
         near_misses: list[dict] = []
 
         for role in required:
@@ -115,6 +123,7 @@ def build_applicability_report(detection: RoleDetection) -> list[AnalysisApplica
                 resolved[role.value] = found.column
                 continue
             missing.append(f"needs {_ROLE_DESCRIPTIONS[role]}; none detected")
+            missing_roles.append({"role": role.value, "description": _ROLE_DESCRIPTIONS[role]})
             for candidate in detection.rejected(role)[:2]:
                 near_misses.append(
                     {
@@ -138,6 +147,7 @@ def build_applicability_report(detection: RoleDetection) -> list[AnalysisApplica
                 resolved_columns=resolved,
                 missing=missing,
                 near_misses=near_misses,
+                missing_roles=missing_roles,
             )
         )
 

@@ -32,6 +32,7 @@ const ANALYTICS_FIXTURE = {
       applicable: false,
       resolved_columns: {},
       missing_requirements: ["needs a line-item identifier that groups within a transaction; none detected"],
+      missing_roles: [{ role: "item_id", description: "a line-item identifier that groups within a transaction" }],
       near_misses: [
         { role: "item_id", column: "customer_id", confidence: "low", score: 0.0, why_rejected: "exactly 1.00 distinct value(s) per order_id" },
       ],
@@ -58,6 +59,26 @@ const ANALYTICS_FIXTURE = {
             value_share: 0.8,
             cumulative_value_share: 0.8,
             top_entities: ["c1", "c2", "c3"],
+          },
+          evidence: { sample_size: 500, entity_count: 500, total_value: 10000, parameters: {} },
+        },
+        {
+          id: "abc_pareto-concentration_curve-1",
+          analysis: "abc_pareto",
+          finding_type: "concentration_curve",
+          columns: ["customer_id", "revenue"],
+          payload: {
+            finding_type: "concentration_curve",
+            entity_rank: [1, 2, 3],
+            cumulative_entity_share: [0.2, 0.6, 1.0],
+            cumulative_value_share: [0.374, 0.7, 1.0],
+            top_20_percent_value_share: 0.374,
+            top_20_percent_entity_count: 100,
+            top_20_percent_entity_share: 0.2,
+            concentration_floor: 0.5,
+            concentration_is_weak: true,
+            concentration_note:
+              "The top 20% of customer_id hold 37.4% of total value. That is below the 50% floor this check uses, so concentration is weak for this data and the A/B/C bands separate it less sharply than the method's name implies.",
           },
           evidence: { sample_size: 500, entity_count: 500, total_value: 10000, parameters: {} },
         },
@@ -137,5 +158,89 @@ test.describe("Business analytics page", () => {
     await expect(rolesLine).toContainText("entity_id");
     await expect(rolesLine).toContainText("customer_id");
     await expect(rolesLine).toContainText("revenue");
+  });
+});
+
+test.describe("Pareto concentration flag", () => {
+  test("states the actual figure and flags that the premise fails", async ({ page }) => {
+    await stub(page);
+    await page.goto("/analytics?run=901");
+
+    // The flag is ABOVE the bands, not a footnote under them - a reader who
+    // takes A/B/C at face value on flat data has already been misled by the
+    // time a note below the table would reach them.
+    const card = page.locator("section, div").filter({ hasText: "ABC / Pareto concentration" }).last();
+    await expect(card.getByText("Concentration is weak for this data", { exact: true })).toBeVisible();
+    await expect(card.getByText(/top 20% of customer_id hold 37\.4% of total value/)).toBeVisible();
+
+    const flagBox = await card.getByText("Concentration is weak for this data", { exact: true }).boundingBox();
+    const bandRow = await card.getByText("Band A").boundingBox();
+    expect(flagBox!.y).toBeLessThan(bandRow!.y);
+  });
+
+  test("reports the figure without a warning when concentration holds", async ({ page }) => {
+    await stub(page);
+    await page.route(`${API_ORIGIN}/analytics/*`, async (route) => {
+      const strong = JSON.parse(JSON.stringify(ANALYTICS_FIXTURE));
+      const curve = strong.results[0].findings[1].payload;
+      curve.top_20_percent_value_share = 0.81;
+      curve.concentration_is_weak = false;
+      curve.concentration_note =
+        "The top 20% of customer_id hold 81.0% of total value. Concentration clears the 50% floor this check uses.";
+      await route.fulfill({ json: strong });
+    });
+    await page.goto("/analytics?run=901");
+
+    await expect(page.getByText(/hold 81\.0% of total value/)).toBeVisible();
+    await expect(page.getByText("Concentration is weak for this data", { exact: true })).toHaveCount(0);
+  });
+});
+
+test.describe("Confirming a column role", () => {
+  test("offers a picker per missing role and never pre-selects one", async ({ page }) => {
+    await stub(page);
+    await page.goto("/analytics?run=901");
+
+    const select = page.getByLabel(/item_id/);
+    await expect(select).toBeVisible();
+    // An unconfirmed candidate stays unused: a default selection would be
+    // the machine guessing while looking like a human decision.
+    await expect(select).toHaveValue("");
+    await expect(page.getByRole("button", { name: "Confirm" })).toBeDisabled();
+    await expect(page.getByText(/Would let Market basket run/)).toBeVisible();
+  });
+
+  test("confirming re-runs the analyses that needed the role", async ({ page }) => {
+    await stub(page);
+
+    // The POST returns the same document a GET would, with the analysis now
+    // applicable - so the page re-renders from the response it already reads.
+    let posted: Record<string, unknown> | null = null;
+    await page.route(`${API_ORIGIN}/analytics/*/confirmed-roles`, async (route) => {
+      posted = route.request().postDataJSON();
+      const after = JSON.parse(JSON.stringify(ANALYTICS_FIXTURE));
+      after.detected_roles.confirmed_roles = { item_id: "product" };
+      after.detected_roles.assigned.item_id = {
+        column: "product",
+        role: "item_id",
+        score: 1.0,
+        confidence: "confirmed",
+        reasons: ["confirmed by a human"],
+      };
+      after.applicability[1].applicable = true;
+      after.applicability[1].missing_requirements = [];
+      after.applicability[1].missing_roles = [];
+      after.results[1] = { analysis: "market_basket", ran: true, not_run_reason: null, parameters: {}, findings: [] };
+      await route.fulfill({ json: after });
+    });
+
+    await page.goto("/analytics?run=901");
+    await page.getByLabel(/item_id/).selectOption("customer_id");
+    await page.getByRole("button", { name: "Confirm" }).click();
+
+    await expect(page.getByRole("heading", { name: /Not applicable to this data/ })).toHaveCount(0);
+    expect(posted).toEqual({ role: "item_id", column: "customer_id" });
+    // The confirmation is shown as a human decision, with a way back.
+    await expect(page.getByRole("button", { name: "Clear" })).toBeVisible();
   });
 });

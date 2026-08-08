@@ -445,6 +445,10 @@ export interface ApplicabilityRecord {
   resolved_columns: Record<string, string>;
   missing_requirements: string[];
   near_misses: Array<{ role: string; column: string; confidence: string; score: number; why_rejected: string }>;
+  // The unmet requirements as role names rather than prose - what a
+  // "confirm this role" control needs. `missing_requirements` above is the
+  // same information written for a reader.
+  missing_roles?: Array<{ role: string; description: string }>;
 }
 
 export interface AnalysisFindingRecord {
@@ -476,6 +480,11 @@ export interface AnalyticsRecord {
     minimum_usable_confidence: string;
     assigned: Record<string, RoleCandidateRecord>;
     unconfirmed_candidates: RoleCandidateRecord[];
+    // Roles a human confirmed for this run's SOURCE, as {role: column}.
+    // Present for both live and stale confirmations, so a confirmation
+    // naming a column a later ingest dropped can still be cleared.
+    confirmed_roles?: Record<string, string>;
+    stale_confirmations?: Array<{ role: string; column: string; why: string }>;
   };
   applicability: ApplicabilityRecord[];
   results: AnalysisResultRecord[];

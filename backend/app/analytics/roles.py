@@ -429,17 +429,34 @@ def _best(candidates: list[RoleCandidate], role: ColumnRole, minimum: Confidence
     usable = [c for c in candidates if c.role is role and is_usable(c.confidence)]
     if not usable:
         return None
-    # Deterministic: highest score, ties broken by column name.
-    return sorted(usable, key=lambda c: (-c.score, c.column))[0]
+    # A human's confirmation outranks any inference, as an explicit rule
+    # rather than as a consequence of confirmed candidates happening to
+    # score 1.0. Tying the precedence to arithmetic would make it possible
+    # to break it later by re-tuning an unrelated scorer.
+    # Then: highest score, ties broken by column name - deterministic.
+    return sorted(usable, key=lambda c: (0 if c.confidence is Confidence.CONFIRMED else 1, -c.score, c.column))[0]
 
 
 class RoleDetection:
     """The detector's full output: what filled each role, what didn't, why."""
 
-    def __init__(self, candidates: list[RoleCandidate], minimum_usable: Confidence, row_count: int):
+    def __init__(
+        self,
+        candidates: list[RoleCandidate],
+        minimum_usable: Confidence,
+        row_count: int,
+        confirmed_roles: dict[str, str] | None = None,
+        stale_confirmations: list[dict] | None = None,
+    ):
         self.candidates = candidates
         self.minimum_usable = minimum_usable
         self.row_count = row_count
+        #: role value -> column, as stored for this source. Reported even
+        #: when stale, so the UI can offer to clear a confirmation that no
+        #: longer matches the data.
+        self.confirmed_roles = confirmed_roles or {}
+        #: Confirmations naming a column this frame does not have.
+        self.stale_confirmations = stale_confirmations or []
 
     def best(self, role: ColumnRole) -> RoleCandidate | None:
         """The column assigned to a role, or None if nothing cleared the
@@ -475,7 +492,62 @@ class RoleDetection:
             "minimum_usable_confidence": self.minimum_usable.value,
             "assigned": {role.value: c.to_dict() for role, c in self.assigned().items()},
             "unconfirmed_candidates": [c.to_dict() for c in self.unconfirmed_candidates()],
+            "confirmed_roles": dict(self.confirmed_roles),
+            "stale_confirmations": list(self.stale_confirmations),
         }
+
+
+def apply_confirmed_roles(detection: RoleDetection, confirmed: dict[str, str], available_columns) -> RoleDetection:
+    """Layer a human's confirmed roles on top of a fresh detection.
+
+    Additive, never subtractive: every scored candidate is kept, so the
+    applicability report can still explain what the detector saw and why it
+    ruled things out. A confirmation just adds one CONFIRMED candidate,
+    which `_best` then prefers over any inference.
+
+    A confirmation naming a column this frame does not have is SKIPPED and
+    recorded in `stale_confirmations` rather than raising. A source can
+    legitimately change shape between ingests, and a stored answer about a
+    column that no longer exists is out of date, not a failure - failing the
+    whole analytics pass over it would be a far worse outcome than running
+    without it and saying so.
+
+    An unknown role string is skipped the same way, so a row written by a
+    newer version of this code cannot break an older reader.
+    """
+    if not confirmed:
+        return detection
+
+    columns = {str(c) for c in available_columns}
+    candidates = list(detection.candidates)
+    accepted: dict[str, str] = {}
+    stale: list[dict] = []
+
+    for role_name, column in sorted(confirmed.items()):
+        try:
+            role = ColumnRole(role_name)
+        except ValueError:
+            stale.append({"role": role_name, "column": column, "why": f"`{role_name}` is not a role this version knows"})
+            continue
+        if column not in columns:
+            stale.append(
+                {"role": role_name, "column": column, "why": f"this run's data has no column named `{column}`"}
+            )
+            continue
+        candidate = RoleCandidate(column, role, score=1.0, reasons=["confirmed by a human"])
+        candidate.confidence = Confidence.CONFIRMED
+        candidates.append(candidate)
+        accepted[role_name] = column
+
+    return RoleDetection(
+        candidates=candidates,
+        minimum_usable=detection.minimum_usable,
+        row_count=detection.row_count,
+        # Both accepted AND stale are reported: the UI needs to show a
+        # confirmation that no longer applies so a person can clear it.
+        confirmed_roles={**accepted, **{s["role"]: s["column"] for s in stale}},
+        stale_confirmations=stale,
+    )
 
 
 def confirmed_detection(row_count: int, **roles: str) -> RoleDetection:

@@ -1864,6 +1864,15 @@ is surfaced as a candidate for a human to confirm rather than used silently.
 `confirmed` is never machine-produced, so a reader can always tell a
 person's decision from an inference.
 
+Surfacing a candidate only means something if it can be acted on, so the
+Analytics page pairs each unmet role with a column picker and a confirm
+action (`POST /analytics/{run}/confirmed-roles`). A confirmation is stored
+against the **source**, not the run, so re-ingesting the same file inherits
+it and the question is asked once. It always outranks detection, is never
+pre-selected in the UI, is withdrawable (`DELETE .../confirmed-roles/{role}`),
+and one naming a column a later ingest no longer has is reported as stale
+rather than raising.
+
 `app/analytics/applicability.py` then reports every analysis - applicable or
 not - and a refusal names the precise unmet requirement plus the closest
 rejected candidate and why it was rejected. "Not applicable" with no reason
@@ -1873,13 +1882,32 @@ is the failure mode that layer exists to prevent.
 
 | Analysis | Requires | Notes |
 | --- | --- | --- |
-| ABC / Pareto | monetary | Configurable 80/95 cumulative cutoffs; curve downsampled above 500 points, and says when it did. |
+| ABC / Pareto | monetary | Configurable 80/95 cumulative cutoffs; curve downsampled above 500 points, and says when it did. Reports what share of value the top 20% hold and **flags when that falls below a configurable floor** (50% default) - see below. |
 | RFM | entity + date + monetary | Quintile scores; segment names from a rule table that is **data**, echoed in full in the output. |
 | Cohort retention | entity + date | Configurable granularity (month default). Unobserved periods are `null`, never `0.0`. |
 | Behavioural segmentation | entity + date + monetary | k-means on standardized RFM features, k by silhouette, **seeded**. Below the silhouette floor it reports "no stable segmentation found" as a first-class answer. |
 | Market basket | transaction + item | Apriori (mlxtend), lift > 1 only, capped itemset size and rule count. Skips entirely, with a reason, when transactions are mostly single-item. |
 | Retention / churn | entity + date | Repeat rate, gap distribution, and an inactivity flag from a **configurable window that is always stated**. |
 | Historical CLV | entity + date + monetary | Labelled HISTORICAL and descriptive, never predictive. Reports revenue-based value and says so when no margin rate is supplied. |
+
+### Reporting when a method's own premise fails
+
+Three analyses check the assumption their name carries and say so when it
+does not hold, rather than presenting a number that quietly means less than
+it appears to:
+
+| Analysis | Premise | Floor | What happens below it |
+| --- | --- | --- | --- |
+| Trend (exploration) | the fit explains the series | R-squared 0.3 | the trend finding is skipped |
+| Behavioural segmentation | the clusters are separable | silhouette 0.25 | "no stable segmentation found", as a first-class answer |
+| ABC / Pareto | value is concentrated in a few entities | top-20% share 0.5 | bands are still reported, **flagged as weakly concentrated** |
+
+Pareto differs from the other two on purpose: a concentration curve is a
+truthful description of the data even when it is flat, so the result is kept
+and annotated instead of withheld. The measured figure is reported either
+way ("the top 20% of `product` hold 37.4% of total value"), so its presence
+is never itself the signal - and on a small table the note names the real
+denominator, since the "top 20%" of 3 entities is really the top 1.
 
 ### Deliberately out of scope
 

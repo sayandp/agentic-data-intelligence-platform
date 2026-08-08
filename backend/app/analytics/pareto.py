@@ -40,11 +40,51 @@ MAX_CURVE_POINTS = 500
 #: without loading the whole frame.
 TOP_ENTITIES_PER_BAND = 10
 
+#: The share of total value the top 20% of entities must hold for this
+#: method's premise to hold. Below it the bands still compute - the numbers
+#: are real - but "ABC" and "Pareto" both name an assumption of steep
+#: concentration that this data does not exhibit, and a reader must be told
+#: so rather than left to infer it from a shallow curve.
+#:
+#: Same treatment as the trend R-squared floor (app/exploration/config.py)
+#: and the k-means silhouette floor (app/analytics/segmentation.py): a
+#: named, configurable threshold, with the measured number always reported
+#: alongside the verdict. Those two SKIP the finding when the premise
+#: fails; this one reports it and flags it, because a concentration curve
+#: is still a truthful description of the data even when it is flat.
+DEFAULT_CONCENTRATION_FLOOR = 0.5
+
+#: The quantile the headline figure is taken at. 20% is the Pareto
+#: convention and is not configurable - changing it would make the reported
+#: number incomparable to every other statement of the "80/20 rule".
+TOP_SHARE_QUANTILE = 0.2
+
+
+def _concentration_note(top_share: float, entity_label: str, taken_over: int, entity_count: int, floor: float, weak: bool) -> str:
+    """The sentence stating the shape, reported either way.
+
+    Names the real denominator when the top 20% does not land on a whole
+    entity, so a figure computed over 1 of 5 is never presented as though it
+    came from a fifth of a large population.
+    """
+    actual_share = taken_over / entity_count if entity_count else 0.0
+    scope = f"top {TOP_SHARE_QUANTILE:.0%} of {entity_label}"
+    if abs(actual_share - TOP_SHARE_QUANTILE) > 0.02:
+        scope += f" (the top {taken_over} of {entity_count}, {actual_share:.0%})"
+    headline = f"The {scope} hold {top_share:.1%} of total value."
+    if not weak:
+        return f"{headline} Concentration clears the {floor:.0%} floor this check uses."
+    return (
+        f"{headline} That is below the {floor:.0%} floor this check uses, so concentration is weak for this "
+        "data and the A/B/C bands separate it less sharply than the method's name implies."
+    )
+
 
 def run_abc_pareto(
     df: pd.DataFrame,
     detection: RoleDetection,
     band_cutoffs: tuple[float, float] = DEFAULT_BAND_CUTOFFS,
+    concentration_floor: float = DEFAULT_CONCENTRATION_FLOOR,
 ) -> BusinessAnalysisResult:
     """Requires a monetary column. Groups by an entity/item identifier when
     one was detected; otherwise ranks individual rows, which is still a
@@ -168,7 +208,12 @@ def run_abc_pareto(
     if keep and keep[-1] != entity_count - 1:
         keep.append(entity_count - 1)
 
-    top_20_share = float(cumulative_value.iloc[min(entity_count, max(1, round(entity_count * 0.2))) - 1])
+    # How many entities the headline covers. At least one, never more than
+    # all of them - and the count is carried into the payload so the share
+    # is read against its real denominator.
+    top_entity_count = min(entity_count, max(1, round(entity_count * TOP_SHARE_QUANTILE)))
+    top_20_share = float(cumulative_value.iloc[top_entity_count - 1])
+    concentration_is_weak = top_20_share < concentration_floor
 
     findings.append(
         AnalysisFinding(
@@ -180,6 +225,13 @@ def run_abc_pareto(
                 cumulative_entity_share=[round(float(cumulative_entity.iloc[i]), 6) for i in keep],
                 cumulative_value_share=[round(float(cumulative_value.iloc[i]), 6) for i in keep],
                 top_20_percent_value_share=round(top_20_share, 6),
+                top_20_percent_entity_count=top_entity_count,
+                top_20_percent_entity_share=round(top_entity_count / entity_count, 6),
+                concentration_floor=concentration_floor,
+                concentration_is_weak=concentration_is_weak,
+                concentration_note=_concentration_note(
+                    top_20_share, entity_label, top_entity_count, entity_count, concentration_floor, concentration_is_weak
+                ),
             ),
             evidence=AnalysisEvidence(
                 sample_size=int(len(frame)),
@@ -205,5 +257,11 @@ def run_abc_pareto(
             "grouped_by": entity_label,
             "entity_count": entity_count,
             "total_value": round(total_value, 6),
+            # Echoed here too, not only on the curve payload: the threshold
+            # that decided the flag has to be visible next to the other
+            # knobs, or the verdict is not reproducible from the result.
+            "concentration_floor": concentration_floor,
+            "top_20_percent_value_share": round(top_20_share, 6),
+            "concentration_is_weak": concentration_is_weak,
         },
     )

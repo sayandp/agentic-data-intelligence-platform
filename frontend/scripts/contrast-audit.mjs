@@ -33,6 +33,10 @@ const PAGES = [
   { path: "/audit?run=LATEST", name: "Audit" },
   { path: "/ask", name: "Ask" },
   { path: "/predict", name: "Predict" },
+  // Needs ?run= to render anything at all: the page is a run picker until a
+  // run is chosen, so auditing it bare would measure an empty shell and
+  // report a clean pass over text that was never on screen.
+  { path: "/analytics?run=LATEST", name: "Analytics" },
 ];
 
 function srgbToLinear(c) {

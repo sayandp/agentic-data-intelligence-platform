@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -215,6 +215,39 @@ class BusinessAnalysis(Base):
     schema_version: Mapped[int] = mapped_column(nullable=False)
     findings_json: Mapped[dict] = mapped_column(JSON, nullable=False)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ConfirmedColumnRole(Base):
+    """A semantic column role a HUMAN confirmed, scoped to the SOURCE.
+
+    The detector (app/analytics/roles.py) never promotes a low-confidence
+    candidate on its own - the standing rule is to stay silent rather than
+    guess. This table is the other half of that bargain: the place a
+    person's decision is recorded so the question is asked once, not on
+    every ingest of the same file.
+
+    Keyed by source rather than by run deliberately. A run is one pass over
+    a source; the fact that `total_spend` is the monetary column is a
+    property of the SOURCE's shape and survives re-ingest, which is exactly
+    what makes a second ingest not re-ask.
+
+    Rows carry the confirming column name verbatim. A later ingest whose
+    frame no longer has that column does NOT fail - the confirmation is
+    skipped and reported as stale, because a source can legitimately change
+    shape and a stored answer to a question about a vanished column is
+    simply no longer applicable.
+    """
+
+    __tablename__ = "confirmed_column_roles"
+    __table_args__ = (UniqueConstraint("source_id", "role", name="uq_confirmed_role_per_source"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    source_id: Mapped[str] = mapped_column(String, ForeignKey("data_sources.id"), nullable=False)
+    #: An app.analytics.roles.ColumnRole value. Stored as its string so this
+    #: table does not import the analytics package.
+    role: Mapped[str] = mapped_column(String, nullable=False)
+    column_name: Mapped[str] = mapped_column(String, nullable=False)
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class QueryRun(Base):

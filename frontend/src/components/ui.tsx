@@ -50,9 +50,16 @@ const DOT_STYLES: Record<string, string> = {
   neutral: "bg-ink-faint",
 };
 
-export function Badge({ value }: { value: string | null | undefined }) {
+export type BadgeTone = "positive" | "negative" | "caution" | "active" | "neutral";
+
+// `tone` overrides the STATUS_ROLES lookup. Needed because that map encodes
+// SEVERITY - "high" is red because a high-severity issue is bad - and the
+// same words mean the opposite as CONFIDENCE: a high-confidence role
+// detection is the good case. Without an override, the analytics roles line
+// painted a confident detection red and an unusable one green.
+export function Badge({ value, tone }: { value: string | null | undefined; tone?: BadgeTone }) {
   if (!value) return null;
-  const role = STATUS_ROLES[value] ?? "neutral";
+  const role = tone ?? STATUS_ROLES[value] ?? "neutral";
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${BADGE_STYLES[role]}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${DOT_STYLES[role]}`} aria-hidden="true" />

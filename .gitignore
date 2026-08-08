@@ -12,3 +12,5 @@ data/*
 .launcher/
 .theme-shots/
 node_modules/
+
+backend/data/uploads/

@@ -16,7 +16,7 @@ import pytest
 from app.analytics.applicability import AnalysisKind, build_applicability_report
 from app.analytics.findings import AnalysisFindingType, BusinessAnalyticsFindings
 from app.analytics.pareto import run_abc_pareto
-from app.analytics.roles import ColumnRole, Confidence, SemanticColumnDetector
+from app.analytics.roles import ColumnRole, Confidence, SemanticColumnDetector, apply_confirmed_roles
 
 
 def _wide_orders(n: int = 400, seed: int = 0) -> pd.DataFrame:
@@ -378,3 +378,56 @@ def test_revenue_outranks_cost_for_the_monetary_slot():
     assert detection.best(ColumnRole.MONETARY).column == "revenue"
     result = run_abc_pareto(df, detection)
     assert result.parameters["value_column"] == "revenue"
+
+
+# ---- Human confirmation layered on top of detection ----
+
+
+def test_a_confirmed_role_outranks_a_confidently_detected_one():
+    """Precedence is an explicit rule, not a side effect of confirmed
+    candidates scoring 1.0 - re-tuning an unrelated scorer must not be able
+    to overturn a person's decision."""
+    df = pd.DataFrame({"revenue": [10.0, 22.5, 31.0, 4.5] * 10, "cost": [1.0, 2.5, 3.0, 0.5] * 10})
+    detected = SemanticColumnDetector().detect(df)
+    assert detected.best(ColumnRole.MONETARY).column == "revenue"
+
+    overridden = apply_confirmed_roles(detected, {"monetary": "cost"}, df.columns)
+
+    assert overridden.best(ColumnRole.MONETARY).column == "cost"
+    assert overridden.best(ColumnRole.MONETARY).confidence is Confidence.CONFIRMED
+
+
+def test_confirmation_is_additive_so_refusals_can_still_be_explained():
+    """Confirming one role must not erase what the detector saw about the
+    others - the applicability report is generated from those candidates."""
+    df = pd.DataFrame({"cust": [f"c{i % 5}" for i in range(20)], "units": [float(i % 4) for i in range(20)]})
+    detected = SemanticColumnDetector().detect(df)
+    before = len(detected.candidates)
+
+    after = apply_confirmed_roles(detected, {"monetary": "units"}, df.columns)
+
+    assert len(after.candidates) == before + 1
+    assert after.rejected(ColumnRole.EVENT_DATE), "the reasons a date was ruled out must survive"
+
+
+def test_a_confirmation_for_a_column_that_no_longer_exists_is_reported_not_raised():
+    """A source can legitimately change shape between ingests. Failing the
+    whole analytics pass over a stale answer would be worse than running
+    without it and saying so."""
+    df = pd.DataFrame({"cust": ["a", "b"], "units": [1.0, 2.0]})
+
+    detection = apply_confirmed_roles(SemanticColumnDetector().detect(df), {"monetary": "old_total"}, df.columns)
+
+    assert detection.best(ColumnRole.MONETARY) is None
+    assert detection.stale_confirmations[0]["column"] == "old_total"
+    assert "no column named" in detection.stale_confirmations[0]["why"]
+    # Still reported as a stored confirmation, so the UI can offer to clear it.
+    assert detection.confirmed_roles["monetary"] == "old_total"
+
+
+def test_an_unknown_role_string_is_skipped_rather_than_crashing():
+    df = pd.DataFrame({"cust": ["a", "b"], "units": [1.0, 2.0]})
+
+    detection = apply_confirmed_roles(SemanticColumnDetector().detect(df), {"vibes": "units"}, df.columns)
+
+    assert detection.stale_confirmations[0]["role"] == "vibes"

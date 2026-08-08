@@ -75,6 +75,23 @@ class ConcentrationCurvePayload(BaseModel):
     cumulative_value_share: list[float]
     #: The classic headline: what share of value the top 20% contribute.
     top_20_percent_value_share: float
+    #: How many entities that share actually covers, and what fraction of
+    #: all entities they are. On a small table the top 20% cannot land on a
+    #: whole entity, so the real denominator is stated rather than implied
+    #: by the field name - "top 20%" over 5 entities is really the top 1.
+    top_20_percent_entity_count: int | None = None
+    top_20_percent_entity_share: float | None = None
+    #: The floor `top_20_percent_value_share` was tested against.
+    concentration_floor: float | None = None
+    #: True when the share falls BELOW the floor - the premise this method
+    #: is named for does not hold on this data, so the A/B/C split is a
+    #: weaker statement than the name suggests. None (not False) on a row
+    #: written before this check existed: unknown, never a quiet "no".
+    concentration_is_weak: bool | None = None
+    #: The sentence a reader sees. Always states the actual figure, whether
+    #: or not the floor was cleared, so the shape is read rather than
+    #: inferred from the absence of a warning.
+    concentration_note: str | None = None
 
 
 class SegmentProfilePayload(BaseModel):

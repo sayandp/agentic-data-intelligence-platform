@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ApiError, apiFetch } from "../api/client";
 import type { AnalysisFindingRecord, AnalysisResultRecord, AnalyticsRecord } from "../api/types";
-import { Badge, Button, Card, ErrorMessage, Muted, RunLabel } from "../components/ui";
+import { Badge, Button, Card, ErrorMessage, Muted, RunLabel, type BadgeTone } from "../components/ui";
 import { RunNotFoundHelp, RunPicker, useRunSelection } from "../components/RunPicker";
 import { chartForFinding, clusterScatter, segmentBar, type ChartSpec } from "../lib/analyticsCharts";
 import { loadPlotly } from "../lib/plotly";
@@ -37,6 +37,16 @@ function AnalyticsChart({ spec, id }: { spec: ChartSpec; id: string }) {
   }, [spec, id]);
   return <div id={id} className="mt-2" />;
 }
+
+// CONFIDENCE, not severity. "high" here is the good case, the opposite of
+// what the same word means on a data-quality issue.
+const CONFIDENCE_TONES: Record<string, BadgeTone> = {
+  confirmed: "positive",
+  high: "positive",
+  medium: "caution",
+  low: "neutral",
+  stale: "caution",
+};
 
 function pct(value: unknown): string {
   return typeof value === "number" ? `${(value * 100).toFixed(1)}%` : "-";
@@ -108,6 +118,171 @@ const TABLE_HEADERS: Record<string, string[]> = {
   lifetime_value: ["Segment", "Entities", "Avg order value", "Orders per entity", "Value per entity"],
 };
 
+/** Whether the concentration this method is named for actually holds.
+ *
+ *  Reported EITHER WAY, and above the bands rather than below them: a
+ *  reader who takes an A/B/C split at face value on flat data has been
+ *  misled by the method's name, and a note they have to scroll to find has
+ *  not corrected that. The sentence itself comes from the backend, so the
+ *  wording lives in one place and cannot drift from the number. */
+function ConcentrationNote({ finding }: { finding: AnalysisFindingRecord }) {
+  const weak = finding.payload.concentration_is_weak;
+  const note = finding.payload.concentration_note;
+  // Older rows predate this check: `null` means unknown, and inventing a
+  // reassuring "concentration holds" for them would be worse than silence.
+  if (typeof note !== "string" || typeof weak !== "boolean") return null;
+
+  if (weak) {
+    return (
+      <div className="mb-4 rounded-md border border-status-caution bg-status-caution-tint p-4">
+        <p className="text-sm font-medium text-status-caution">Concentration is weak for this data</p>
+        <p className="mt-1 text-sm text-ink">{note}</p>
+      </div>
+    );
+  }
+  return <p className="mb-4 text-sm text-ink-muted">{note}</p>;
+}
+
+/** The detector deliberately refuses to promote a low-confidence candidate
+ *  on its own. This is the other half of that: the control a person uses to
+ *  answer the question it declined to guess at.
+ *
+ *  One row per DISTINCT missing role, not one per analysis - `monetary` is
+ *  usually missing for three analyses at once, and three identical pickers
+ *  would read as three different questions. Each row names the analyses the
+ *  answer would unlock, so the cost of answering is visible.
+ *
+ *  Nothing is ever pre-selected. An unconfirmed candidate stays unused, so
+ *  a default selection would be the machine guessing under the appearance
+ *  of a human decision - exactly what the confidence floor exists to
+ *  prevent. */
+function RoleConfirmation({
+  data,
+  runRef,
+  columns,
+  onUpdated,
+}: {
+  data: AnalyticsRecord;
+  runRef: string;
+  columns: string[];
+  onUpdated: (next: AnalyticsRecord) => void;
+}) {
+  const [choice, setChoice] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+
+  const confirmed = data.detected_roles.confirmed_roles ?? {};
+  const stale = data.detected_roles.stale_confirmations ?? [];
+
+  // Distinct missing roles, each carrying what it would unlock.
+  const wanted = new Map<string, { description: string; unlocks: string[] }>();
+  for (const entry of data.applicability) {
+    if (entry.applicable) continue;
+    for (const { role, description } of entry.missing_roles ?? []) {
+      const seen = wanted.get(role) ?? { description, unlocks: [] };
+      seen.unlocks.push(ANALYSIS_TITLES[entry.analysis] ?? entry.analysis);
+      wanted.set(role, seen);
+    }
+  }
+  // A role already answered is not still a question, even if the answer is
+  // stale - the stale entry gets a Clear action below instead.
+  for (const role of Object.keys(confirmed)) wanted.delete(role);
+
+  async function send(path: string, init: RequestInit, role: string) {
+    setBusy(role);
+    setError(null);
+    try {
+      onUpdated(await apiFetch<AnalyticsRecord>(path, init));
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const confirm = (role: string) =>
+    send(
+      `/analytics/${encodeURIComponent(runRef)}/confirmed-roles`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, column: choice[role] }),
+      },
+      role
+    );
+
+  const clear = (role: string) =>
+    send(`/analytics/${encodeURIComponent(runRef)}/confirmed-roles/${encodeURIComponent(role)}`, { method: "DELETE" }, role);
+
+  if (wanted.size === 0 && Object.keys(confirmed).length === 0) return null;
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <p className="text-sm font-medium text-ink">Confirm a column role</p>
+      <p className="mt-1 text-sm text-ink-muted">
+        Nothing here is selected for you. Confirming a role re-runs the analyses that need it, and is remembered for
+        this source so a later ingest does not ask again.
+      </p>
+
+      <ErrorMessage error={error} />
+
+      {Object.entries(confirmed).length > 0 && (
+        <ul className="mt-3 flex flex-col gap-2">
+          {Object.entries(confirmed).map(([role, column]) => {
+            const staleEntry = stale.find((s) => s.role === role);
+            return (
+              <li key={role} className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-ink-muted">{role}</span>
+                <span className="font-mono text-ink">{column}</span>
+                <Badge value={staleEntry ? "stale" : "confirmed"} tone={CONFIDENCE_TONES[staleEntry ? "stale" : "confirmed"]} />
+                {staleEntry && <span className="text-xs text-ink-faint">{staleEntry.why}</span>}
+                <Button variant="secondary" onClick={() => clear(role)} disabled={busy === role}>
+                  {busy === role ? "Clearing..." : "Clear"}
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {wanted.size > 0 && columns.length === 0 && (
+        <p className="mt-3 text-sm text-ink-faint">Loading this run's columns...</p>
+      )}
+
+      {columns.length > 0 &&
+        [...wanted.entries()].map(([role, { description, unlocks }]) => {
+          const selectId = `confirm-role-${role}`;
+          return (
+            <div key={role} className="mt-3 flex flex-wrap items-end gap-3">
+              <div>
+                <label htmlFor={selectId} className="block text-sm text-ink">
+                  <span className="font-mono">{role}</span> &mdash; {description}
+                </label>
+                <p className="text-xs text-ink-faint">Would let {unlocks.join(", ")} run.</p>
+              </div>
+              <select
+                id={selectId}
+                value={choice[role] ?? ""}
+                onChange={(e) => setChoice({ ...choice, [role]: e.target.value })}
+                className="rounded-sm border border-border bg-surface px-3 py-2 text-sm text-ink"
+              >
+                <option value="">Select a column...</option>
+                {columns.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <Button onClick={() => confirm(role)} disabled={!choice[role] || busy === role}>
+                {busy === role ? "Confirming..." : "Confirm"}
+              </Button>
+            </div>
+          );
+        })}
+    </div>
+  );
+}
+
 function ResultCard({ result }: { result: AnalysisResultRecord }) {
   const title = ANALYSIS_TITLES[result.analysis] ?? result.analysis;
 
@@ -135,9 +310,12 @@ function ResultCard({ result }: { result: AnalysisResultRecord }) {
           : null;
 
   const repeat = result.findings.find((f) => f.finding_type === "repeat_behaviour");
+  const concentration = result.findings.find((f) => f.finding_type === "concentration_curve");
 
   return (
     <Card title={title}>
+      {concentration && <ConcentrationNote finding={concentration} />}
+
       {repeat && (
         <div className="mb-4 flex flex-wrap gap-6 text-sm">
           <div>
@@ -249,7 +427,7 @@ export default function AnalyticsPage() {
               <span key={role} className="text-xs">
                 <span className="text-ink-muted">{role}</span>{" "}
                 <span className="font-mono text-ink">{candidate.column}</span>{" "}
-                <Badge value={candidate.confidence} />
+                <Badge value={candidate.confidence} tone={CONFIDENCE_TONES[candidate.confidence]} />
               </span>
             ))}
           </div>
@@ -287,6 +465,30 @@ export default function AnalyticsPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Adjacent to the refusals it answers, not on a settings
+                  screen elsewhere - the question and the way to answer it
+                  belong in the same place. */}
+              <RoleConfirmation
+                data={data}
+                runRef={runRef}
+                columns={selection.columnTypes ? Object.keys(selection.columnTypes) : []}
+                onUpdated={setData}
+              />
+            </Card>
+          )}
+
+          {/* A run with everything detected still needs the withdraw path -
+              otherwise a confirmation made earlier could never be undone.
+              Only when there IS one: an empty card asks nothing. */}
+          {notApplicable.length === 0 && Object.keys(data.detected_roles.confirmed_roles ?? {}).length > 0 && (
+            <Card title="Column roles">
+              <RoleConfirmation
+                data={data}
+                runRef={runRef}
+                columns={selection.columnTypes ? Object.keys(selection.columnTypes) : []}
+                onUpdated={setData}
+              />
             </Card>
           )}
 
