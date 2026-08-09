@@ -21,6 +21,12 @@ export default function App() {
           <Route path="/ask" element={<AskPage />} />
           <Route path="/predict" element={<PredictPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
+          {/* Any unrecognised path lands somewhere real. Without this, an
+              unknown route rendered the nav and an EMPTY main area - no
+              error, no message, just a blank page that looks like the app
+              failed to load. A stale bookmark or a hand-edited URL should
+              never be indistinguishable from a broken build. */}
+          <Route path="*" element={<Navigate to="/sources" replace />} />
         </Routes>
       </Layout>
     </BrowserRouter>

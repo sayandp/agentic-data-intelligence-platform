@@ -103,6 +103,13 @@ def ingest_node(state: IngestState, config: RunnableConfig) -> dict:
 
         connector = build_connector(source)
         contract = connector.fetch()
+        # Cached HERE as well as after repair, because a run that escalates
+        # never reaches explore_node - and an escalated run is exactly the
+        # one a human sits polling. Without this, every poll of a paused run
+        # rebuilt the frame (37s on a 94MB source). explore_node overwrites
+        # it with the post-repair metadata when the run gets that far, so a
+        # completed run still describes its repaired frame.
+        run.contract_metadata = contract.metadata()
 
         active_baseline = (
             db.query(Baseline).filter(Baseline.source_id == source.id, Baseline.is_active.is_(True)).one_or_none()
@@ -393,6 +400,10 @@ def explore_node(state: IngestState, config: RunnableConfig) -> dict:
 
         connector = build_connector(source)
         contract = repaired_contract_for_run(run, source, connector, baseline.profile_json if baseline else None)
+        # Cache it here, where the frame is already in hand. Every later
+        # reader (the status poll, the run picker's column hints) then gets
+        # it for the cost of a row read instead of rebuilding the frame.
+        run.contract_metadata = contract.metadata()
         exploration_record = run_exploration_for_run(db, run, contract.data, baseline_is_provisional=(baseline.is_provisional if baseline else False))
         # Business analytics runs AFTER exploration, on the same REPAIRED
         # frame, only for a completed run. Wrapped because it is additive

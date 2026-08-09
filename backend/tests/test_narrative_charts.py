@@ -7,13 +7,15 @@ chart selection.
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from app.exploration.engine import ExplorationEngine
 from app.exploration.findings import DataQualityContext, FindingType
-from app.narrative.charts import build_charts
+from app.narrative.charts import MAX_SCATTER_POINTS, build_charts
 from app.narrative.models import ChartType
 
 
@@ -205,3 +207,77 @@ def test_max_charts_cap_is_enforced():
 
     charts = build_charts(findings, df, NarrativeConfig(max_charts=3))
     assert len(charts) <= 3
+
+
+# ---- Chart payloads are bounded, whatever the row count ----
+
+
+def _point_count(axis) -> int:
+    """Plotly serialises a numpy/pandas array as BINARY - {"dtype": "f8",
+    "bdata": "<base64>"} - not as a JSON list, so len() on it counts dict
+    keys (always 2) rather than points. Decoding is the only way to assert
+    on a real point count; getting this wrong is how a 17MB scatter could
+    look like it held 2 values."""
+    if isinstance(axis, list):
+        return len(axis)
+    import base64
+
+    itemsize = int(axis["dtype"][-1])
+    return len(base64.b64decode(axis["bdata"])) // itemsize
+
+
+def test_a_histogram_ships_binned_counts_not_every_raw_value():
+    """`go.Histogram(x=values)` hands Plotly every raw value and bins in the
+    browser. On a 1,067,371-row column that was an 11MB figure inside a 43MB
+    report row, re-downloaded on every page load. Binning here sends ~50
+    numbers and the counts are the TRUE population counts, so what the chart
+    SAYS is unchanged."""
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({"amount": rng.normal(50, 5, 60_000)})
+    findings = ExplorationEngine().run(df, run_id="r", data_quality_context=_quality_context())
+    summary = [f for f in findings.findings if f.finding_type == FindingType.SUMMARY_STAT and f.payload.kind == "numeric"]
+
+    chart = next(c for c in build_charts(findings, df) if summary[0].id in c.finding_ids)
+    trace = chart.figure_json["data"][0]
+
+    assert chart.chart_type == ChartType.HISTOGRAM
+    assert len(trace["y"]) <= 60, "a histogram must ship bin counts, not one entry per row"
+    # Every row is still accounted for - binning loses no observations.
+    assert sum(trace["y"]) == 60_000
+    assert len(json.dumps(chart.figure_json)) < 20_000
+
+
+def test_a_scatter_is_downsampled_and_says_so():
+    """A million markers is both an unreadable block of ink and 17MB of
+    JSON. The sample is deterministic (an even stride, no seed) and the
+    title states it, because a reader judging a relationship by eye has to
+    know they are looking at a sample."""
+    rng = np.random.default_rng(0)
+    n = 40_000
+    a = rng.normal(0, 1, n)
+    df = pd.DataFrame({"a": a, "b": a * 2 + rng.normal(0, 0.1, n)})
+    findings = ExplorationEngine().run(df, run_id="r", data_quality_context=_quality_context())
+    corr = [f for f in findings.findings if f.finding_type == FindingType.CORRELATION]
+
+    chart = next(c for c in build_charts(findings, df) if corr[0].id in c.finding_ids)
+    trace = chart.figure_json["data"][0]
+
+    assert chart.chart_type == ChartType.SCATTER
+    assert _point_count(trace["x"]) <= MAX_SCATTER_POINTS
+    assert "of 40,000 points" in chart.title
+    assert len(json.dumps(chart.figure_json)) < 200_000
+
+
+def test_a_small_scatter_is_not_downsampled_and_its_title_stays_clean():
+    """The cap is for the case that needs it. A 200-point scatter is shipped
+    whole, and its title must not carry a sampling note it did not earn."""
+    rng = np.random.default_rng(0)
+    a = rng.normal(0, 1, 200)
+    df = pd.DataFrame({"a": a, "b": a * 2 + rng.normal(0, 0.1, 200)})
+    findings = ExplorationEngine().run(df, run_id="r", data_quality_context=_quality_context())
+    corr = [f for f in findings.findings if f.finding_type == FindingType.CORRELATION]
+
+    chart = next(c for c in build_charts(findings, df) if corr[0].id in c.finding_ids)
+
+    assert _point_count(chart.figure_json["data"][0]["x"]) == 200
+    assert "points)" not in chart.title

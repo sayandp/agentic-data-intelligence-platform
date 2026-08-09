@@ -59,6 +59,19 @@ class Run(Base):
     # run that legitimately never reveals anything is distinguishable from
     # one that was never checked.
     reveal_depth_reached: Mapped[int] = mapped_column(nullable=False, default=0)
+    # The contract metadata (row_count, column_types, encoding) as it was
+    # for THIS run, cached at completion.
+    #
+    # It used to be recomputed on every GET /ingest/{run}/status by
+    # rebuilding the repaired frame through the connector - O(source size),
+    # measured at 30.9s on a 94MB CSV. That is a poll target, and it is also
+    # what Ask/Predict/Analytics read to offer column hints, so on a large
+    # source those screens simply never showed their columns and the status
+    # poll held a DB connection for half a minute at a time.
+    #
+    # Null for a run that completed before this column existed; the
+    # serializer falls back to recomputing in that case, so nothing breaks.
+    contract_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Dashboard UX pass: a short, human-typeable alias for `id` - "Run #17"
     # instead of a UUID. `id` stays the only real primary key (nothing about
     # foreign keys, joins, or the graph's checkpoint thread_id changes); this

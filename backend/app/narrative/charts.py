@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -91,13 +92,44 @@ def _line_chart(finding: Finding, payload: TrendPayload, df: pd.DataFrame) -> Ch
     return ChartRef(chart_id=f"chart-{finding.id}", chart_type=ChartType.LINE, finding_ids=[finding.id], title=title, figure_json=_figure_json(fig))
 
 
+#: Points kept in a scatter. Above this the figure is downsampled by an
+#: even index stride - deterministic, so the same run always produces the
+#: same picture, and the same approach app/analytics/pareto.py already uses
+#: for its concentration curve.
+#:
+#: This is not only a payload concern. A scatter of 1,067,371 markers was
+#: 17MB of JSON inside a 43MB report row, re-downloaded on every page load,
+#: and the plot it drew was a solid block of overplotted ink that showed a
+#: reader nothing. Both problems have the same fix.
+MAX_SCATTER_POINTS = 5000
+
+#: Bins in a pre-computed histogram. Plotly's own Histogram trace bins
+#: CLIENT-side, which means shipping every raw value to do it.
+HISTOGRAM_BINS = 50
+
+
+def _stride_sample(frame: pd.DataFrame, cap: int) -> tuple[pd.DataFrame, bool]:
+    """Every nth row, never a random subset: reproducible across runs and
+    across processes, with no seed to record or get wrong."""
+    if len(frame) <= cap:
+        return frame, False
+    stride = max(1, len(frame) // cap)
+    return frame.iloc[::stride].head(cap), True
+
+
 def _scatter_chart(finding: Finding, payload: CorrelationPayload, df: pd.DataFrame) -> ChartRef | None:
     if payload.column_a not in df.columns or payload.column_b not in df.columns:
         return None
     subset = df[[payload.column_a, payload.column_b]].dropna()
     if subset.empty:
         return None
+    full_rows = len(subset)
+    subset, sampled = _stride_sample(subset, MAX_SCATTER_POINTS)
     title = f"{payload.column_a} vs {payload.column_b}"
+    if sampled:
+        # Stated in the title, not hidden in metadata: a reader judging a
+        # relationship by eye has to know they are looking at a sample.
+        title += f" (every {max(1, full_rows // MAX_SCATTER_POINTS)}th of {full_rows:,} points)"
     fig = go.Figure(go.Scatter(x=subset[payload.column_a], y=subset[payload.column_b], mode="markers"))
     fig.update_layout(title=title, xaxis_title=payload.column_a, yaxis_title=payload.column_b)
     return ChartRef(
@@ -155,8 +187,26 @@ def _discrete_value_count_bar_chart(finding: Finding, values: pd.Series, column:
 
 
 def _histogram_chart(finding: Finding, values: pd.Series, column: str) -> ChartRef:
+    """Bins are computed HERE and only the counts are shipped.
+
+    `go.Histogram(x=values)` hands Plotly every raw value and lets the
+    browser bin them - which meant an 11MB figure for a single 1,067,371-row
+    column. Binning server-side sends ~50 numbers instead, and the counts
+    are the TRUE population counts rather than a sample's, so nothing about
+    what the chart says changes. The rendered result is the same picture.
+    """
     title = f"{column} - distribution"
-    fig = go.Figure(go.Histogram(x=values))
+    clean = pd.to_numeric(values, errors="coerce").dropna()
+    if clean.empty:
+        fig = go.Figure(go.Bar(x=[], y=[]))
+    else:
+        counts, edges = np.histogram(clean.to_numpy(), bins=HISTOGRAM_BINS)
+        centres = (edges[:-1] + edges[1:]) / 2
+        width = float(edges[1] - edges[0]) if len(edges) > 1 else 1.0
+        fig = go.Figure(go.Bar(x=centres.tolist(), y=counts.tolist(), width=width))
+        # bargap 0 so adjacent bins touch, which is what makes a bar of
+        # binned counts read as a histogram rather than a category chart.
+        fig.update_layout(bargap=0)
     fig.update_layout(title=title, xaxis_title=column, yaxis_title="count")
     return ChartRef(
         chart_id=f"chart-{finding.id}", chart_type=ChartType.HISTOGRAM, finding_ids=[finding.id], title=title, figure_json=_figure_json(fig)

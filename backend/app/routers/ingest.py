@@ -93,9 +93,18 @@ def _serialize_run_response(db: Session, run_id: str) -> dict:
     report = db.query(Report).filter(Report.run_id == run_id).one_or_none()
     validation_failure_count = db.query(ValidationEvent).filter(ValidationEvent.run_id == run_id).count()
 
-    connector = build_connector(source)
-    contract = repaired_contract_for_run(run, source, connector, baseline.profile_json if baseline else None)
-    metadata = contract.metadata()
+    # Cached at completion (app/graph/nodes.py::explore_node). Rebuilding
+    # the repaired frame here just to describe it was O(source size) - 30.9s
+    # on a 94MB CSV, on an endpoint the UI POLLS and which the run picker
+    # calls for its column hints. A run from before the column existed has
+    # no cache, so it falls back to the old path rather than losing the
+    # fields entirely.
+    if run.contract_metadata:
+        metadata = run.contract_metadata
+    else:
+        connector = build_connector(source)
+        contract = repaired_contract_for_run(run, source, connector, baseline.profile_json if baseline else None)
+        metadata = contract.metadata()
 
     baseline_rejected_trace = (
         db.query(AgentTrace).filter(AgentTrace.run_id == run_id, AgentTrace.agent_name == "baseline_profiler").one_or_none()
