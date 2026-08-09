@@ -21,13 +21,32 @@ def get_report(run_id: str, db: Session = Depends(get_db)):
 
     record = db.query(Report).filter(Report.run_id == run.id).one_or_none()
     if record is None:
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                f"no report for run '{run.id}' (status={run.status!r}) - the Narrative Agent only runs once a run "
-                "reaches 'completed'; a run still awaiting_approval or failed has none"
-            ),
-        )
+        # A COMPLETED run with no report is a different situation from an
+        # incomplete one, and saying the same thing for both is worse than
+        # saying nothing: app/graph/nodes.py::explore_node marks the run
+        # "completed" BEFORE narrate_node runs, so there is a real window
+        # where the run is completed and the report genuinely does not exist
+        # yet. The old wording ("the Narrative Agent only runs once a run
+        # reaches 'completed'") told a reader to wait for a state the run
+        # was already in - it read as a contradiction and gave them nothing
+        # to do.
+        if run.status == "completed":
+            detail = (
+                f"the report for run {run.run_number or run.id} is still being written. Exploration has finished "
+                "(which is what marks a run completed), and the Narrative Agent runs after that - reload in a moment. "
+                "If it never appears, the Audit view shows whether the narrative step ran and what it returned."
+            )
+        else:
+            detail = (
+                f"run {run.run_number or run.id} is {run.status!r}, so it has no report - the Narrative Agent only "
+                "runs after a run completes. "
+                + (
+                    "Resolve what it is waiting on and the run continues from where it stopped."
+                    if run.status == "awaiting_approval"
+                    else "The Audit view shows which node it stopped at and why."
+                )
+            )
+        raise HTTPException(status_code=404, detail=detail)
 
     return {
         "id": record.id,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { apiFetch } from "../api/client";
+import { ApiError, apiFetch, pollReportReady } from "../api/client";
 import type { ReportRecord } from "../api/types";
 import { Badge, Button, ErrorMessage, RunLabel } from "../components/ui";
 import { loadPlotly, themedLayout, withDesignColors } from "../lib/plotly";
@@ -76,6 +76,10 @@ export default function ReportsPage() {
   const [report, setReport] = useState<ReportRecord | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
+  // Set while waiting out the completed-but-not-yet-narrated window, so the
+  // wait shows elapsed time rather than a bare spinner (DESIGN.md: never a
+  // spinner with no sense of whether it is stuck).
+  const [waitingFor, setWaitingFor] = useState<string | null>(null);
   const chartsContainerRef = useRef<HTMLDivElement>(null);
 
   async function loadReport(query: string) {
@@ -90,9 +94,33 @@ export default function ReportsPage() {
       // UUID still ends up showing (and re-loadable by) the short form.
       setRunQuery(data.run_number != null ? String(data.run_number) : data.run_id);
     } catch (err) {
+      // explore_node marks a run "completed" BEFORE narrate_node writes the
+      // report, so a 404 here often means "not yet", not "never" - the case
+      // anyone following a View report link straight after an ingest hits.
+      // Wait it out once, with visible elapsed time, instead of showing a
+      // red error for something that is still on its way.
+      if (err instanceof ApiError && err.status === 404) {
+        try {
+          setWaitingFor("0s");
+          const status = await pollReportReady(query, (ms) => setWaitingFor(`${Math.round(ms / 1000)}s`));
+          if (status.report?.available) {
+            const data = await apiFetch<ReportRecord>(`/reports/${query}`);
+            setReport(data);
+            setRunQuery(data.run_number != null ? String(data.run_number) : data.run_id);
+            return;
+          }
+        } catch {
+          // Fall through to the original error - the backend's own message
+          // distinguishes "still being written" from "this run has none",
+          // and it is more specific than anything invented here.
+        } finally {
+          setWaitingFor(null);
+        }
+      }
       setError(err);
     } finally {
       setLoading(false);
+      setWaitingFor(null);
     }
   }
 
@@ -142,6 +170,12 @@ export default function ReportsPage() {
           </Button>
         </div>
       </div>
+
+      {waitingFor !== null && (
+        <p className="mb-4 text-sm text-ink-muted">
+          Exploration finished and the narrative is still being written &mdash; waiting {waitingFor}...
+        </p>
+      )}
 
       <ErrorMessage error={error} />
 

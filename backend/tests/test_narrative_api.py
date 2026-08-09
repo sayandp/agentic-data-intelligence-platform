@@ -168,3 +168,64 @@ def test_wide_dataset_charts_capped_same_as_findings(client, tmp_path):
 
     report = client.get(f"/reports/{result['run_id']}").json()
     assert len(report["chart_refs"] or []) <= 20
+
+
+def test_a_missing_report_on_a_COMPLETED_run_does_not_blame_the_run_state():
+    """The message a user actually hit: "no report for run X (status=
+    'completed') - the Narrative Agent only runs once a run reaches
+    'completed'". It named the run's state and then told the reader to wait
+    for that same state, which is a contradiction with nothing actionable
+    in it.
+
+    explore_node marks a run completed BEFORE narrate_node runs, so this is
+    a real, reachable window - not a corner case.
+    """
+    from app.db import SessionLocal
+    from app.models import Report, Run
+
+    with SessionLocal() as db:
+        run = Run(source_id="s-none", status="completed", run_number=987654)
+        db.add(run)
+        db.commit()
+        run_id = run.id
+
+    try:
+        from app.main import app
+        from fastapi.testclient import TestClient
+
+        with TestClient(app) as client:
+            body = client.get(f"/reports/{run_id}").json()["detail"]
+
+        assert "still being written" in body
+        assert "only runs once a run reaches" not in body, "must not tell a completed run to wait for completion"
+    finally:
+        with SessionLocal() as db:
+            db.query(Report).filter(Report.run_id == run_id).delete()
+            db.query(Run).filter(Run.id == run_id).delete()
+            db.commit()
+
+
+def test_a_missing_report_on_a_PAUSED_run_says_what_to_do_about_it():
+    from app.db import SessionLocal
+    from app.models import Run
+
+    with SessionLocal() as db:
+        run = Run(source_id="s-none", status="awaiting_approval", run_number=987655)
+        db.add(run)
+        db.commit()
+        run_id = run.id
+
+    try:
+        from app.main import app
+        from fastapi.testclient import TestClient
+
+        with TestClient(app) as client:
+            body = client.get(f"/reports/{run_id}").json()["detail"]
+
+        assert "awaiting_approval" in body
+        assert "Resolve what it is waiting on" in body
+        assert "still being written" not in body
+    finally:
+        with SessionLocal() as db:
+            db.query(Run).filter(Run.id == run_id).delete()
+            db.commit()

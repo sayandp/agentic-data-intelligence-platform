@@ -163,6 +163,38 @@ export function pollIngestStatus(runId: string, onTick?: (elapsedMs: number) => 
   );
 }
 
+// A run is marked "completed" by explore_node BEFORE narrate_node writes
+// the report, so there is a real window where GET /reports/{run} 404s on a
+// run whose status already says completed. Anyone following a "View
+// report" link straight after an ingest lands in it and, before this, was
+// shown a red error that read as terminal.
+//
+// Polls the SAME status endpoint pollIngestStatus does, with the same
+// grace period, so the two agree on when a report is never coming rather
+// than each deciding separately.
+export function pollReportReady(runRef: string, onTick?: (elapsedMs: number) => void): Promise<IngestResponse> {
+  let completedSeenAt: number | null = null;
+  return pollUntil<IngestResponse>(
+    () => apiFetch<IngestResponse>(`/ingest/${runRef}/status`),
+    (body) => {
+      if (body.report?.available) return true;
+      // Only a COMPLETED run is worth waiting on. A paused or failed run
+      // will never produce a report, and spinning on one would replace a
+      // wrong message with a wrong wait.
+      if (body.status !== "completed") return true;
+      completedSeenAt ??= Date.now();
+      return Date.now() - completedSeenAt > REPORT_GRACE_PERIOD_MS;
+    },
+    {
+      onTick,
+      timeoutMs: REPORT_GRACE_PERIOD_MS,
+      intervalMs: INGEST_POLL_INTERVAL_MS,
+      timeoutMessage: (seconds) =>
+        `The report for run ${runRef} has not appeared after ${seconds}s. The Audit view shows whether the narrative step ran and what it returned.`,
+    }
+  );
+}
+
 // Predict page UX pass, Part 1: POST /predict returns {id, state: "running"}
 // immediately (app/routers/predict.py's RESOLVE-HANG-style fix - CV/
 // training across several candidate families is genuinely slow) - this
