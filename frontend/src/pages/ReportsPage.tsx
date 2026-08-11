@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ApiError, apiFetch, pollReportReady } from "../api/client";
+import { ApiError, apiFetch, deckDownloadUrl, pollDeckExport, pollReportReady, startDeckExport } from "../api/client";
 import type { ReportRecord } from "../api/types";
 import { Badge, Button, ErrorMessage, RunLabel } from "../components/ui";
 import { loadPlotly, themedLayout, withDesignColors } from "../lib/plotly";
@@ -39,6 +39,50 @@ function splitReportSections(text: string) {
 // from the list renders the recommendation text with the dead reference
 // dropped, never a link to nowhere.
 const CLAIM_REFERENCE_PATTERN = /^(.*?)\s*\(see (claim-\d+)\)\s*$/;
+
+/** Exports this run as a deck. The deck is a RENDERER over the same
+ *  persisted artifacts this page is showing, so it can never say something
+ *  the screen does not - and generation is polled with visible elapsed time
+ *  rather than a bare spinner, because rendering every chart through a real
+ *  browser takes seconds. */
+function ExportDeck({ runRef }: { runRef: string }) {
+  const [state, setState] = useState<"idle" | "working" | "ready" | "failed">("idle");
+  const [elapsed, setElapsed] = useState("0s");
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    setState("working");
+    setError(null);
+    setElapsed("0s");
+    try {
+      await startDeckExport(runRef);
+      const done = await pollDeckExport(runRef, (ms) => setElapsed(`${Math.round(ms / 1000)}s`));
+      if (done.state === "ready") {
+        setState("ready");
+      } else {
+        setState("failed");
+        setError(done.error ?? "the deck could not be generated");
+      }
+    } catch (err) {
+      setState("failed");
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Button onClick={run} loading={state === "working"} loadingText={`Building deck ${elapsed}...`}>
+        Export deck
+      </Button>
+      {state === "ready" && (
+        <a className="text-sm font-medium text-brand-600 underline" href={deckDownloadUrl(runRef)}>
+          Download .pptx
+        </a>
+      )}
+      {state === "failed" && error && <span className="text-sm text-status-negative">{error}</span>}
+    </span>
+  );
+}
 
 function RecommendationLine({ line, knownClaimIds }: { line: string; knownClaimIds: Set<string> }) {
   const match = line.match(CLAIM_REFERENCE_PATTERN);
@@ -168,6 +212,7 @@ export default function ReportsPage() {
           <Button variant="primary" onClick={() => loadReport(runQuery)} loading={loading} loadingText="Loading...">
             Load
           </Button>
+          {report && <ExportDeck runRef={String(report.run_number ?? report.run_id)} />}
         </div>
       </div>
 

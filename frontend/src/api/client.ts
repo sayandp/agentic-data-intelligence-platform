@@ -195,6 +195,38 @@ export function pollReportReady(runRef: string, onTick?: (elapsedMs: number) => 
   );
 }
 
+// Deck generation renders every chart through kaleido, which drives a real
+// browser - seconds of work. Same background-plus-poll shape as ingest and
+// predict rather than one long request.
+export interface DeckExportStatus {
+  run_id: string;
+  run_number: number | null;
+  state: "none" | "running" | "ready" | "failed";
+  bytes?: number;
+  error?: string | null;
+}
+
+export function startDeckExport(runRef: string): Promise<DeckExportStatus> {
+  return apiPostJson<DeckExportStatus>(`/export/${encodeURIComponent(runRef)}/pptx`, {});
+}
+
+export function pollDeckExport(runRef: string, onTick?: (elapsedMs: number) => void): Promise<DeckExportStatus> {
+  return pollUntil<DeckExportStatus>(
+    () => apiFetch<DeckExportStatus>(`/export/${encodeURIComponent(runRef)}/pptx/status`),
+    (body) => body.state === "ready" || body.state === "failed",
+    {
+      onTick,
+      timeoutMs: 4 * 60 * 1000,
+      intervalMs: INGEST_POLL_INTERVAL_MS,
+      timeoutMessage: (seconds) => `The deck for run ${runRef} is still generating after ${seconds}s.`,
+    }
+  );
+}
+
+export function deckDownloadUrl(runRef: string): string {
+  return `${API_BASE_URL}/export/${encodeURIComponent(runRef)}/pptx`;
+}
+
 // Predict page UX pass, Part 1: POST /predict returns {id, state: "running"}
 // immediately (app/routers/predict.py's RESOLVE-HANG-style fix - CV/
 // training across several candidate families is genuinely slow) - this
