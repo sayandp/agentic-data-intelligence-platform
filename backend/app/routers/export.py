@@ -10,6 +10,8 @@ open for that is the exact bug those two endpoints were changed to avoid.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -30,15 +32,33 @@ def start_pptx_export(run_id: str, db: Session = Depends(get_db)):
 
 @router.get("/{run_id}/pptx/status")
 def pptx_export_status(run_id: str, db: Session = Depends(get_db)):
+    """Reports the FILE first, the job second.
+
+    A deck a user generated an hour ago is still theirs to download; the
+    in-process job only ever describes the progress of one render and does
+    not survive a restart. Reading the job alone is what made a finished
+    deck look like it had never existed the moment someone navigated away.
+    """
     run = resolve_run(db, run_id)
     key = str(run.run_number or run.id)
     status = job_status(key)
-    # A deck already on disk from an earlier session is ready even though
-    # this process has no job for it - the file is the durable artifact,
-    # the job is only the progress of one render.
-    if status.get("state") in ("none", None) and deck_path(run).exists():
-        return {"run_id": run.id, "run_number": run.run_number, "state": "ready", "bytes": deck_path(run).stat().st_size}
-    return {"run_id": run.id, "run_number": run.run_number, **status}
+    path = deck_path(run)
+
+    existing = None
+    if path.exists():
+        stat = path.stat()
+        existing = {
+            "bytes": stat.st_size,
+            "generated_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+        }
+
+    # A render in flight is the more current fact; otherwise the file on
+    # disk is, whether or not this process remembers making it.
+    if status.get("state") == "running":
+        return {"run_id": run.id, "run_number": run.run_number, **status, "existing": existing}
+    if existing:
+        return {"run_id": run.id, "run_number": run.run_number, "state": "ready", **existing, "existing": existing}
+    return {"run_id": run.id, "run_number": run.run_number, **status, "existing": None}
 
 
 @router.get("/{run_id}/pptx")

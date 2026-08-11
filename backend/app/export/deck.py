@@ -228,7 +228,7 @@ def _chart_slides(prs: Presentation, s: DeckSources) -> None:
     for chart in s.chart_refs:
         title = str(chart.get("title") or "Chart")
         slide = _text_slide(prs, title)
-        png = render_chart_png(chart.get("figure_json") or {})
+        png = render_chart_png(chart.get("figure_json") or {}, chart.get("chart_type"))
         if png is None:
             _body(slide, [("This chart could not be rendered as an image for the deck.", 15, INK_MUTED)])
             continue

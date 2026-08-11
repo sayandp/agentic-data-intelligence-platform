@@ -32,12 +32,30 @@ DECK_AXIS = "#6B7280"
 DECK_INK = "#12161C"
 
 
-def _apply_deck_colours(figure: dict) -> dict:
-    """Same rule the UI applies (frontend/src/lib/plotly.ts): ONE trace takes
-    the accent, several take the categorical palette positionally. A lone bar
-    chart carries its comparison in the bar lengths, so colouring each bar
-    differently would add nothing and imply the categories differ in kind."""
+def _apply_deck_colours(figure: dict, chart_type: str | None = None) -> dict:
+    """Same rule the UI applies (frontend/src/lib/plotly.ts), so a slide and
+    a screen colour the same figure the same way.
+
+    `chart_type` is the BACKEND's classification, not the Plotly trace type:
+    a pre-binned histogram is emitted as a `bar` trace, so the trace type
+    alone cannot tell unordered category frequencies from the shape of a
+    continuous distribution.
+    """
     data = list(figure.get("data") or [])
+
+    # One trace of UNORDERED categories: a colour per bar. The categories
+    # differ in kind and the axis already names each, so colour is a second
+    # channel rather than an invented meaning.
+    if chart_type == "bar" and len(data) == 1:
+        trace = dict(data[0])
+        x_values = trace.get("x")
+        if isinstance(x_values, list) and len(x_values) > 1:
+            marker = dict(trace.get("marker") or {})
+            marker.setdefault("color", [DECK_CATEGORICAL[i % len(DECK_CATEGORICAL)] for i in range(len(x_values))])
+            trace["marker"] = marker
+            data = [trace]
+            figure = {**figure, "data": data}
+
     palette = DECK_CATEGORICAL if len(data) > 1 else [DECK_ACCENT]
 
     coloured = []
@@ -83,7 +101,7 @@ def _apply_deck_colours(figure: dict) -> dict:
     return {"data": coloured, "layout": layout}
 
 
-def render_chart_png(figure_json: dict) -> bytes | None:
+def render_chart_png(figure_json: dict, chart_type: str | None = None) -> bytes | None:
     """PNG bytes, or None when this figure cannot be drawn.
 
     Returns None rather than raising: one unrenderable chart must not cost
@@ -91,7 +109,7 @@ def render_chart_png(figure_json: dict) -> bytes | None:
     unavailable, which is more useful than a deck that failed to build.
     """
     try:
-        figure = go.Figure(_apply_deck_colours(figure_json))
+        figure = go.Figure(_apply_deck_colours(figure_json, chart_type))
         return pio.to_image(
             figure, format="png", width=CHART_WIDTH_PX, height=CHART_HEIGHT_PX, scale=CHART_SCALE
         )

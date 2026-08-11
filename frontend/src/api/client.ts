@@ -203,7 +203,16 @@ export interface DeckExportStatus {
   run_number: number | null;
   state: "none" | "running" | "ready" | "failed";
   bytes?: number;
+  generated_at?: string;
   error?: string | null;
+  /** The deck already on disk for this run, if any. Present regardless of
+   *  whether THIS browser session generated it - a file you can only catch
+   *  in the seconds after generation is not saved. */
+  existing?: { bytes: number; generated_at: string } | null;
+}
+
+export function fetchDeckExportStatus(runRef: string): Promise<DeckExportStatus> {
+  return apiFetch<DeckExportStatus>(`/export/${encodeURIComponent(runRef)}/pptx/status`);
 }
 
 export function startDeckExport(runRef: string): Promise<DeckExportStatus> {

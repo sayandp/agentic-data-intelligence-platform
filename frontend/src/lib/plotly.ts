@@ -137,12 +137,43 @@ export function themedLayout(layout: Record<string, unknown>): Record<string, un
   };
 }
 
-export function withDesignColors(data: unknown[]): unknown[] {
-  // THE SINGLE-SERIES RULE. One trace gets ONE colour, always the accent.
-  // A lone bar or histogram already carries its comparison in the bar
-  // LENGTHS; colouring each bar differently adds no information and quietly
-  // implies the categories differ in kind. Only a genuine multi-series
-  // figure earns the categorical palette, and then positionally.
+/** `chartType` is the BACKEND's classification (app/narrative/models.py::
+ *  ChartType), not the Plotly trace type - and the difference matters. A
+ *  pre-binned histogram is emitted as a `bar` trace, so the trace type alone
+ *  cannot tell "frequencies of four unordered countries" from "the shape of
+ *  a continuous distribution". Colouring the second one per-bar would be
+ *  nonsense; colouring the first one per-bar is the whole point. */
+export function withDesignColors(data: unknown[], chartType?: string): unknown[] {
+  // A ONE-TRACE BAR OF UNORDERED CATEGORIES gets one colour PER BAR. The
+  // categories genuinely differ in kind - four countries are not a scale -
+  // and the x-axis already names each, so colour adds a second channel
+  // rather than inventing a meaning.
+  //
+  // This is the case that made every chart on the report page monochrome:
+  // eight charts, eight single traces, so all eight landed on the accent
+  // and the categorical palette was never reached.
+  if (chartType === "bar" && data.length === 1) {
+    const t = data[0] as Record<string, unknown>;
+    const categories = Array.isArray(t.x) ? t.x.length : 0;
+    if (categories > 1) {
+      const palette = chartCategorical();
+      const marker = (t.marker as Record<string, unknown>) ?? {};
+      return [
+        {
+          ...t,
+          marker: {
+            ...marker,
+            color: marker.color ?? Array.from({ length: categories }, (_, i) => palette[i % palette.length]),
+          },
+        },
+      ];
+    }
+  }
+
+  // THE SINGLE-SERIES RULE, unchanged for everything else. A histogram's
+  // bins are ORDERED and continuous, a line is one series, a scatter is one
+  // cloud - each carries its comparison in position, and rainbow bins would
+  // imply the bins differ in kind when they are the same measure sliced up.
   const palette = data.length > 1 ? chartCategorical() : [chartAccent()];
   return data.map((trace, index) => {
     const t = trace as Record<string, unknown>;

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ApiError, apiFetch, deckDownloadUrl, pollDeckExport, pollReportReady, startDeckExport } from "../api/client";
+import { ApiError, apiFetch, deckDownloadUrl, fetchDeckExportStatus, pollDeckExport, pollReportReady, startDeckExport } from "../api/client";
 import type { ReportRecord } from "../api/types";
 import { Badge, Button, ErrorMessage, RunLabel } from "../components/ui";
 import { loadPlotly, themedLayout, withDesignColors } from "../lib/plotly";
+import { formatWhen } from "../components/RunPicker";
 import { askLink, predictLink } from "../lib/runLinks";
 
 // Mirrors app/narrative/models.py::NarrativeReport.rendered_text()'s fixed
@@ -49,6 +50,26 @@ function ExportDeck({ runRef }: { runRef: string }) {
   const [state, setState] = useState<"idle" | "working" | "ready" | "failed">("idle");
   const [elapsed, setElapsed] = useState("0s");
   const [error, setError] = useState<string | null>(null);
+  const [existing, setExisting] = useState<{ bytes: number; generated_at: string } | null>(null);
+
+  // Any deck already on disk for this run is offered immediately, whether
+  // or not this session made it. Previously the download link existed only
+  // in the seconds after a render finished and vanished on navigation,
+  // which meant a generated deck was effectively unreachable.
+  useEffect(() => {
+    if (!runRef) return;
+    let cancelled = false;
+    fetchDeckExportStatus(runRef)
+      .then((s) => {
+        if (cancelled) return;
+        setExisting(s.existing ?? null);
+        if (s.existing) setState("ready");
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [runRef]);
 
   async function run() {
     setState("working");
@@ -59,6 +80,7 @@ function ExportDeck({ runRef }: { runRef: string }) {
       const done = await pollDeckExport(runRef, (ms) => setElapsed(`${Math.round(ms / 1000)}s`));
       if (done.state === "ready") {
         setState("ready");
+        setExisting({ bytes: done.bytes ?? 0, generated_at: done.generated_at ?? new Date().toISOString() });
       } else {
         setState("failed");
         setError(done.error ?? "the deck could not be generated");
@@ -70,14 +92,19 @@ function ExportDeck({ runRef }: { runRef: string }) {
   }
 
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className="inline-flex flex-wrap items-center gap-2">
       <Button onClick={run} loading={state === "working"} loadingText={`Building deck ${elapsed}...`}>
-        Export deck
+        {existing ? "Rebuild deck" : "Export deck"}
       </Button>
-      {state === "ready" && (
-        <a className="text-sm font-medium text-brand-600 underline" href={deckDownloadUrl(runRef)}>
-          Download .pptx
-        </a>
+      {existing && state !== "working" && (
+        <span className="text-sm text-ink-muted">
+          <a className="font-medium text-brand-600 underline" href={deckDownloadUrl(runRef)} download>
+            Download .pptx
+          </a>{" "}
+          <span className="text-ink-faint">
+            ({Math.max(1, Math.round(existing.bytes / 1024))} KB, built {formatWhen(existing.generated_at)})
+          </span>
+        </span>
       )}
       {state === "failed" && error && <span className="text-sm text-status-negative">{error}</span>}
     </span>
@@ -186,7 +213,7 @@ export default function ReportsPage() {
             // pure redundant chrome (the same string, twice, in two
             // different typefaces).
             const layout = themedLayout({ ...(chart.figure_json.layout as Record<string, unknown>), title: undefined, margin: { t: 16, r: 16, b: 40, l: 48 } });
-            const data = withDesignColors(chart.figure_json.data as unknown[]);
+            const data = withDesignColors(chart.figure_json.data as unknown[], chart.chart_type);
             window.Plotly.newPlot(el, data, layout, { responsive: true, displayModeBar: false });
           } catch {
             el.innerHTML = '<p class="text-sm text-ink-muted">Chart could not be rendered.</p>';
@@ -212,7 +239,7 @@ export default function ReportsPage() {
           <Button variant="primary" onClick={() => loadReport(runQuery)} loading={loading} loadingText="Loading...">
             Load
           </Button>
-          {report && <ExportDeck runRef={String(report.run_number ?? report.run_id)} />}
+          {runQuery.trim() && <ExportDeck runRef={runQuery.trim()} />}
         </div>
       </div>
 

@@ -319,7 +319,7 @@ function RoleConfirmation({
                 <span className="font-mono text-ink">{column}</span>
                 <Badge value={staleEntry ? "stale" : "confirmed"} tone={CONFIDENCE_TONES[staleEntry ? "stale" : "confirmed"]} />
                 {staleEntry && <span className="text-xs text-ink-faint">{staleEntry.why}</span>}
-                <Button variant="secondary" onClick={() => clear(role)} disabled={busy === role}>
+                <Button onClick={() => clear(role)} disabled={busy === role}>
                   {busy === role ? "Clearing..." : "Clear"}
                 </Button>
               </li>

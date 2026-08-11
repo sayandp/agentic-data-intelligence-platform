@@ -16,7 +16,7 @@ import type { IngestResponse, RunSummaryRecord } from "../api/types";
 // app/query/pipeline.py::resolve_run), so asking for both invited exactly
 // the contradictory input that produced the bug report.
 
-function formatWhen(iso: string | null): string {
+export function formatWhen(iso: string | null): string {
   if (!iso) return "";
   // The API serialises naive UTC datetimes ("2026-08-04T07:15:00", no
   // trailing Z and no offset). JS parses a bare date-TIME form as LOCAL

@@ -14,3 +14,5 @@ data/*
 node_modules/
 
 backend/data/uploads/
+# Generated decks are build output, rebuilt on demand from persisted artifacts.
+backend/data/exports/
