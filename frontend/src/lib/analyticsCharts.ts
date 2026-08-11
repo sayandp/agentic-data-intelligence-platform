@@ -1,4 +1,4 @@
-import { chartAccent, chartNeutral, themedLayout } from "./plotly";
+import { chartAccent, chartCategorical, chartColorscale, chartNeutral, chartSequential, themedLayout } from "./plotly";
 import type { AnalysisFindingRecord } from "../api/types";
 
 // Chart selection is a SWITCH ON finding_type - a closed set decided by the
@@ -78,10 +78,10 @@ function cohortHeatmap(p: Record<string, unknown>): ChartSpec {
         z: matrix.map((row) => row.map((v) => (v === null ? null : v * 100))),
         x: p.periods_since_acquisition as number[],
         y: p.cohort_labels as string[],
-        colorscale: [
-          [0, "rgba(0,0,0,0)"],
-          [1, chartAccent()],
-        ],
+        // ORDERED: "periods since acquisition" has a direction, so this
+        // is a single-hue ramp, never the categorical palette. Zero stays
+        // transparent so an unobserved cell reads as absent, not as 0%.
+        colorscale: [[0, "rgba(0,0,0,0)"], ...chartColorscale().slice(1)],
         hoverongaps: false,
         colorbar: { title: "% retained" },
       },
@@ -92,6 +92,17 @@ function cohortHeatmap(p: Record<string, unknown>): ChartSpec {
       margin: { t: 16, r: 16, b: 48, l: 88 },
     }),
   };
+}
+
+/** A/B/C is an ORDERED partition - A holds the most value, C the least -
+ *  so the bands take three steps of the sequential ramp rather than three
+ *  unrelated hues. Three arbitrary colours would say "these are different
+ *  kinds of thing"; the ramp says "these are the same thing, ranked",
+ *  which is what an ABC split actually is. */
+export function paretoBandColor(band: string): string {
+  const ramp = chartSequential();
+  const step: Record<string, number> = { A: 4, B: 2, C: 1 };
+  return ramp[step[band] ?? 1];
 }
 
 /** Segment sizes as a horizontal bar - readable with long segment names in
@@ -129,7 +140,7 @@ export function segmentBar(findings: AnalysisFindingRecord[]): ChartSpec | null 
 export function clusterScatter(findings: AnalysisFindingRecord[]): ChartSpec | null {
   if (!findings.length) return null;
   return {
-    data: findings.map((f) => {
+    data: findings.map((f, i) => {
       const centre = f.payload.centre as Record<string, number>;
       return {
         type: "scatter",
@@ -140,10 +151,11 @@ export function clusterScatter(findings: AnalysisFindingRecord[]): ChartSpec | n
         text: [String(f.payload.segment)],
         textposition: "top center",
         marker: {
-          // Same reasoning as segmentBar: the categorical palette is the
-          // four status colours, and a cluster is not a verdict. Each point
-          // is already separated by position and carries its own label.
-          color: chartAccent(),
+          // A cluster id is an UNORDERED category, so the categorical
+          // palette is exactly right here - and now safe, because that
+          // palette is no longer the status colours. One accent for every
+          // cluster made a multi-cluster scatter unreadable.
+          color: chartCategorical()[i % chartCategorical().length],
           size: Math.max(12, Math.min(48, (centre.frequency ?? 1) * 8)),
         },
       };

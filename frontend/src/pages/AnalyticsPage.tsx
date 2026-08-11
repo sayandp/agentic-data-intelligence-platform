@@ -4,7 +4,7 @@ import { ApiError, apiFetch } from "../api/client";
 import type { AnalysisFindingRecord, AnalysisResultRecord, AnalyticsRecord, RoleCandidateRecord } from "../api/types";
 import { Badge, Button, Card, ErrorMessage, Muted, RunLabel, type BadgeTone } from "../components/ui";
 import { RunNotFoundHelp, RunPicker, useRunSelection } from "../components/RunPicker";
-import { chartForFinding, clusterScatter, segmentBar, type ChartSpec } from "../lib/analyticsCharts";
+import { chartForFinding, clusterScatter, paretoBandColor, segmentBar, type ChartSpec } from "../lib/analyticsCharts";
 import { loadPlotly } from "../lib/plotly";
 
 // Business analytics for one run. The NOT-APPLICABLE list is given the same
@@ -65,7 +65,16 @@ function FindingBody({ finding }: { finding: AnalysisFindingRecord }) {
     case "concentration_band":
       return (
         <tr className="border-b border-border">
-          <td className="px-3 py-2 font-medium">Band {String(p.band)}</td>
+          <td className="px-3 py-2 font-medium">
+            {/* Ordered, so a ramp step - and the letter is always present,
+                because the band must never depend on colour alone. */}
+            <span
+              className="mr-2 inline-block h-2.5 w-2.5 rounded-sm align-middle"
+              style={{ backgroundColor: paretoBandColor(String(p.band)) }}
+              aria-hidden="true"
+            />
+            Band {String(p.band)}
+          </td>
           <td className="px-3 py-2 text-right font-mono">{num(p.entity_count, 0)}</td>
           <td className="px-3 py-2 text-right font-mono">{pct(p.entity_share)}</td>
           <td className="px-3 py-2 text-right font-mono">{pct(p.value_share)}</td>

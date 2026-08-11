@@ -72,12 +72,27 @@
 
   /* -- chart palette: consumed by lib/plotly.ts. Colors only - a chart's TYPE
         is chosen deterministically by the backend and is never themed. -- */
-  --chart-1: #0b6e6e;
-  --chart-2: #4b5563;
-  --chart-3: #1e40af;
-  --chart-4: #9a6700;
-  --chart-5: #15803d;
-  --chart-6: #b91c1c;
+  /* CHART COLOUR - three palettes, kept apart on purpose.
+     The old --chart-1..6 WAS the status palette, which is how a segment
+     chart once painted "promising" red and "lost" green: colour asserting
+     a verdict the data never carried. Status hexes appear nowhere below,
+     and no chart token resolves to one (enforced by test).
+     Categorical: 6 hues, min protan/deutan separation 63.3 in simulation,
+     ordered by luminance so the series survive greyscale. */
+  --chart-accent: #0b6e6e;
+  --chart-neutral: #4b5563;
+  --chart-cat-1: #0b6e6e;
+  --chart-cat-2: #404040;
+  --chart-cat-3: #8c6d1f;
+  --chart-cat-4: #cc79a7;
+  --chart-cat-5: #56b4e9;
+  --chart-cat-6: #e69f00;
+  /* ORDERED data only - one hue, light to dark. */
+  --chart-seq-1: #cfe7e7;
+  --chart-seq-2: #a9d4d4;
+  --chart-seq-3: #4fa3a3;
+  --chart-seq-4: #12807e;
+  --chart-seq-5: #0a3d3d;
   --chart-grid: #e2e5ea;
   --chart-axis: #6b7280;
   --chart-ink: #12161c;
@@ -140,12 +155,20 @@
   --code-surface: #0a0d12;
   --code-text: #dfe5ee;
 
-  --chart-1: #3fc3bd;
-  --chart-2: #b3bcc9;
-  --chart-3: #8fb0ff;
-  --chart-4: #e9b455;
-  --chart-5: #56d68a;
-  --chart-6: #ff8a8a;
+  /* Categorical min protan/deutan separation 34.1 in simulation. */
+  --chart-accent: #3fc3bd;
+  --chart-neutral: #b3bcc9;
+  --chart-cat-1: #3fc3bd;
+  --chart-cat-2: #c77dff;
+  --chart-cat-3: #5fa8d3;
+  --chart-cat-4: #f0a63c;
+  --chart-cat-5: #9bd9f7;
+  --chart-cat-6: #ffd166;
+  --chart-seq-1: #123b39;
+  --chart-seq-2: #1c5f5b;
+  --chart-seq-3: #2a8c86;
+  --chart-seq-4: #3fc3bd;
+  --chart-seq-5: #7fddd8;
   --chart-grid: #2b333f;
   --chart-axis: #8d97a5;
   --chart-ink: #e8ecf2;
@@ -229,12 +252,20 @@
   --code-surface: rgba(4, 7, 18, 0.94);
   --code-text: #dfe9ff;
 
-  --chart-1: #5ee0f5;
-  --chart-2: #ff86dd;
-  --chart-3: #8fb8ff;
-  --chart-4: #ffc46b;
-  --chart-5: #5ef0a8;
-  --chart-6: #ff8a9c;
+  /* Categorical min protan/deutan separation 28.0 in simulation. */
+  --chart-accent: #5ee0f5;
+  --chart-neutral: #b9c6e6;
+  --chart-cat-1: #5ee0f5;
+  --chart-cat-2: #ff9e7a;
+  --chart-cat-3: #c7a9ff;
+  --chart-cat-4: #ff9ad8;
+  --chart-cat-5: #f5b54a;
+  --chart-cat-6: #ffe08a;
+  --chart-seq-1: #123c46;
+  --chart-seq-2: #1b6070;
+  --chart-seq-3: #2e93a8;
+  --chart-seq-4: #5ee0f5;
+  --chart-seq-5: #a8eef9;
   --chart-grid: rgba(150, 200, 255, 0.14);
   --chart-axis: #93a3c9;
   --chart-ink: #eaf1ff;

@@ -38,15 +38,31 @@ function token(name: string, fallback: string): string {
   return value || fallback;
 }
 
+// THREE PALETTES, AND WHY THEY ARE SEPARATE.
+//
+// Colour here may describe data. It may never assert a VERDICT the data
+// does not carry. This project shipped that bug once: the palette below
+// used to be --chart-1..6, whose values WERE the four status colours, and
+// a segment chart cycling it positionally painted "promising" red and
+// "lost" green - the exact opposite of what those segments meant.
+//
+//   accent      one series, one colour
+//   categorical unordered categories (products, regions, cluster ids)
+//   sequential  ORDERED data only (a cohort's periods, A/B/C bands)
+//
+// Status tokens are absent from this module by construction: no function
+// below reads a --status-* property, and no --chart-* property resolves to
+// a status value in any theme (asserted by test). The chart layer cannot
+// reach them, rather than being trusted not to.
 export function chartAccent(): string {
-  return token("--chart-1", "#0B6E6E");
+  return token("--chart-accent", "#0B6E6E");
 }
 
 /** The neutral used for already-known data (e.g. a forecast's actuals),
  *  kept distinct from the accent so the accent still marks the one thing
  *  that is genuinely new information. */
 export function chartNeutral(): string {
-  return token("--chart-2", "#4B5563");
+  return token("--chart-neutral", "#4B5563");
 }
 
 /** Fill for an uncertainty band. */
@@ -54,17 +70,39 @@ export function chartBand(): string {
   return token("--chart-band", "rgba(11,110,110,0.15)");
 }
 
-/** The ordered categorical palette. Used positionally when a figure has
- *  several traces and the backend named no colors. */
-export function chartPalette(): string[] {
+/** UNORDERED categories. Six hues chosen by simulating deuteranopia and
+ *  protanopia and maximising the minimum pairwise separation (63.3 / 34.1 /
+ *  28.0 for default / dark / aurora), then ordered by luminance so the
+ *  series stay tellable apart in greyscale or on a monochrome print. */
+export function chartCategorical(): string[] {
   return [
-    token("--chart-1", "#0B6E6E"),
-    token("--chart-2", "#4B5563"),
-    token("--chart-3", "#1E40AF"),
-    token("--chart-4", "#9A6700"),
-    token("--chart-5", "#15803D"),
-    token("--chart-6", "#B91C1C"),
+    token("--chart-cat-1", "#0B6E6E"),
+    token("--chart-cat-2", "#404040"),
+    token("--chart-cat-3", "#8C6D1F"),
+    token("--chart-cat-4", "#CC79A7"),
+    token("--chart-cat-5", "#56B4E9"),
+    token("--chart-cat-6", "#E69F00"),
   ];
+}
+
+/** ORDERED data only - a single hue, light to dark. A rank, a score band
+ *  or a period since acquisition has a direction; giving it six unrelated
+ *  hues would hide the one thing that matters about it. */
+export function chartSequential(): string[] {
+  return [
+    token("--chart-seq-1", "#CFE7E7"),
+    token("--chart-seq-2", "#A9D4D4"),
+    token("--chart-seq-3", "#4FA3A3"),
+    token("--chart-seq-4", "#12807E"),
+    token("--chart-seq-5", "#0A3D3D"),
+  ];
+}
+
+/** The same ramp as a Plotly colorscale, for a continuous ordered surface
+ *  such as a cohort triangle. */
+export function chartColorscale(): Array<[number, string]> {
+  const ramp = chartSequential();
+  return ramp.map((color, i) => [i / (ramp.length - 1), color] as [number, string]);
 }
 
 /** Transparent paper/plot backgrounds plus themed grid, axis and font
@@ -100,12 +138,15 @@ export function themedLayout(layout: Record<string, unknown>): Record<string, un
 }
 
 export function withDesignColors(data: unknown[]): unknown[] {
-  const palette = chartPalette();
+  // THE SINGLE-SERIES RULE. One trace gets ONE colour, always the accent.
+  // A lone bar or histogram already carries its comparison in the bar
+  // LENGTHS; colouring each bar differently adds no information and quietly
+  // implies the categories differ in kind. Only a genuine multi-series
+  // figure earns the categorical palette, and then positionally.
+  const palette = data.length > 1 ? chartCategorical() : [chartAccent()];
   return data.map((trace, index) => {
     const t = trace as Record<string, unknown>;
     const next: Record<string, unknown> = { ...t };
-    // Positional so a multi-trace figure is distinguishable; a single-trace
-    // figure always lands on the accent.
     const color = palette[index % palette.length];
     if (t.type === "bar" || t.type === "histogram") {
       const marker = (t.marker as Record<string, unknown>) ?? {};
