@@ -280,6 +280,12 @@ class BusinessAnalyticsFindings(BaseModel):
     #: cleared the confidence floor - the analyses ran on the unit price and
     #: this is the question a human should answer.
     quantity_confirmation: dict | None = None
+    #: One chart spec per analysis that has one (app/analytics/chart_specs.py).
+    #: Persisted so the deck can render the SAME figures the Analytics page
+    #: draws - they used to be derived in the browser and therefore existed
+    #: nowhere a server-side renderer could reach. Empty on rows written
+    #: before this existed; those are derived on read instead.
+    charts: list[dict] = Field(default_factory=list)
 
     def all_findings(self) -> list[AnalysisFinding]:
         return [f for r in self.results for f in r.findings]

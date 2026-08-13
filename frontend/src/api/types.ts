@@ -479,6 +479,22 @@ export interface AnalysisResultRecord {
   parameters: Record<string, unknown>;
 }
 
+/** A chart spec persisted by the backend (app/analytics/chart_specs.py).
+ *
+ *  Colours are NOT in the spec. `colour_roles` names what each trace means
+ *  and `applyAnalyticsColours` resolves those roles against the live theme,
+ *  which is what lets one persisted figure serve both this page (following
+ *  Default/Dark/Aurora) and the PowerPoint deck (print palette). */
+export interface AnalyticsChartRecord {
+  chart_id: string;
+  analysis: string;
+  kind: string;
+  title: string;
+  figure_json: { data: unknown[]; layout: Record<string, unknown> };
+  colour_roles?: ("accent" | "neutral" | "categorical")[];
+  colorscale_role?: "sequential_zero_transparent";
+}
+
 export interface AnalyticsRecord {
   run_id: string;
   run_number: number | null;
@@ -497,6 +513,9 @@ export interface AnalyticsRecord {
   };
   applicability: ApplicabilityRecord[];
   results: AnalysisResultRecord[];
+  // One per analysis that has a chart. Derived on read for runs analysed
+  // before these were persisted, so this is never missing for an old run.
+  charts?: AnalyticsChartRecord[];
   // How a per-row "value" was arrived at. `derived` means the monetary
   // column is a unit price and was multiplied by a quantity; otherwise the
   // column was summed as-is. Absent on rows written before this existed.

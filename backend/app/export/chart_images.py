@@ -101,6 +101,85 @@ def _apply_deck_colours(figure: dict, chart_type: str | None = None) -> dict:
     return {"data": coloured, "layout": layout}
 
 
+#: The default theme's neutral and sequential ramp, resolved for print.
+#: Analytics figures persist COLOUR ROLES rather than colours (see
+#: app/analytics/chart_specs.py) precisely so the deck can use these while
+#: the screen uses its live theme tokens - one spec, two palettes.
+DECK_NEUTRAL = "#4B5563"
+DECK_SEQUENTIAL = ["#CFE7E7", "#A9D4D4", "#4FA3A3", "#12807E", "#0A3D3D"]
+
+_ROLE_COLOURS = {"accent": DECK_ACCENT, "neutral": DECK_NEUTRAL}
+
+
+def _paint(trace: dict, colour: str) -> dict:
+    """Colour whichever channel this trace actually draws with."""
+    trace = dict(trace)
+    mode = str(trace.get("mode") or "")
+    kind = trace.get("type")
+
+    if kind in ("bar", "histogram") or "markers" in mode:
+        marker = dict(trace.get("marker") or {})
+        marker.setdefault("color", colour)
+        trace["marker"] = marker
+    if "lines" in mode and not trace.get("fill"):
+        line = dict(trace.get("line") or {})
+        line.setdefault("color", colour)
+        trace["line"] = line
+    return trace
+
+
+def _apply_role_colours(chart: dict) -> dict:
+    """Resolve an analytics chart's colour ROLES against the deck palette.
+
+    The roles are the frontend's rules, carried in the spec rather than
+    re-decided here: ordered surfaces get the sequential ramp, unordered
+    categories get the categorical palette, a single series gets one accent.
+    No role maps to a status colour, so a slide cannot assert a verdict in
+    colour any more than the screen can.
+    """
+    figure = chart.get("figure_json") or {}
+    data = list(figure.get("data") or [])
+    roles = list(chart.get("colour_roles") or [])
+
+    coloured = []
+    categorical_index = 0
+    for index, trace in enumerate(data):
+        role = roles[index] if index < len(roles) else None
+        if role == "categorical":
+            colour = DECK_CATEGORICAL[categorical_index % len(DECK_CATEGORICAL)]
+            categorical_index += 1
+        elif role in _ROLE_COLOURS:
+            colour = _ROLE_COLOURS[role]
+        else:
+            coloured.append(dict(trace))
+            continue
+        coloured.append(_paint(trace, colour))
+
+    if chart.get("colorscale_role") == "sequential_zero_transparent" and coloured:
+        # Zero stays transparent so an unobserved cohort cell reads as
+        # absent rather than as a real 0%.
+        steps = [(i / (len(DECK_SEQUENTIAL) - 1), c) for i, c in enumerate(DECK_SEQUENTIAL)]
+        scale = [[0.0, "rgba(0,0,0,0)"]] + [[position, colour] for position, colour in steps[1:]]
+        first = dict(coloured[0])
+        first.setdefault("colorscale", scale)
+        coloured[0] = first
+
+    layout = dict(figure.get("layout") or {})
+    return {"data": coloured, "layout": layout}
+
+
+def render_analytics_chart_png(chart: dict) -> bytes | None:
+    """A persisted analytics chart spec as a PNG, in the deck's palette."""
+    figure = _apply_role_colours(chart)
+    resolved = _apply_deck_colours(figure)
+    try:
+        return pio.to_image(
+            go.Figure(resolved), format="png", width=CHART_WIDTH_PX, height=CHART_HEIGHT_PX, scale=CHART_SCALE
+        )
+    except Exception:  # noqa: BLE001 - a chart is additive; the deck is not
+        return None
+
+
 def render_chart_png(figure_json: dict, chart_type: str | None = None) -> bytes | None:
     """PNG bytes, or None when this figure cannot be drawn.
 

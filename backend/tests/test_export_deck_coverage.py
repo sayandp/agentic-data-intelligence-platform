@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from app.export.deck import build_deck, deck_outline
 
-from tests.test_export_pptx import _deck_text, _sources
+from tests.test_export_pptx import _deck_text, _slide_text, _sources
 
 
 def _analytics_with_findings() -> dict:
@@ -338,3 +338,47 @@ def test_the_outline_lists_every_applicable_analysis_by_name():
 
     assert "Value concentration (ABC/Pareto)" in sections
     assert "Historical customer value" in sections
+
+
+# ---- analytics charts reach the deck as images ----
+
+
+def test_an_analysis_with_a_chart_gets_that_chart_as_a_slide_image():
+    """The whole point of moving derivation to the backend: the deck had no
+    spec to render, so these charts were simply absent from it."""
+    from pptx import Presentation
+    import io
+
+    from app.analytics.chart_specs import charts_for_results
+
+    analytics = _analytics_with_findings()
+    analytics["charts"] = charts_for_results(analytics["results"])
+    assert analytics["charts"], "the fixture produces no charts to test with"
+
+    prs = Presentation(io.BytesIO(build_deck(_sources(analytics=analytics))))
+    titles = {c["title"] for c in analytics["charts"]}
+
+    for slide in prs.slides:
+        text = _slide_text(slide)
+        if text.strip() in titles:
+            # 13 is PICTURE in python-pptx's shape-type enum.
+            assert any(shape.shape_type == 13 for shape in slide.shapes), f"{text!r} slide carries no image"
+            titles.discard(text.strip())
+
+    assert not titles, f"no slide at all for {titles}"
+
+
+def test_a_run_analysed_before_chart_specs_existed_still_gets_its_charts():
+    """Backfill: old rows carry findings but no `charts`. They are derived on
+    read by the same function, so the deck is not silently chart-less for
+    exactly the runs that predate the feature."""
+    from app.export.pipeline import _analytics_payload
+
+    class _Row:
+        findings_json = {"results": _analytics_with_findings()["results"]}
+
+    payload = _analytics_payload(_Row())
+
+    # market_basket, retention_churn and historical_clv deliberately have no
+    # chart - they read better as tables.
+    assert {c["analysis"] for c in payload["charts"]} == {"abc_pareto", "rfm", "cohort_retention"}

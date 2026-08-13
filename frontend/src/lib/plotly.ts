@@ -143,6 +143,61 @@ export function themedLayout(layout: Record<string, unknown>): Record<string, un
  *  cannot tell "frequencies of four unordered countries" from "the shape of
  *  a continuous distribution". Colouring the second one per-bar would be
  *  nonsense; colouring the first one per-bar is the whole point. */
+/** Resolve a persisted analytics chart's colour ROLES against the live
+ *  theme (app/analytics/chart_specs.py writes the roles; the deck's
+ *  chart_images.py resolves the same roles against its print palette).
+ *
+ *  The spec carries no colours on purpose: a persisted colour would freeze
+ *  the theme it was generated under, and this page has to keep following
+ *  Default/Dark/Aurora. The role assignment - which trace is the accent,
+ *  which is the neutral reference, which cycle the categorical palette - is
+ *  the part that carries meaning, and it is decided once, on the server. */
+export function applyAnalyticsColours(chart: {
+  figure_json: { data: unknown[]; layout: Record<string, unknown> };
+  colour_roles?: string[];
+  colorscale_role?: string;
+}): { data: unknown[]; layout: Record<string, unknown> } {
+  const roles = chart.colour_roles ?? [];
+  const categorical = chartCategorical();
+  let categoricalIndex = 0;
+
+  const data = chart.figure_json.data.map((trace, index) => {
+    const t = { ...(trace as Record<string, unknown>) };
+    const role = roles[index];
+    let colour: string | null = null;
+    if (role === "categorical") {
+      colour = categorical[categoricalIndex % categorical.length];
+      categoricalIndex += 1;
+    } else if (role === "accent") {
+      colour = chartAccent();
+    } else if (role === "neutral") {
+      colour = chartNeutral();
+    }
+
+    if (colour) {
+      const mode = String(t.mode ?? "");
+      if (t.type === "bar" || t.type === "histogram" || mode.includes("markers")) {
+        t.marker = { ...((t.marker as Record<string, unknown>) ?? {}), color: colour };
+      }
+      if (mode.includes("lines")) {
+        t.line = { ...((t.line as Record<string, unknown>) ?? {}), color: colour };
+      }
+    }
+    return t;
+  });
+
+  if (chart.colorscale_role === "sequential_zero_transparent" && data.length > 0) {
+    // Zero stays transparent so an unobserved cohort cell reads as absent
+    // rather than as a real 0%.
+    data[0] = {
+      ...(data[0] as Record<string, unknown>),
+      colorscale: [[0, "rgba(0,0,0,0)"], ...chartColorscale().slice(1)],
+    };
+  }
+
+  return { data, layout: themedLayout(chart.figure_json.layout) };
+}
+
 export function withDesignColors(data: unknown[], chartType?: string): unknown[] {
   // A ONE-TRACE BAR OF UNORDERED CATEGORIES gets one colour PER BAR. The
   // categories genuinely differ in kind - four countries are not a scale -

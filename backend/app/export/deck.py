@@ -32,7 +32,7 @@ from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.util import Inches, Pt
 
-from app.export.chart_images import render_chart_png
+from app.export.chart_images import render_analytics_chart_png, render_chart_png
 
 SLIDE_WIDTH = Inches(13.333)
 SLIDE_HEIGHT = Inches(7.5)
@@ -256,9 +256,11 @@ def _analytics_slides(prs: Presentation, s: DeckSources) -> None:
     # numbers on the slides that follow.
     _value_basis_slide(prs, s)
 
+    charts_by_analysis = {c.get("analysis"): c for c in (s.analytics.get("charts") or [])}
     if ran:
         for result in ran:
             _analysis_slide(prs, result)
+            _analysis_chart_slide(prs, charts_by_analysis.get(result.get("analysis")))
     else:
         slide = _text_slide(prs, "Business analytics")
         _body(slide, [("No analysis was applicable to this run's data.", 15, INK_MUTED)])
@@ -391,6 +393,25 @@ def _analysis_slide(prs: Presentation, result: dict) -> None:
     if not lines:
         lines.append((f"{analysis} ran and recorded no findings.", 15, INK_MUTED))
     _body(slide, lines)
+
+
+def _analysis_chart_slide(prs: Presentation, chart: dict | None) -> None:
+    """The analysis's own figure, rendered from the SAME persisted spec the
+    Analytics page draws (app/analytics/chart_specs.py).
+
+    Nothing is derived here. A run analysed before those specs were
+    persisted has them derived on read from its findings, so the only way
+    to reach this with `chart` as None is an analysis that genuinely has no
+    chart worth drawing - a rule table, which reads better as a table.
+    """
+    if not chart:
+        return
+    slide = _text_slide(prs, str(chart.get("title") or "Chart"))
+    png = render_analytics_chart_png(chart)
+    if png is None:
+        _body(slide, [("This chart could not be rendered as an image for the deck.", 15, INK_MUTED)])
+        return
+    slide.shapes.add_picture(io.BytesIO(png), Inches(1.4), Inches(1.5), width=Inches(10.5))
 
 
 def _finding_lines(finding: dict) -> list[tuple[str, int, RGBColor | None]]:
@@ -747,14 +768,18 @@ def deck_outline(s: DeckSources) -> list[dict]:
         },
     ]
 
+    charted = {c.get("analysis") for c in (analytics.get("charts") or [])}
     for result in ran:
         findings = result.get("findings") or []
         name = str(result.get("analysis"))
+        detail = f"{len(findings)} finding(s)" if findings else "ran and recorded no findings"
+        if name in charted:
+            detail += ", with its chart"
         sections.append(
             {
                 "section": ANALYSIS_TITLES.get(name, name),
                 "state": "content" if findings else "placeholder",
-                "detail": f"{len(findings)} finding(s)" if findings else "ran and recorded no findings",
+                "detail": detail,
             }
         )
     if analytics and not ran:

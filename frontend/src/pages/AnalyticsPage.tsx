@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ApiError, apiFetch } from "../api/client";
-import type { AnalysisFindingRecord, AnalysisResultRecord, AnalyticsRecord, RoleCandidateRecord } from "../api/types";
+import type {
+  AnalysisFindingRecord,
+  AnalysisResultRecord,
+  AnalyticsChartRecord,
+  AnalyticsRecord,
+  RoleCandidateRecord,
+} from "../api/types";
 import { Badge, Button, Card, ErrorMessage, Muted, RunLabel, type BadgeTone } from "../components/ui";
 import { RunNotFoundHelp, RunPicker, useRunSelection } from "../components/RunPicker";
-import { chartForFinding, clusterScatter, paretoBandColor, segmentBar, type ChartSpec } from "../lib/analyticsCharts";
-import { loadPlotly } from "../lib/plotly";
+import { paretoBandColor } from "../lib/analyticsCharts";
+import { applyAnalyticsColours, loadPlotly } from "../lib/plotly";
 
 // Business analytics for one run. The NOT-APPLICABLE list is given the same
 // weight as the results, because "why didn't this run" is the most common
@@ -22,19 +28,24 @@ const ANALYSIS_TITLES: Record<string, string> = {
   historical_clv: "Historical customer value",
 };
 
-function AnalyticsChart({ spec, id }: { spec: ChartSpec; id: string }) {
+function AnalyticsChart({ chart, id }: { chart: AnalyticsChartRecord; id: string }) {
+  // The spec comes from the backend (app/analytics/chart_specs.py) - the
+  // same one the deck renders. Only its COLOUR ROLES are resolved here, so
+  // the figure follows the live theme without the browser deciding what the
+  // figure is.
   useEffect(() => {
     loadPlotly().then(() => {
       const el = document.getElementById(id);
       if (el && window.Plotly) {
         try {
-          window.Plotly.newPlot(el, spec.data, spec.layout, { responsive: true, displayModeBar: false });
+          const { data, layout } = applyAnalyticsColours(chart);
+          window.Plotly.newPlot(el, data, layout, { responsive: true, displayModeBar: false });
         } catch {
           el.innerHTML = '<p class="text-sm text-ink-muted">Chart could not be rendered.</p>';
         }
       }
     });
-  }, [spec, id]);
+  }, [chart, id]);
   return <div id={id} className="mt-2" />;
 }
 
@@ -381,7 +392,7 @@ function RoleConfirmation({
   );
 }
 
-function ResultCard({ result }: { result: AnalysisResultRecord }) {
+function ResultCard({ result, chart }: { result: AnalysisResultRecord; chart?: AnalyticsChartRecord }) {
   const title = ANALYSIS_TITLES[result.analysis] ?? result.analysis;
 
   if (!result.ran) {
@@ -397,15 +408,6 @@ function ResultCard({ result }: { result: AnalysisResultRecord }) {
 
   const tabular = result.findings.filter((f) => TABLE_HEADERS[f.finding_type]);
   const headers = tabular.length ? TABLE_HEADERS[tabular[0].finding_type] : null;
-  const curve = result.findings.find((f) => chartForFinding(f) !== null);
-  const chart =
-    curve !== undefined
-      ? chartForFinding(curve)
-      : result.analysis === "behavioural_segmentation"
-        ? clusterScatter(result.findings)
-        : result.analysis === "rfm"
-          ? segmentBar(result.findings)
-          : null;
 
   const repeat = result.findings.find((f) => f.finding_type === "repeat_behaviour");
   const concentration = result.findings.find((f) => f.finding_type === "concentration_curve");
@@ -458,7 +460,7 @@ function ResultCard({ result }: { result: AnalysisResultRecord }) {
 
       {nonContributing && <NonContributingNote finding={nonContributing} />}
 
-      {chart && <AnalyticsChart spec={chart} id={`chart-${result.analysis}`} />}
+      {chart && <AnalyticsChart chart={chart} id={`chart-${result.analysis}`} />}
 
       {/* Every knob this analysis used. A result whose thresholds are
           invisible is not reproducible - and for churn and CLV the chosen
@@ -498,6 +500,10 @@ export default function AnalyticsPage() {
   }, [runRef]);
 
   const notApplicable = (data?.applicability ?? []).filter((a) => !a.applicable);
+  // One persisted spec per analysis that has a chart (derived on read for
+  // runs analysed before they were persisted), so nothing is missing here.
+  const chartFor = (analysis: string): AnalyticsChartRecord | undefined =>
+    (data?.charts ?? []).find((c) => c.analysis === analysis);
   const notFound = error instanceof ApiError && error.status === 404;
 
   return (
@@ -596,12 +602,14 @@ export default function AnalyticsPage() {
             </Card>
           )}
 
+          {/* Charts are persisted per analysis by the backend; this page
+              looks one up rather than deriving it. */}
           {data.results.filter((r) => r.ran).map((result) => (
-            <ResultCard key={result.analysis} result={result} />
+            <ResultCard key={result.analysis} result={result} chart={chartFor(result.analysis)} />
           ))}
 
           {data.results.filter((r) => !r.ran && !notApplicable.some((n) => n.analysis === r.analysis)).map((result) => (
-            <ResultCard key={result.analysis} result={result} />
+            <ResultCard key={result.analysis} result={result} chart={chartFor(result.analysis)} />
           ))}
         </>
       )}

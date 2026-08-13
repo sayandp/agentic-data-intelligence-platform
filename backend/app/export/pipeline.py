@@ -19,6 +19,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.export.deck import DeckSources, build_deck
+from app.analytics.chart_specs import charts_for_results
 from app.models import (
     AgentTrace,
     BusinessAnalysis,
@@ -41,6 +42,23 @@ _LOCK = threading.Lock()
 
 def deck_path(run: Run) -> Path:
     return EXPORT_DIR / f"run-{run.run_number or run.id}.pptx"
+
+
+def _analytics_payload(analytics: BusinessAnalysis | None) -> dict | None:
+    """The analytics document, with chart specs derived on read when the row
+    predates them.
+
+    Same function the analytics API and the analysis pipeline use, so a deck
+    built from an older run gets the identical figures the screen shows for
+    it - rather than the deck silently omitting charts for exactly the runs
+    that existed before this feature.
+    """
+    if analytics is None:
+        return None
+    payload = dict(analytics.findings_json)
+    if not payload.get("charts"):
+        payload["charts"] = charts_for_results(payload.get("results") or [])
+    return payload
 
 
 def collect_sources(db: Session, run: Run) -> DeckSources:
@@ -68,7 +86,7 @@ def collect_sources(db: Session, run: Run) -> DeckSources:
         narrative_text=report.narrative_text if report else None,
         grounded_claims=list(report.grounded_claims_json or []) if report else [],
         chart_refs=list(report.chart_refs or []) if report else [],
-        analytics=dict(analytics.findings_json) if analytics else None,
+        analytics=_analytics_payload(analytics),
         confirmed_roles=[
             {"role": c.role, "column_name": c.column_name, "confirmed_at": c.confirmed_at}
             for c in confirmed

@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 import pandas as pd
 from sqlalchemy.orm import Session
 
+from app.analytics.chart_specs import charts_for_results
 from app.analytics.engine import run_business_analytics
 from app.models import AgentTrace, BusinessAnalysis, ConfirmedColumnRole, Run
 
@@ -48,9 +49,16 @@ def run_business_analytics_for_run(
     confirmed = confirmed_roles_for_source(db, run.source_id)
     findings = run_business_analytics(run.id, repaired_df, confirmed)
 
+    # Charts are derived from the SERIALISED findings, not the model objects -
+    # the same bytes the Analytics page and the deck read. Deriving from a
+    # different shape than consumers see is how two implementations start
+    # to disagree.
+    payload = findings.model_dump(mode="json")
+    payload["charts"] = charts_for_results(payload.get("results") or [])
+
     if existing is not None:
         existing.schema_version = findings.schema_version
-        existing.findings_json = findings.model_dump(mode="json")
+        existing.findings_json = payload
         # These results were computed just now, not when the run first
         # completed. Leaving the old stamp would misdate them on a page
         # whose whole subject is what the numbers were computed from.
@@ -60,7 +68,7 @@ def run_business_analytics_for_run(
         record = BusinessAnalysis(
             run_id=run.id,
             schema_version=findings.schema_version,
-            findings_json=findings.model_dump(mode="json"),
+            findings_json=payload,
         )
         db.add(record)
 
