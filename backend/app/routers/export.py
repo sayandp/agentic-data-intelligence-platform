@@ -17,7 +17,8 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.export.pipeline import deck_path, job_status, start_export
+from app.export.deck import deck_outline
+from app.export.pipeline import collect_sources, deck_path, job_status, start_export
 from app.id_lookup import resolve_run
 
 router = APIRouter(prefix="/export", tags=["export"])
@@ -59,6 +60,24 @@ def pptx_export_status(run_id: str, db: Session = Depends(get_db)):
     if existing:
         return {"run_id": run.id, "run_number": run.run_number, "state": "ready", **existing, "existing": existing}
     return {"run_id": run.id, "run_number": run.run_number, **status, "existing": None}
+
+
+@router.get("/{run_id}/pptx/contents")
+def pptx_export_contents(run_id: str, db: Session = Depends(get_db)):
+    """What the deck WILL contain, without building it.
+
+    So the export screen can say which sections carry this run's results and
+    which will carry the sentence explaining why they do not - before
+    someone waits through a render to find out.
+    """
+    run = resolve_run(db, run_id)
+    sources = collect_sources(db, run)
+    return {
+        "run_id": run.id,
+        "run_number": run.run_number,
+        "source_label": sources.source_label,
+        "sections": deck_outline(sources),
+    }
 
 
 @router.get("/{run_id}/pptx")

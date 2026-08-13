@@ -6,6 +6,7 @@ import ReportsPage from "./pages/ReportsPage";
 import AuditPage from "./pages/AuditPage";
 import AskPage from "./pages/AskPage";
 import PredictPage from "./pages/PredictPage";
+import ExportPage from "./pages/ExportPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/ask" element={<AskPage />} />
           <Route path="/predict" element={<PredictPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/export" element={<ExportPage />} />
           {/* Any unrecognised path lands somewhere real. Without this, an
               unknown route rendered the nav and an EMPTY main area - no
               error, no message, just a blank page that looks like the app

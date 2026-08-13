@@ -113,7 +113,10 @@ def test_a_full_run_produces_every_section():
         "Data quality context",
         "Narrative",
         "revenue - distribution",          # a chart slide, captioned
-        "Business analytics",
+        # The analytics section is no longer one summary slide: the value
+        # basis leads it, then one slide per analysis carrying its results.
+        "What the value figures measure",
+        "Value concentration (ABC/Pareto)",
         "Analyses that did not apply",
         "Model results",
         "Audit trail",

@@ -19,7 +19,16 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.export.deck import DeckSources, build_deck
-from app.models import AgentTrace, BusinessAnalysis, DataSource, ModelRun, Report, Run, ValidationEvent
+from app.models import (
+    AgentTrace,
+    BusinessAnalysis,
+    ConfirmedColumnRole,
+    DataSource,
+    ModelRun,
+    Report,
+    Run,
+    ValidationEvent,
+)
 
 EXPORT_DIR = Path("data/exports")
 
@@ -42,6 +51,12 @@ def collect_sources(db: Session, run: Run) -> DeckSources:
     traces = db.query(AgentTrace).filter(AgentTrace.run_id == run.id).order_by(AgentTrace.timestamp).all()
     events = db.query(ValidationEvent).filter(ValidationEvent.run_id == run.id).order_by(ValidationEvent.created_at).all()
     models = db.query(ModelRun).filter(ModelRun.run_id == run.id).order_by(ModelRun.created_at).all()
+    # Confirmed roles are keyed by SOURCE, not by run - a person's answer
+    # about what a column means survives re-ingest. A reader needs them
+    # because they change what the analytics numbers are measuring.
+    confirmed = (
+        db.query(ConfirmedColumnRole).filter(ConfirmedColumnRole.source_id == run.source_id).order_by(ConfirmedColumnRole.role).all()
+    )
 
     return DeckSources(
         run_number=run.run_number,
@@ -54,11 +69,19 @@ def collect_sources(db: Session, run: Run) -> DeckSources:
         grounded_claims=list(report.grounded_claims_json or []) if report else [],
         chart_refs=list(report.chart_refs or []) if report else [],
         analytics=dict(analytics.findings_json) if analytics else None,
+        confirmed_roles=[
+            {"role": c.role, "column_name": c.column_name, "confirmed_at": c.confirmed_at}
+            for c in confirmed
+        ],
         model_runs=[
             {
                 "question": m.question,
                 "target_column": m.target_column,
                 "task_type": m.task_type,
+                "model_family": m.model_family,
+                "split_strategy": m.split_strategy,
+                "row_count_trained_on": m.row_count_trained_on,
+                "candidate_scores": m.candidate_scores_json,
                 "out_of_sample_metric": m.out_of_sample_metric,
                 "out_of_sample_score": m.out_of_sample_score,
                 "baseline_scores": m.baseline_scores_json,

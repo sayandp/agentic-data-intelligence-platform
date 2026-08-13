@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ApiError, apiFetch, deckDownloadUrl, fetchDeckExportStatus, pollDeckExport, pollReportReady, startDeckExport } from "../api/client";
+import { ApiError, apiFetch, pollReportReady } from "../api/client";
 import type { ReportRecord } from "../api/types";
 import { Badge, Button, ErrorMessage, RunLabel } from "../components/ui";
 import { loadPlotly, themedLayout, withDesignColors } from "../lib/plotly";
-import { formatWhen } from "../components/RunPicker";
 import { askLink, predictLink } from "../lib/runLinks";
 
 // Mirrors app/narrative/models.py::NarrativeReport.rendered_text()'s fixed
@@ -46,71 +45,6 @@ const CLAIM_REFERENCE_PATTERN = /^(.*?)\s*\(see (claim-\d+)\)\s*$/;
  *  the screen does not - and generation is polled with visible elapsed time
  *  rather than a bare spinner, because rendering every chart through a real
  *  browser takes seconds. */
-function ExportDeck({ runRef }: { runRef: string }) {
-  const [state, setState] = useState<"idle" | "working" | "ready" | "failed">("idle");
-  const [elapsed, setElapsed] = useState("0s");
-  const [error, setError] = useState<string | null>(null);
-  const [existing, setExisting] = useState<{ bytes: number; generated_at: string } | null>(null);
-
-  // Any deck already on disk for this run is offered immediately, whether
-  // or not this session made it. Previously the download link existed only
-  // in the seconds after a render finished and vanished on navigation,
-  // which meant a generated deck was effectively unreachable.
-  useEffect(() => {
-    if (!runRef) return;
-    let cancelled = false;
-    fetchDeckExportStatus(runRef)
-      .then((s) => {
-        if (cancelled) return;
-        setExisting(s.existing ?? null);
-        if (s.existing) setState("ready");
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [runRef]);
-
-  async function run() {
-    setState("working");
-    setError(null);
-    setElapsed("0s");
-    try {
-      await startDeckExport(runRef);
-      const done = await pollDeckExport(runRef, (ms) => setElapsed(`${Math.round(ms / 1000)}s`));
-      if (done.state === "ready") {
-        setState("ready");
-        setExisting({ bytes: done.bytes ?? 0, generated_at: done.generated_at ?? new Date().toISOString() });
-      } else {
-        setState("failed");
-        setError(done.error ?? "the deck could not be generated");
-      }
-    } catch (err) {
-      setState("failed");
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  return (
-    <span className="inline-flex flex-wrap items-center gap-2">
-      <Button onClick={run} loading={state === "working"} loadingText={`Building deck ${elapsed}...`}>
-        {existing ? "Rebuild deck" : "Export deck"}
-      </Button>
-      {existing && state !== "working" && (
-        <span className="text-sm text-ink-muted">
-          <a className="font-medium text-brand-600 underline" href={deckDownloadUrl(runRef)} download>
-            Download .pptx
-          </a>{" "}
-          <span className="text-ink-faint">
-            ({Math.max(1, Math.round(existing.bytes / 1024))} KB, built {formatWhen(existing.generated_at)})
-          </span>
-        </span>
-      )}
-      {state === "failed" && error && <span className="text-sm text-status-negative">{error}</span>}
-    </span>
-  );
-}
-
 function RecommendationLine({ line, knownClaimIds }: { line: string; knownClaimIds: Set<string> }) {
   const match = line.match(CLAIM_REFERENCE_PATTERN);
   if (!match) return <p className="text-base leading-relaxed text-ink">{line}</p>;
@@ -239,7 +173,14 @@ export default function ReportsPage() {
           <Button variant="primary" onClick={() => loadReport(runQuery)} loading={loading} loadingText="Loading...">
             Load
           </Button>
-          {runQuery.trim() && <ExportDeck runRef={runQuery.trim()} />}
+          {runQuery.trim() && (
+            <Link
+              to={`/export?run=${encodeURIComponent(runQuery.trim())}`}
+              className="text-sm font-medium text-brand-600 underline"
+            >
+              Export this run as a deck
+            </Link>
+          )}
         </div>
       </div>
 

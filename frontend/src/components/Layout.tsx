@@ -65,6 +65,15 @@ function IconAnalytics() {
   );
 }
 
+function IconExport() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M10 2.75v9M6.75 8.5 10 11.75 13.25 8.5" />
+      <path d="M3.5 13v3.25a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V13" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS = [
   { to: "/sources", label: "Sources", Icon: IconSources },
   { to: "/approvals", label: "Approvals", Icon: IconApprovals },
@@ -73,6 +82,7 @@ const NAV_ITEMS = [
   { to: "/ask", label: "Ask", Icon: IconAsk },
   { to: "/predict", label: "Predict", Icon: IconPredict },
   { to: "/analytics", label: "Analytics", Icon: IconAnalytics },
+  { to: "/export", label: "Export", Icon: IconExport },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {

@@ -232,6 +232,27 @@ export function pollDeckExport(runRef: string, onTick?: (elapsedMs: number) => v
   );
 }
 
+export interface DeckSection {
+  section: string;
+  /** "content" carries the run's own results; "placeholder" carries the
+   *  sentence explaining why there are none - a section that still ships. */
+  state: "content" | "placeholder";
+  detail: string;
+}
+
+export interface DeckContents {
+  run_id: string;
+  run_number: number | null;
+  source_label: string;
+  sections: DeckSection[];
+}
+
+/** What the deck WILL contain, without building it - so the wait is spent
+ *  on a deck someone already knows the shape of. */
+export function fetchDeckContents(runRef: string): Promise<DeckContents> {
+  return apiFetch<DeckContents>(`/export/${encodeURIComponent(runRef)}/pptx/contents`);
+}
+
 export function deckDownloadUrl(runRef: string): string {
   return `${API_BASE_URL}/export/${encodeURIComponent(runRef)}/pptx`;
 }
