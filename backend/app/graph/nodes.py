@@ -42,8 +42,9 @@ from app.baseline_sanity import BaselineSanityError, assert_baseline_sane
 from app.connectors.factory import build_connector
 from app.correlation import CorrelatedGroup, correlate_events
 from app.db import SessionLocal
-from app.analytics.pipeline import run_business_analytics_for_run
+from app.analytics.pipeline import confirmed_roles_for_source, run_business_analytics_for_run
 from app.exploration.pipeline import run_exploration_for_run
+from app.semantic_roles import detect_for_run, roles_document
 from app.gate import DEFAULT_CONFIDENCE_THRESHOLD
 from app.graph.state import IngestState
 from app.models import AgentTrace, Baseline, DataSource, Run, ValidationEvent
@@ -404,7 +405,22 @@ def explore_node(state: IngestState, config: RunnableConfig) -> dict:
         # reader (the status poll, the run picker's column hints) then gets
         # it for the cost of a row read instead of rebuilding the frame.
         run.contract_metadata = contract.metadata()
-        exploration_record = run_exploration_for_run(db, run, contract.data, baseline_is_provisional=(baseline.is_provisional if baseline else False))
+
+        # Semantic roles, detected ONCE here and persisted on the run, so
+        # exploration, query, modeling and narrative all read the same
+        # answer instead of only the analytics agent knowing which column is
+        # an identifier. Confirmed roles for this SOURCE are layered in, so
+        # a person's answer carries across every agent, not just analytics.
+        roles_detection = detect_for_run(contract.data, confirmed_roles_for_source(db, run.source_id))
+        run.semantic_roles = roles_document(roles_detection)
+
+        exploration_record = run_exploration_for_run(
+            db,
+            run,
+            contract.data,
+            baseline_is_provisional=(baseline.is_provisional if baseline else False),
+            roles=run.semantic_roles,
+        )
         # Business analytics runs AFTER exploration, on the same REPAIRED
         # frame, only for a completed run. Wrapped because it is additive
         # reporting: a failure here must never fail an ingest that already

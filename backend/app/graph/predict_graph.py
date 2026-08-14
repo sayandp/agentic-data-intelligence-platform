@@ -32,6 +32,7 @@ from langgraph.graph import END, StateGraph
 from typing_extensions import TypedDict
 
 from app.modeling.leakage import select_features
+from app.semantic_roles import prompt_context
 from app.modeling.models import EscalationReason, IntentKind, ModelAnswerStatus, TaskType
 from app.modeling.splitting import split_strategy_for_task
 from app.modeling.task_selection import build_time_series, choose_aggregation, infer_forecast_frequency, select_task_type
@@ -87,7 +88,11 @@ def classify_node(state: PredictState, config) -> dict:
             return {"result": result, "route": "done"}
 
         sample_rows = contract.data.head(MAX_SAMPLE_ROWS).to_dict(orient="records")
-        outcome = modeling_agent.classify_intent(question or "", schema, sample_rows)
+        # Roles are CONTEXT from the run's one detection pass - an
+        # identifier is not a forecast target just because it is numeric.
+        outcome = modeling_agent.classify_intent(
+            question or "", schema, sample_rows, column_roles=prompt_context(state["run"].semantic_roles)
+        )
         if outcome.classification is None:
             result = _persist(
                 db, run, source, question, quality_summary,

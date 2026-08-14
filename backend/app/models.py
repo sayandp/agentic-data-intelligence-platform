@@ -72,6 +72,16 @@ class Run(Base):
     # Null for a run that completed before this column existed; the
     # serializer falls back to recomputing in that case, so nothing breaks.
     contract_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Semantic column roles (app/semantic_roles.py), detected ONCE when the
+    # run completes and read by every downstream agent - exploration's
+    # exclusions, and the role context handed to Query/Modeling/Narrative.
+    # Detection used to happen only inside the analytics agent, so everyone
+    # else saw dtypes and correlated invoice numbers against prices.
+    #
+    # Null for a run that completed before this column existed; every reader
+    # treats an absent document as "no roles known" and behaves as it did
+    # before, so old runs keep working.
+    semantic_roles: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Dashboard UX pass: a short, human-typeable alias for `id` - "Run #17"
     # instead of a UUID. `id` stays the only real primary key (nothing about
     # foreign keys, joins, or the graph's checkpoint thread_id changes); this

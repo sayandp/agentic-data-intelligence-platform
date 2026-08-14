@@ -25,6 +25,7 @@ from app.analytics.findings import BusinessAnalyticsFindings
 from app.models import AgentTrace, BusinessAnalysis, ExplorationFinding, Report, Run
 from app.narrative.agent import NarrativeAgent
 from app.narrative.charts import build_charts
+from app.semantic_roles import prompt_context
 from app.narrative.config import NarrativeConfig
 from app.narrative.grounding import filter_grounded_claims
 from app.narrative.models import ChartRef, GenerationMode, NarrativeReport, PostCheckAttempt
@@ -62,7 +63,9 @@ def run_narrative_for_run(
         except Exception:  # noqa: BLE001 - a stale payload must not block a report
             analytics_findings = None
 
-    report = generate_narrative_report(findings, repaired_df, narrative_agent, config, analytics_findings)
+    report = generate_narrative_report(
+        findings, repaired_df, narrative_agent, config, analytics_findings, roles=run.semantic_roles
+    )
 
     record = Report(
         run_id=run.id,
@@ -101,18 +104,24 @@ def generate_narrative_report(
     narrative_agent: NarrativeAgent | None,
     config: NarrativeConfig | None = None,
     analytics_findings=None,
+    roles: dict | None = None,
 ) -> NarrativeReport:
+    """`roles` is Run.semantic_roles - the run's one detection pass. It keeps
+    identifier columns out of the charts and tells the grounding stage what
+    each column MEANS. None for an older run, which behaves as before."""
     config = config or NarrativeConfig()
     # Deterministic in BOTH generation modes, computed once, up front - Part
     # 5's guarantee that the caveat cannot be separated from the content
     # starts here, not as a post-processing step applied only sometimes.
     quality_context_summary = render_quality_context_summary(findings.data_quality_context)
-    charts = build_charts(findings, repaired_df, config)
+    charts = build_charts(findings, repaired_df, config, roles=roles)
 
     if narrative_agent is None:
         return _template_report(findings, quality_context_summary, charts, reason="no LLM configured for this run")
 
-    attempt = _try_llm_report(findings, narrative_agent, config, quality_context_summary, charts, analytics_findings)
+    attempt = _try_llm_report(
+        findings, narrative_agent, config, quality_context_summary, charts, analytics_findings, roles
+    )
     if attempt.report is not None:
         return attempt.report
 
@@ -159,8 +168,13 @@ def _try_llm_report(
     quality_context_summary: str,
     charts: list[ChartRef],
     analytics_findings=None,
+    roles: dict | None = None,
 ) -> _LLMAttemptResult:
-    claims_outcome = narrative_agent.generate_claims(findings, analytics_findings=analytics_findings)
+    claims_outcome = narrative_agent.generate_claims(
+        findings,
+        analytics_findings=analytics_findings,
+        column_roles=prompt_context(roles),
+    )
     if claims_outcome.claims is not None and len(claims_outcome.claims) == 0:
         # Parsed cleanly and cited nothing. Distinct from a failed stage:
         # source is "llm" here, so without this branch it read as

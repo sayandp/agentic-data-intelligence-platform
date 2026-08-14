@@ -129,7 +129,7 @@ class NarrativeAgent:
 
     # -- stage 1: grounding --
 
-    def generate_claims(self, findings: ExplorationFindings, analytics_findings=None) -> ClaimsOutcome:
+    def generate_claims(self, findings: ExplorationFindings, analytics_findings=None, column_roles=None) -> ClaimsOutcome:
         """`analytics_findings` are the Business Analytics Agent's findings,
         offered as ADDITIONAL claim sources on exactly the same terms as
         exploration's: same schema family, same stable ids, the same
@@ -141,6 +141,18 @@ class NarrativeAgent:
             f"FINDINGS ({len(findings.findings)} finding(s), schema_version={findings.schema_version}):\n"
             f"{SAMPLE_START_MARKER}\n{json.dumps(findings.model_dump(mode='json'), default=str)}\n{SAMPLE_END_MARKER}"
         )
+        # What each column MEANS, from the run's one deterministic detection
+        # pass (app/semantic_roles.py). CONTEXT ONLY: it is never a claim, is
+        # never cited, and no role is read back out of the response - it
+        # exists so a claim about "Customer ID" is written as a claim about
+        # an entity identifier rather than about a number.
+        if column_roles:
+            user += (
+                "\n\nCOLUMN ROLES - established fact, not something to decide or restate. "
+                "Never write a claim whose subject is an identifier's numeric value:\n"
+                f"{SAMPLE_START_MARKER}\n{json.dumps(column_roles, default=str)}\n{SAMPLE_END_MARKER}"
+            )
+
         analysis_findings = list(analytics_findings.all_findings()) if analytics_findings is not None else []
         if analysis_findings:
             payload = json.dumps([f.model_dump(mode="json") for f in analysis_findings], default=str)

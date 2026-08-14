@@ -34,6 +34,8 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
+from app.semantic_roles import identifier_exclusions
+
 from app.exploration.findings import (
     CategoricalSummaryPayload,
     CorrelationPayload,
@@ -47,12 +49,29 @@ from app.narrative.config import NarrativeConfig
 from app.narrative.models import ChartRef, ChartType
 
 
-def build_charts(findings: ExplorationFindings, repaired_df: pd.DataFrame, config: NarrativeConfig | None = None) -> list[ChartRef]:
+def build_charts(
+    findings: ExplorationFindings,
+    repaired_df: pd.DataFrame,
+    config: NarrativeConfig | None = None,
+    roles: dict | None = None,
+) -> list[ChartRef]:
+    """`roles` is Run.semantic_roles - the run's one detection pass.
+
+    A chart is never drawn for an identifier column. The summary STATISTIC
+    for one is still computed and still shown in a table, because "this
+    column has 53,628 distinct values" is informative - but a histogram of
+    customer ids, or a line of invoice numbers over time, is a picture of
+    the numbering scheme. On Online Retail II that was three of eight
+    charts.
+    """
     config = config or NarrativeConfig()
+    identifiers = set(identifier_exclusions(roles))
     charts: list[ChartRef] = []
     for finding in findings.findings:
         if len(charts) >= config.max_charts:
             break
+        if identifiers.intersection(finding.columns or []):
+            continue
         chart = _chart_for_finding(finding, repaired_df, config)
         if chart is not None:
             charts.append(chart)

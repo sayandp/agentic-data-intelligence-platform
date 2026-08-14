@@ -59,6 +59,14 @@ report about your own output is trusted without an independent check:
   about the data at all). This is a normal, expected answer, not a
   failure: an honest "cannot answer this" is always preferable to a guess.
 
+`column_roles`, when present, states what each column MEANS - which is the
+entity identifier, the transaction identifier, the event date, the monetary
+amount. It is given to you as established fact, already determined
+deterministically; never re-decide it and never report it back. Treat any
+entry marked unconfirmed as a hint rather than a certainty. An identifier is
+a key, not a measurement: a count OF one can be a forecast target, the id
+value itself never is.
+
 confidence must reflect only how confident you are in the intent
 classification itself (and, for prediction, in the target_column choice) -
 not how clean the underlying data looks.
@@ -90,7 +98,12 @@ class ModelingAgent:
         question: str,
         schema: dict[str, str],
         sample_rows: list[dict],
+        column_roles: list[dict] | None = None,
     ) -> IntentOutcome:
+        """`column_roles` is CONTEXT ONLY (app/semantic_roles.py) - what each
+        column MEANS, already determined deterministically. It stops the
+        model proposing an identifier as a forecast target because the
+        column happens to be numeric. It is never a question."""
         key = cache_key_for_query(type(self.llm_client).__name__, self.llm_client.model_name, schema, question)
         cached = self.cache.get(key)
         if cached is not None:
@@ -98,7 +111,12 @@ class ModelingAgent:
                 classification=IntentClassification.model_validate(cached), source="cache", model_name=self.llm_client.model_name
             )
 
-        payload = {"question": question, "schema": schema, "sample_rows": sample_rows[:MAX_SAMPLE_ROWS]}
+        payload = {
+            "question": question,
+            "schema": schema,
+            "column_roles": column_roles or [],
+            "sample_rows": sample_rows[:MAX_SAMPLE_ROWS],
+        }
         user = f"QUESTION AND SCHEMA:\n{SAMPLE_START_MARKER}\n{json.dumps(payload, default=str)}\n{SAMPLE_END_MARKER}"
         outcome = self._call_with_resilience(SYSTEM_PROMPT, user)
         if outcome.source == "llm" and outcome.classification is not None:

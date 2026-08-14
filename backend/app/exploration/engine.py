@@ -25,11 +25,12 @@ from app.exploration.columns import datetime_columns, numeric_columns
 from app.exploration.config import ExplorationConfig
 from app.exploration.correlation_analysis import compute_correlations
 from app.exploration.distribution import compute_distribution_shape
-from app.exploration.findings import CURRENT_SCHEMA_VERSION, DataQualityContext, ExplorationFindings, Finding
+from app.exploration.findings import CURRENT_SCHEMA_VERSION, DataQualityContext, ExplorationFindings, Finding, SkippedEntry
 from app.exploration.missingness import compute_missing_patterns
 from app.exploration.outliers import compute_outlier_clusters
 from app.exploration.stats import compute_cardinality_notes, compute_summary_stats
 from app.exploration.trend import compute_trends
+from app.semantic_roles import identifier_exclusions
 
 
 class ExplorationEngine:
@@ -42,7 +43,11 @@ class ExplorationEngine:
         run_id: str,
         data_quality_context: DataQualityContext,
         generated_at: datetime | None = None,
+        roles: dict | None = None,
     ) -> ExplorationFindings:
+        """`roles` is Run.semantic_roles - the run's one detection pass.
+        Optional so an older run, or a direct call in a test, behaves exactly
+        as this did before roles were shared."""
         cfg = self.config
         findings: list[Finding] = []
         skipped = []
@@ -54,6 +59,25 @@ class ExplorationEngine:
         working_df, sampling_seed = _apply_row_cap(df, cfg.row_cap, cfg.row_cap_seed)
         numeric_cols = numeric_columns(working_df)
         datetime_cols = datetime_columns(working_df)
+
+        # Identifier columns are KEYS, not measurements. Correlating an
+        # invoice number against a price, fitting a trend through a customer
+        # id, or reporting the distribution of one describes the numbering
+        # scheme rather than the business - and every such pair also
+        # produced a chart. The roles come from the one detection the run
+        # already did (app/semantic_roles.py); with none available this
+        # behaves exactly as it did before.
+        #
+        # Each exclusion is RECORDED with its reason. An analysis that is
+        # silently absent cannot be told apart from one that found nothing.
+        exclusions = identifier_exclusions(roles)
+        excluded = [c for c in numeric_cols if c in exclusions]
+        for column in excluded:
+            skipped.append(SkippedEntry(column=column, reason=exclusions[column]))
+        numeric_cols = [c for c in numeric_cols if c not in exclusions]
+        # Summary statistics and cardinality for those columns still make
+        # sense and are computed above, over the full frame - knowing an id
+        # column has 53,628 distinct values IS informative.
 
         corr_findings, corr_skipped = compute_correlations(working_df, numeric_cols, cfg, sampling_seed)
         findings += corr_findings

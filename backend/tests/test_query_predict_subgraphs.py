@@ -20,6 +20,10 @@ from app.modeling.models import IntentKind
 
 class _FakeRun:
     id = "run-1"
+    # The run carries its semantic roles for every agent that needs column
+    # context (app/semantic_roles.py). None here: this double stands in for
+    # a run with no roles detected, which the graph must still handle.
+    semantic_roles = None
 
 
 class _FakeSource:

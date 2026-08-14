@@ -57,6 +57,7 @@ def init_db() -> None:
         _add_column_if_missing(conn, "model_runs", "redirected_query_run_id", "TEXT")
         _add_column_if_missing(conn, "model_runs", "forecast_series_json", "JSON")
         _add_column_if_missing(conn, "runs", "contract_metadata", "JSON")
+        _add_column_if_missing(conn, "runs", "semantic_roles", "JSON")
         _backfill_run_numbers(conn)
         # IF NOT EXISTS: idempotent across every startup, not just the
         # first one that actually needed to add the column above. This -

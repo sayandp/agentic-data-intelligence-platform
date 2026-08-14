@@ -19,7 +19,13 @@ from app.exploration.quality_context import build_data_quality_context
 from app.models import AgentTrace, ExplorationFinding, Run, ValidationEvent
 
 
-def run_exploration_for_run(db: Session, run: Run, repaired_df: pd.DataFrame, baseline_is_provisional: bool) -> ExplorationFinding | None:
+def run_exploration_for_run(
+    db: Session,
+    run: Run,
+    repaired_df: pd.DataFrame,
+    baseline_is_provisional: bool,
+    roles: dict | None = None,
+) -> ExplorationFinding | None:
     """Idempotent: a run that already has an ExplorationFinding row is left
     alone rather than recomputed and re-persisted a second time."""
     if run.status != "completed":
@@ -31,7 +37,16 @@ def run_exploration_for_run(db: Session, run: Run, repaired_df: pd.DataFrame, ba
     events = db.query(ValidationEvent).filter(ValidationEvent.run_id == run.id).all()
     data_quality_context = build_data_quality_context(events, baseline_is_provisional)
 
-    findings = ExplorationEngine().run(repaired_df, run_id=run.id, data_quality_context=data_quality_context)
+    # `roles` is the run's ONE semantic detection pass, used to keep
+    # identifier columns out of correlation, trend, outlier and
+    # distribution analysis. Falls back to run.semantic_roles so a caller
+    # that does not pass it still gets the run's own roles.
+    findings = ExplorationEngine().run(
+        repaired_df,
+        run_id=run.id,
+        data_quality_context=data_quality_context,
+        roles=roles if roles is not None else run.semantic_roles,
+    )
 
     record = ExplorationFinding(
         run_id=run.id,

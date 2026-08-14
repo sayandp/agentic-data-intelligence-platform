@@ -29,6 +29,7 @@ from langgraph.graph import END, StateGraph
 from typing_extensions import TypedDict
 
 from app.query.models import QueryAnswerStatus, QueryKind
+from app.semantic_roles import prompt_context
 from app.query.pandas_validation import validate_pandas_code
 from app.query.sandbox import run_pandas_sandbox
 from app.query.sql_validation import validate_sql
@@ -85,7 +86,16 @@ def generate_node(state: QueryState, config) -> dict:
     findings_summary = _findings_summary_for_run(db, run)
     sample_rows = contract.data.head(MAX_SAMPLE_ROWS).to_dict(orient="records")
 
-    outcome = query_agent.generate(query_kind, question, schema, sample_rows, findings_summary, table_name=table_name)
+    # Roles are CONTEXT for the model, from the run's one detection pass.
+    outcome = query_agent.generate(
+        query_kind,
+        question,
+        schema,
+        sample_rows,
+        findings_summary,
+        table_name=table_name,
+        column_roles=prompt_context(state["run"].semantic_roles),
+    )
     if outcome.query is None:
         result = _persist(
             db, run, source, question, quality_summary,
