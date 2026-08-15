@@ -341,9 +341,10 @@
   /* -- the typography ramp, as named utilities --
      DESIGN.md's Typography > Hierarchy is the source; these are the SAME
      six steps, expressed once so a page cannot spell one out as a literal.
-     `text-[22px] font-semibold` repeated across eight page headers was two
-     representations of one documented fact - the shape that produced two
-     resolve_run functions and --chart-1..6 being the status palette.
+     A bracketed pixel literal plus a weight class, repeated across eight
+     page headers, was two representations of one documented fact - the
+     shape that produced two resolve_run functions and --chart-1..6 being
+     the status palette.
 
      Each step carries its own size, line-height and weight, so a call site
      needs one class rather than three and cannot apply half a step. */
