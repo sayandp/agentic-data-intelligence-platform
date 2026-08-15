@@ -36,6 +36,17 @@ from __future__ import annotations
 
 from typing import Any
 
+#: Bumped whenever a change here would render an ALREADY-PERSISTED spec
+#: differently. Readers re-derive anything older, which is what lets a fix
+#: to this module reach runs that were analysed before it - otherwise the
+#: fix silently applies only to runs ingested afterwards, which is the
+#: least useful place for it.
+#:
+#: 2: the cohort heatmap's colour domain is fitted to observed retention
+#:    instead of spanning 0-100 (period 0 is 1.0 by construction and was
+#:    pushing every real value into the palest fifth of the ramp).
+CHART_SPEC_VERSION = 2
+
 #: What a trace means, resolved to a colour by whoever is drawing it.
 ROLE_ACCENT = "accent"
 ROLE_NEUTRAL = "neutral"
@@ -91,28 +102,86 @@ def _pareto_curve(payload: dict) -> dict:
     }
 
 
+#: Headroom added either side of the observed retention range, as a share
+#: of that range. Enough that the darkest and palest observed cells are not
+#: pinned to the very ends of the ramp, small enough not to give the wasted
+#: span back.
+DOMAIN_PADDING = 0.05
+
+
+def _fitted_retention_domain(matrix: list, periods: list) -> tuple[float, float] | None:
+    """The colour domain, fitted to the retention that carries information.
+
+    Period 0 is EXCLUDED. It is 1.0 for every cohort by construction - the
+    definition of a cohort, not a finding about one - and letting it set the
+    top of the scale is what pushed real retention into the bottom fifth of
+    the ramp. Nearly every cell then rendered as the palest step and cohorts
+    could not be told apart, worst of all in the Default theme.
+
+    Returns None when there is nothing to fit to, in which case the caller
+    leaves the scale absolute rather than inventing a range.
+    """
+    observed = [
+        value * 100
+        for row in matrix or []
+        for index, value in enumerate(row or [])
+        # Keyed on the PERIOD, not the column index, so this stays correct
+        # if a matrix ever starts somewhere other than period 0.
+        if value is not None and not (index < len(periods or []) and periods[index] == 0)
+    ]
+    if not observed:
+        return None
+
+    low, high = min(observed), max(observed)
+    padding = max((high - low) * DOMAIN_PADDING, 0.5)
+    return max(0.0, low - padding), min(100.0, high + padding)
+
+
 def _cohort_heatmap(payload: dict) -> dict:
     """The cohort triangle. `null` cells are periods that have NOT HAPPENED
     yet for that cohort - Plotly renders them as gaps, which is exactly
-    right: an unobserved period must not look like 0% retention."""
+    right: an unobserved period must not look like 0% retention.
+
+    The colour domain is FITTED to the observed retention rather than the
+    theoretical 0-100. The ramp itself is unchanged; only the range it is
+    stretched over. Because that makes two runs' heatmaps not directly
+    comparable by colour, the domain is stated on the colourbar - a scale a
+    reader assumes is absolute, and is not, is worse than a hard-to-read one.
+    """
     matrix = payload.get("retained_share") or []
     granularity = payload.get("granularity")
+    periods = payload.get("periods_since_acquisition") or []
+
+    domain = _fitted_retention_domain(matrix, periods)
+    trace: dict = {
+        "type": "heatmap",
+        "z": [_pct_list(row) for row in matrix],
+        "x": periods,
+        "y": payload.get("cohort_labels") or [],
+        "hoverongaps": False,
+        # The OBJECT form, not a bare string: plotly.js v3 silently ignores
+        # `colorbar.title` as a string, so this label never rendered in the
+        # browser at all (Python plotly accepts both, which is why it showed
+        # up in the deck and nowhere else).
+        "colorbar": {"title": {"text": "% retained"}},
+    }
+    title = "Cohort retention"
+    if domain is not None:
+        low, high = domain
+        trace["zmin"] = round(low, 2)
+        trace["zmax"] = round(high, 2)
+        # Period 0 still renders - it is simply above the top of the scale
+        # now, and clamps to the darkest step.
+        trace["colorbar"] = {"title": {"text": f"% retained<br>(scale {low:.0f}-{high:.0f}%)"}}
+        title = f"Cohort retention (colour scaled {low:.0f}-{high:.0f}%, not 0-100)"
+
     return {
         "kind": "cohort_heatmap",
-        "title": "Cohort retention",
+        "title": title,
         "colour_roles": [],
         "colorscale_role": SCALE_SEQUENTIAL_ZERO_TRANSPARENT,
         "figure_json": {
-            "data": [
-                {
-                    "type": "heatmap",
-                    "z": [_pct_list(row) for row in matrix],
-                    "x": payload.get("periods_since_acquisition") or [],
-                    "y": payload.get("cohort_labels") or [],
-                    "hoverongaps": False,
-                    "colorbar": {"title": "% retained"},
-                }
-            ],
+            "data": [trace],
             "layout": {
                 "xaxis": {"title": f"periods since acquisition ({granularity})", "dtick": 1},
                 "yaxis": {"title": "cohort", "autorange": "reversed"},
@@ -218,7 +287,20 @@ def chart_for_result(analysis: str, findings: list[dict]) -> dict | None:
 
     spec["analysis"] = analysis
     spec["chart_id"] = f"{analysis}-{spec['kind']}"
+    spec["spec_version"] = CHART_SPEC_VERSION
     return spec
+
+
+def charts_are_current(charts: list[dict] | None) -> bool:
+    """Whether persisted specs were produced by the CURRENT generator.
+
+    False for absent charts and for charts from an older version, so both
+    take the same re-derivation path rather than one being handled and the
+    other quietly served stale.
+    """
+    if not charts:
+        return False
+    return all(chart.get("spec_version") == CHART_SPEC_VERSION for chart in charts)
 
 
 def charts_for_results(results: list[dict]) -> list[dict]:

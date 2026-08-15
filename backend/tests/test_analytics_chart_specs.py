@@ -257,3 +257,124 @@ def test_a_result_that_did_not_run_is_skipped():
     charts = charts_for_results([{"analysis": "rfm", "ran": False, "findings": [{"finding_type": "segment_profile"}]}])
 
     assert charts == []
+
+
+# ---------------------------------------------------------------------------
+# RECORDED DIVERGENCE FROM THE GOLDEN FIXTURE
+#
+# The fixture captures what frontend/src/lib/analyticsCharts.ts drew before
+# the port. The cohort heatmap now DELIBERATELY differs from it, and the
+# fixture is deliberately NOT regenerated - it is the record of what the
+# frontend did, and rewriting it would erase the only evidence that the port
+# itself was faithful.
+#
+# What differs, and why:
+#   zmin/zmax   the frontend let the scale span 0-100. Period 0 is 1.0 for
+#               every cohort by construction, so it pinned the top of the
+#               scale and pushed real retention (2.6-49.6% on this run) into
+#               the palest fifth of the ramp. Unreadable in the Default
+#               theme, which is the demo theme.
+#   colorbar    now states the fitted domain, because a scale a reader
+#               assumes is absolute and is not is worse than a hard-to-read
+#               one - two runs' heatmaps are no longer comparable by colour.
+#               Also switched to Plotly's OBJECT form: plotly.js v3 silently
+#               ignores a bare string, so this label had never rendered in
+#               the browser at all.
+#   title       carries the domain too, for the deck slide caption.
+#
+# Everything else about this chart - z, x, y, type, hoverongaps, the ramp
+# itself, the transparent stop for unobserved cells, axes and margins - is
+# still asserted against the fixture by the tests above.
+# ---------------------------------------------------------------------------
+
+
+def test_the_cohort_domain_excludes_period_zero():
+    """Period 0 is 1.0 for every cohort by definition. Letting it set the
+    top of the scale is the whole defect."""
+    from app.analytics.chart_specs import _fitted_retention_domain
+
+    matrix = [[1.0, 0.25, 0.20], [1.0, 0.18, None]]
+    low, high = _fitted_retention_domain(matrix, [0, 1, 2])
+
+    # Observed span here is 18-25, so 5% of it is 0.35 and the 0.5 floor
+    # applies instead - the floor exists so a narrow range still gets
+    # visible headroom.
+    assert high < 100, "period 0 is still stretching the scale to the top"
+    assert high == pytest.approx(25.5, abs=0.01)
+    assert low == pytest.approx(17.5, abs=0.01)
+
+
+def test_the_cohort_domain_is_keyed_on_the_period_not_the_column_index():
+    """So a matrix that ever starts somewhere other than period 0 keeps
+    working."""
+    from app.analytics.chart_specs import _fitted_retention_domain
+
+    # Period 0 sits in the SECOND column here.
+    low, high = _fitted_retention_domain([[0.30, 1.0, 0.20]], [1, 0, 2])
+
+    assert high < 100
+    assert high == pytest.approx(30.5, abs=0.01)
+
+
+def test_a_matrix_with_nothing_beyond_period_zero_keeps_an_absolute_scale():
+    """Nothing to fit to, so no range is invented."""
+    from app.analytics.chart_specs import _fitted_retention_domain
+
+    assert _fitted_retention_domain([[1.0], [1.0]], [0]) is None
+
+
+def test_a_run_with_no_retention_beyond_period_zero_still_produces_a_chart():
+    spec = chart_for_result(
+        "cohort_retention",
+        [{
+            "finding_type": "retention_matrix",
+            "payload": {
+                "finding_type": "retention_matrix",
+                "granularity": "month",
+                "cohort_labels": ["2010-01"],
+                "periods_since_acquisition": [0],
+                "retained_share": [[1.0]],
+            },
+        }],
+    )
+    trace = spec["figure_json"]["data"][0]
+
+    assert "zmin" not in trace and "zmax" not in trace
+    assert spec["title"] == "Cohort retention"
+
+
+def test_the_fitted_domain_is_stated_where_a_reader_will_see_it():
+    """Otherwise two runs' heatmaps are not comparable and nothing says so."""
+    spec = _backend("cohort_retention")
+    trace = spec["figure_json"]["data"][0]
+
+    assert "scale" in trace["colorbar"]["title"]["text"]
+    assert "not 0-100" in spec["title"]
+
+
+def test_the_colorbar_title_uses_the_object_form_plotly_js_actually_renders():
+    """A bare string is silently dropped by plotly.js v3 - the label never
+    appeared in the browser, only in the kaleido-rendered deck."""
+    trace = _backend("cohort_retention")["figure_json"]["data"][0]
+
+    assert isinstance(trace["colorbar"]["title"], dict)
+    assert "text" in trace["colorbar"]["title"]
+
+
+def test_period_zero_still_renders_it_just_stops_defining_the_scale():
+    trace = _backend("cohort_retention")["figure_json"]["data"][0]
+
+    assert trace["z"][0][0] == pytest.approx(100.0), "period 0 was dropped from the data"
+    assert trace["zmax"] < 100, "period 0 is still setting the top of the scale"
+
+
+def test_a_stale_persisted_spec_is_re_derived_rather_than_served():
+    """A fix here has to reach runs analysed BEFORE it, or it applies only
+    where it is least needed."""
+    from app.analytics.chart_specs import CHART_SPEC_VERSION, charts_are_current
+
+    assert charts_are_current(None) is False
+    assert charts_are_current([]) is False
+    assert charts_are_current([{"spec_version": CHART_SPEC_VERSION - 1}]) is False
+    assert charts_are_current([{"chart_id": "no-version-at-all"}]) is False
+    assert charts_are_current([{"spec_version": CHART_SPEC_VERSION}]) is True

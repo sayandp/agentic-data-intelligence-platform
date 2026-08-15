@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.analytics.chart_specs import charts_for_results
+from app.analytics.chart_specs import charts_are_current, charts_for_results
 from app.analytics.pipeline import run_business_analytics_for_run
 from app.analytics.roles import ColumnRole
 from app.connectors.factory import build_connector
@@ -66,10 +66,12 @@ def _payload(record: BusinessAnalysis, run) -> dict:
     it already knows how to read instead of round-tripping."""
     payload = dict(record.findings_json)
     # Rows written before chart specs were persisted carry findings but no
-    # `charts`. Derived on read from those same findings by the SAME function
-    # that persists them, so an older run gets the identical figures rather
-    # than a blank space or a second code path that could drift.
-    if not payload.get("charts"):
+    # `charts`; rows written by an older generator carry specs that would now
+    # render differently. Both are re-derived on read from those same findings
+    # by the SAME function that persists them, so an older run gets the
+    # identical figures a fresh one would rather than a blank space, a stale
+    # picture, or a second code path that could drift.
+    if not charts_are_current(payload.get("charts")):
         payload["charts"] = charts_for_results(payload.get("results") or [])
     payload["run_number"] = run.run_number
     payload["schema_version"] = record.schema_version

@@ -19,7 +19,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.export.deck import DeckSources, build_deck
-from app.analytics.chart_specs import charts_for_results
+from app.analytics.chart_specs import charts_are_current, charts_for_results
 from app.models import (
     AgentTrace,
     BusinessAnalysis,
@@ -56,7 +56,7 @@ def _analytics_payload(analytics: BusinessAnalysis | None) -> dict | None:
     if analytics is None:
         return None
     payload = dict(analytics.findings_json)
-    if not payload.get("charts"):
+    if not charts_are_current(payload.get("charts")):
         payload["charts"] = charts_for_results(payload.get("results") or [])
     return payload
 
