@@ -195,7 +195,20 @@ export function applyAnalyticsColours(chart: {
     if (colour) {
       const mode = String(t.mode ?? "");
       if (t.type === "bar" || t.type === "histogram" || mode.includes("markers")) {
-        t.marker = { ...((t.marker as Record<string, unknown>) ?? {}), color: colour };
+        // A single BAR trace whose x is several unordered categories gets a
+        // colour PER BAR, not one colour for the trace. The categories differ
+        // in kind and the axis already names each, so colour is a second
+        // channel rather than an invented ranking - the same rule
+        // withDesignColors applies to report charts.
+        const categories = Array.isArray(t.x) ? (t.x as unknown[]).length : 0;
+        if (role === "categorical" && t.type === "bar" && categories > 1) {
+          t.marker = {
+            ...((t.marker as Record<string, unknown>) ?? {}),
+            color: Array.from({ length: categories }, (_, i) => categorical[i % categorical.length]),
+          };
+        } else {
+          t.marker = { ...((t.marker as Record<string, unknown>) ?? {}), color: colour };
+        }
       }
       if (mode.includes("lines")) {
         t.line = { ...((t.line as Record<string, unknown>) ?? {}), color: colour };

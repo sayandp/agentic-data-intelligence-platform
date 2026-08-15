@@ -273,6 +273,25 @@ class ConfirmedColumnRole(Base):
     confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class MarketingAnalysis(Base):
+    """Written by the Marketing Agent - one row per run, only ever for a run
+    that reached 'completed', exactly like BusinessAnalysis.
+
+    A row is written EVEN WHEN THE RUN DOES NOT QUALIFY. "This source is not
+    an ads export, and here is the role it was missing" is the output a user
+    needs when the Marketing tab is absent; a missing row would leave them
+    unable to tell a refusal from a failure.
+    """
+
+    __tablename__ = "marketing_analyses"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    run_id: Mapped[str] = mapped_column(String, ForeignKey("runs.id"), nullable=False)
+    schema_version: Mapped[int] = mapped_column(nullable=False)
+    findings_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class QueryRun(Base):
     """Written by the Query Agent (Phase 6) - one row per POST /ask call.
 

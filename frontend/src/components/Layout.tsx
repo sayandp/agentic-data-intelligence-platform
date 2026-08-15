@@ -74,6 +74,15 @@ function IconExport() {
   );
 }
 
+function IconMarketing() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 8.5v3a1 1 0 0 0 1 1h2.5L11 16V4L6.5 7.5H4a1 1 0 0 0-1 1Z" />
+      <path d="M14.5 7.5a3.5 3.5 0 0 1 0 5" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS = [
   { to: "/sources", label: "Sources", Icon: IconSources },
   { to: "/approvals", label: "Approvals", Icon: IconApprovals },
@@ -82,6 +91,7 @@ const NAV_ITEMS = [
   { to: "/ask", label: "Ask", Icon: IconAsk },
   { to: "/predict", label: "Predict", Icon: IconPredict },
   { to: "/analytics", label: "Analytics", Icon: IconAnalytics },
+  { to: "/marketing", label: "Marketing", Icon: IconMarketing },
   { to: "/export", label: "Export", Icon: IconExport },
 ];
 

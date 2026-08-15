@@ -7,6 +7,7 @@ import AuditPage from "./pages/AuditPage";
 import AskPage from "./pages/AskPage";
 import PredictPage from "./pages/PredictPage";
 import ExportPage from "./pages/ExportPage";
+import MarketingPage from "./pages/MarketingPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 
 export default function App() {
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="/ask" element={<AskPage />} />
           <Route path="/predict" element={<PredictPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/marketing" element={<MarketingPage />} />
           <Route path="/export" element={<ExportPage />} />
           {/* Any unrecognised path lands somewhere real. Without this, an
               unknown route rendered the nav and an EMPTY main area - no

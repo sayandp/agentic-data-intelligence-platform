@@ -146,6 +146,20 @@ def _apply_role_colours(chart: dict) -> dict:
     for index, trace in enumerate(data):
         role = roles[index] if index < len(roles) else None
         if role == "categorical":
+            # A single BAR trace over several unordered categories takes a
+            # colour PER BAR, matching what the screen does - otherwise the
+            # slide and the dashboard colour the same figure differently.
+            x_values = trace.get("x")
+            if trace.get("type") == "bar" and isinstance(x_values, list) and len(x_values) > 1:
+                painted = dict(trace)
+                marker = dict(painted.get("marker") or {})
+                marker.setdefault(
+                    "color", [DECK_CATEGORICAL[i % len(DECK_CATEGORICAL)] for i in range(len(x_values))]
+                )
+                painted["marker"] = marker
+                coloured.append(painted)
+                categorical_index += 1
+                continue
             colour = DECK_CATEGORICAL[categorical_index % len(DECK_CATEGORICAL)]
             categorical_index += 1
         elif role in _ROLE_COLOURS:

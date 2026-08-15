@@ -44,6 +44,7 @@ from app.correlation import CorrelatedGroup, correlate_events
 from app.db import SessionLocal
 from app.analytics.pipeline import confirmed_roles_for_source, run_business_analytics_for_run
 from app.exploration.pipeline import run_exploration_for_run
+from app.marketing.pipeline import run_marketing_for_run
 from app.semantic_roles import detect_for_run, roles_document
 from app.gate import DEFAULT_CONFIDENCE_THRESHOLD
 from app.graph.state import IngestState
@@ -438,6 +439,23 @@ def explore_node(state: IngestState, config: RunnableConfig) -> dict:
             run_business_analytics_for_run(db, run, contract.data)
         except Exception as exc:  # noqa: BLE001 - additive reporting never fails a run
             print(f"[analytics] business analytics failed for run {run.id}: {type(exc).__name__}: {exc}")
+
+        # The Marketing Agent runs AFTER business analytics, on the same
+        # REPAIRED frame and the same single role detection. Wrapped for the
+        # same reason analytics is: it is additive reporting, and a failure
+        # here must never fail an ingest that already produced valid findings
+        # and a report. A source that is not an ads export is not a failure -
+        # it is recorded as not applicable, with the missing role named.
+        try:
+            run_marketing_for_run(
+                db,
+                run,
+                contract.data,
+                roles_detection,
+                baseline_profile=baseline.profile_json if baseline else None,
+            )
+        except Exception as exc:  # noqa: BLE001 - additive reporting never fails a run
+            print(f"[marketing] marketing analysis failed for run {run.id}: {type(exc).__name__}: {exc}")
         db.commit()
 
     return {"route": "narrate" if exploration_record is not None else "done"}

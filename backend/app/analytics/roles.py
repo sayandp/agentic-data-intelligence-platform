@@ -27,6 +27,7 @@ from enum import Enum
 import pandas as pd
 
 from app.column_kind import ColumnKind, column_kind
+from app.numeric_text import coerce_numeric, looks_numeric
 
 
 class ColumnRole(str, Enum):
@@ -38,6 +39,20 @@ class ColumnRole(str, Enum):
     EVENT_DATE = "event_date"         # datetime, already typed upstream
     MONETARY = "monetary"             # non-negative, positive-skewed numeric
     QUANTITY = "quantity"             # small positive integers
+
+    # -- ad-platform export roles (app/marketing/) --
+    # Added here rather than in a second detector so marketing columns are
+    # scored by the SAME confidence bands, the same refuse-rather-than-guess
+    # floor, and the same confirm-a-role flow as everything else. A second
+    # detector would be two things that must agree about what a column is.
+    CAMPAIGN_ID = "campaign_id"            # campaign / ad set / ad group name or id
+    SPEND = "spend"                        # monetary, per row of the export
+    IMPRESSIONS = "impressions"            # large non-negative counts
+    CLICKS = "clicks"                      # non-negative counts, <= impressions
+    CTR = "ctr"                            # bounded ratio, clicks/impressions
+    FREQUENCY = "frequency"                # small ratio, >= 1 in practice
+    CONVERSIONS = "conversions"            # non-negative counts, sparse
+    CONVERSION_VALUE = "conversion_value"  # monetary, revenue attributed to ads
 
 
 class Confidence(str, Enum):
@@ -53,6 +68,23 @@ class Confidence(str, Enum):
     MEDIUM = "medium"         # >= 0.5
     LOW = "low"               # below 0.5 - a candidate, never used unasked
 
+
+#: The widest a click-through rate can plausibly be, covering BOTH export
+#: conventions: a fraction (0.023) and percentage points (2.3).
+MAX_CTR_PERCENT = 100.0
+
+#: Average impressions per person. Real campaigns run 1-10; far above that
+#: is a different measure wearing the same name.
+MAX_FREQUENCY = 50.0
+
+#: Above this share of unique values a campaign column is a row key, not a
+#: campaign that repeats across days.
+MAX_CAMPAIGN_UNIQUE_SHARE = 0.9
+
+#: What a marketing column scores on VALUE SHAPE alone - deliberately below
+#: the usable floor. Every ad metric shares a shape with several others, so
+#: shape can only ever nominate a candidate; the name is what identifies it.
+SHAPE_ONLY_SCORE = 0.3
 
 #: An analysis may only consume a role detected at or above this band.
 #: Anything weaker is surfaced as a candidate for a human to confirm - the
@@ -85,6 +117,14 @@ _NAME_HINTS: dict[ColumnRole, re.Pattern[str]] = {
     ColumnRole.EVENT_DATE: re.compile(r"(date|time|timestamp|day|created|ordered|purchased)", re.I),
     ColumnRole.MONETARY: re.compile(r"(revenue|sales|amount|price|value|total|cost|spend|payment|charge|fee)", re.I),
     ColumnRole.QUANTITY: re.compile(r"(quantity|qty|units|count|items|number|volume)", re.I),
+    ColumnRole.CAMPAIGN_ID: re.compile(r"(campaign|ad[_\- ]?set|adset|ad[_\- ]?group|adgroup)", re.I),
+    ColumnRole.SPEND: re.compile(r"(spend|cost|budget|amount[_\- ]?spent)", re.I),
+    ColumnRole.IMPRESSIONS: re.compile(r"(impression|impr|reach)", re.I),
+    ColumnRole.CLICKS: re.compile(r"(click|tap)", re.I),
+    ColumnRole.CTR: re.compile(r"(ctr|click[_\- ]?through)", re.I),
+    ColumnRole.FREQUENCY: re.compile(r"(frequency|freq)", re.I),
+    ColumnRole.CONVERSIONS: re.compile(r"(conversion|purchase|result|lead|signup|install)", re.I),
+    ColumnRole.CONVERSION_VALUE: re.compile(r"(conversion[_\- ]?value|purchase[_\- ]?value|revenue|action[_\- ]?value)", re.I),
 }
 
 #: Names that mark an id as belonging to the ROW rather than to a repeating
@@ -95,6 +135,16 @@ _ROW_INDEX_NAME = re.compile(r"^(row|line)?[_\- ]?(index|idx|num|number|no|seq|r
 #: business ranks by when asking "what accounts for most of the total".
 _REVENUE_NAME = re.compile(r"(revenue|sales|turnover|gmv|income|amount|total|price|value|spend|payment)", re.I)
 _COST_NAME = re.compile(r"(cost|expense|cogs|fee|charge|discount|refund|tax)", re.I)
+
+#: Ad-platform METRIC names. Every one of these is a measurement, and on an
+#: ads export they all share the many-distinct-values-repeating-a-few-times
+#: shape of a transaction key - so without this an impressions column was
+#: assigned TRANSACTION_ID and then excluded from exploration as an
+#: identifier, dropping the run's core metric from its own charts.
+_AD_METRIC_NAME = re.compile(
+    r"(impression|click|ctr|click[_\- ]?through|frequency|conversion|spend|amount[_\- ]?spent|reach|cpa|cpc|cpm|roas)",
+    re.I,
+)
 
 #: Anything that reads as a key. An integer key satisfies every numeric test
 #: a quantity does, so the name is the only thing that separates them.
@@ -189,6 +239,8 @@ def _looks_like_a_measure(series: pd.Series) -> bool:
 def _score_entity_id(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
     """Repeats, but is not a single constant. A per-row unique id is a
     transaction, not an entity - that distinction is the whole point."""
+    if _AD_METRIC_NAME.search(column):
+        return 0.0, ["name reads as an ad-platform metric - a measurement, not a entity identifier"]
     reasons: list[str] = []
     non_null = series.dropna()
     if non_null.empty:
@@ -245,6 +297,8 @@ def _score_transaction_id(series: pd.Series, column: str, rows: int) -> tuple[fl
     basket holds a handful of lines, whereas a customer accumulates orders
     without any comparable ceiling.
     """
+    if _AD_METRIC_NAME.search(column):
+        return 0.0, ["name reads as an ad-platform metric - a measurement, not a transaction key"]
     reasons: list[str] = []
     non_null = series.dropna()
     if non_null.empty:
@@ -408,12 +462,183 @@ def _score_quantity(series: pd.Series, column: str, rows: int) -> tuple[float, l
     return min(1.0, score + _name_bonus(column, ColumnRole.QUANTITY)), reasons
 
 
+
+# ---------------------------------------------------------------------------
+# Ad-platform export roles.
+#
+# Scored from VALUE SHAPE first and name second, exactly like the roles
+# above: CTR and frequency are bounded ratios, impressions and clicks are
+# whole non-negative counts, spend and conversion value are money. A name
+# alone never promotes a column - `revenue` in a retail export must not be
+# read as ad conversion value just because the word matches - so every one
+# of these caps out at LOW confidence on shape alone and needs the name to
+# become usable. That is the refuse-rather-than-guess rule, not a weakness.
+# ---------------------------------------------------------------------------
+
+
+def _numeric_non_null(series: pd.Series) -> pd.Series | None:
+    """The column as numbers, seeing through export formatting.
+
+    An ads export writes `$1,234.56` and `2.3%` as text because it was
+    formatted for a person. Detection has to run BEFORE anything is
+    transformed, so a scorer that insisted on a numeric dtype would refuse
+    every money and rate column in a real export - and the agent would never
+    qualify on the exact files it exists for.
+
+    Nothing is modified: this is a read-only view for scoring, using the same
+    parser app/marketing/preprocess.py later uses to transform for real
+    (app/numeric_text.py), so the two can never disagree about what a value
+    means.
+    """
+    if column_kind(series) is ColumnKind.NUMERIC:
+        non_null = series.dropna()
+        return None if non_null.empty else non_null
+    if not looks_numeric(series):
+        return None
+    non_null = coerce_numeric(series).dropna()
+    return None if non_null.empty else non_null
+
+
+def _score_campaign_id(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    """A campaign or ad-set label: repeats across rows (one row per ad set
+    per day), never unique per row, and never a measurement."""
+    if column_kind(series) is ColumnKind.DATETIME:
+        return 0.0, ["datetime column"]
+    if _looks_like_a_measure(series):
+        return 0.0, ["continuous numeric column - a measurement, not a campaign label"]
+    non_null = series.dropna()
+    if non_null.empty:
+        return 0.0, ["column is entirely null"]
+
+    distinct = int(non_null.nunique())
+    if distinct < 2:
+        return 0.0, [f"only {distinct} distinct value(s) - nothing to compare across"]
+    unique_share = distinct / len(non_null)
+    if unique_share > MAX_CAMPAIGN_UNIQUE_SHARE:
+        return 0.0, [f"{unique_share:.0%} unique - reads as a row key, not a campaign repeating over days"]
+
+    reasons = [f"{distinct} distinct value(s) across {len(non_null)} row(s) ({unique_share:.0%} unique) - repeats"]
+    return min(1.0, SHAPE_ONLY_SCORE + _name_bonus(column, ColumnRole.CAMPAIGN_ID) * 2), reasons
+
+
+def _score_bounded_ratio(
+    series: pd.Series, column: str, role: ColumnRole, ceiling: float, floor: float = 0.0
+) -> tuple[float, list[str]]:
+    """CTR and frequency share a shape: a numeric confined to a narrow band.
+
+    The band is what separates them from every other numeric column, so a
+    value outside it is a rejection carrying the observed range as its
+    reason - the same "closest candidate, and why not" the report needs.
+    """
+    non_null = _numeric_non_null(series)
+    if non_null is None:
+        return 0.0, ["not a numeric column"]
+
+    low, high = float(non_null.min()), float(non_null.max())
+    if low < floor:
+        return 0.0, [f"minimum {low:.4g} is below {floor:.4g} - outside the range this ratio can take"]
+    if high > ceiling:
+        return 0.0, [f"maximum {high:.4g} is above {ceiling:.4g} - too large to read as this ratio"]
+    # A constant column is NOT rejected. It is still within range, and a
+    # column named `Frequency` holding a steady 4.4 is exactly the case the
+    # fatigue rule exists for - vetoing it on shape would make the rule
+    # undetectable on the data it is meant to catch. Recorded as a reason so
+    # a reader can see the column never varied.
+    reasons = (
+        [f"constant at {low:.4g} - within the range for this ratio"]
+        if high == low
+        else [f"numeric in [{low:.4g}, {high:.4g}] - within the range for this ratio"]
+    )
+    return min(1.0, SHAPE_ONLY_SCORE + _name_bonus(column, role) * 2), reasons
+
+
+def _score_ctr(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    """Accepts BOTH conventions an export may use - a fraction (0.023) and
+    percentage points (2.3) - because both appear in real files. Which one a
+    column actually uses is decided later, on the whole column, by
+    app/marketing/preprocess.py; it is not guessable per value."""
+    return _score_bounded_ratio(series, column, ColumnRole.CTR, ceiling=MAX_CTR_PERCENT)
+
+
+def _score_frequency(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    return _score_bounded_ratio(series, column, ColumnRole.FREQUENCY, ceiling=MAX_FREQUENCY)
+
+
+def _score_count_metric(series: pd.Series, column: str, role: ColumnRole) -> tuple[float, list[str]]:
+    """Impressions, clicks and conversions are whole non-negative counts."""
+    non_null = _numeric_non_null(series)
+    if non_null is None:
+        return 0.0, ["not a numeric column"]
+    if bool((non_null < 0).any()):
+        return 0.0, ["contains negative values"]
+    if not bool((non_null == non_null.round()).all()):
+        return 0.0, ["not whole numbers - a count is never fractional"]
+    if _IDENTIFIER_NAME.search(column):
+        return 0.0, ["name reads as an identifier, not a measured count"]
+
+    peak = float(non_null.max())
+    reasons = [f"whole non-negative numbers up to {peak:.0f}"]
+    return min(1.0, SHAPE_ONLY_SCORE + _name_bonus(column, role) * 2), reasons
+
+
+def _score_impressions(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    return _score_count_metric(series, column, ColumnRole.IMPRESSIONS)
+
+
+def _score_clicks(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    return _score_count_metric(series, column, ColumnRole.CLICKS)
+
+
+def _score_conversions(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    # `Purchase conversion value` matches the conversions hint too ("purchase"),
+    # and a COUNT of conversions is a different measure from the money they
+    # brought in. The more specific name wins, the same way _score_quantity
+    # yields to a monetary-sounding name.
+    if _NAME_HINTS[ColumnRole.CONVERSION_VALUE].search(column):
+        return 0.0, ["name reads as conversion VALUE (money), not a count of conversions"]
+    return _score_count_metric(series, column, ColumnRole.CONVERSIONS)
+
+
+def _score_ad_monetary(series: pd.Series, column: str, role: ColumnRole) -> tuple[float, list[str]]:
+    """Spend and conversion value are money: non-negative and continuous in
+    practice."""
+    non_null = _numeric_non_null(series)
+    if non_null is None:
+        return 0.0, ["not a numeric column"]
+    if bool((non_null < 0).any()):
+        return 0.0, ["contains negative values"]
+    if _IDENTIFIER_NAME.search(column):
+        return 0.0, ["name reads as an identifier, not a monetary amount"]
+
+    peak = float(non_null.max())
+    if peak == 0:
+        return 0.0, ["every value is zero"]
+    reasons = [f"non-negative amounts up to {peak:,.2f}"]
+    return min(1.0, SHAPE_ONLY_SCORE + _name_bonus(column, role) * 2), reasons
+
+
+def _score_spend(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    return _score_ad_monetary(series, column, ColumnRole.SPEND)
+
+
+def _score_conversion_value(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    return _score_ad_monetary(series, column, ColumnRole.CONVERSION_VALUE)
+
+
 _SCORERS = {
     ColumnRole.ENTITY_ID: _score_entity_id,
     ColumnRole.TRANSACTION_ID: _score_transaction_id,
     ColumnRole.EVENT_DATE: _score_event_date,
     ColumnRole.MONETARY: _score_monetary,
     ColumnRole.QUANTITY: _score_quantity,
+    ColumnRole.CAMPAIGN_ID: _score_campaign_id,
+    ColumnRole.SPEND: _score_spend,
+    ColumnRole.IMPRESSIONS: _score_impressions,
+    ColumnRole.CLICKS: _score_clicks,
+    ColumnRole.CTR: _score_ctr,
+    ColumnRole.FREQUENCY: _score_frequency,
+    ColumnRole.CONVERSIONS: _score_conversions,
+    ColumnRole.CONVERSION_VALUE: _score_conversion_value,
 }
 
 

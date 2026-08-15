@@ -495,6 +495,78 @@ export interface AnalyticsChartRecord {
   colorscale_role?: "sequential_zero_transparent";
 }
 
+
+/** The Marketing Agent's output (app/marketing/findings.py). */
+export interface MarketingBreachPayload {
+  finding_type: string;
+  severity: "warning" | "improvement";
+  metric: string;
+  observed: number;
+  threshold: number;
+  /** What the threshold was derived from, in words. Never blank - a
+   *  threshold with no stated basis is a magic number by another route. */
+  compared_against: string;
+  scope: string | null;
+  undefined_note: string | null;
+}
+
+export interface MarketingTotalsPayload {
+  finding_type: "account_totals";
+  severity: "key_value";
+  period_start: string | null;
+  period_end: string | null;
+  total_spend: number | null;
+  total_impressions: number | null;
+  total_clicks: number | null;
+  total_conversions: number | null;
+  total_conversion_value: number | null;
+  blended_cpa: number | null;
+  blended_roas: number | null;
+  blended_ctr: number | null;
+  /** Why a figure above is null, keyed by field. An account with no
+   *  conversions has no CPA; that is a fact, not a gap. */
+  undefined: Record<string, string>;
+}
+
+export interface MarketingFindingRecord {
+  id: string;
+  finding_type: string;
+  severity: "warning" | "improvement" | "key_value";
+  columns: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payload: any;
+  evidence: {
+    row_count: number;
+    period_start: string | null;
+    period_end: string | null;
+    parameters: Record<string, unknown>;
+  };
+}
+
+export interface MarketingRecord {
+  run_id: string;
+  run_number: number | null;
+  schema_version: number;
+  generated_at: string | null;
+  applicable: boolean;
+  not_applicable_reason: string | null;
+  resolved_roles: Record<string, { column: string; confidence: string; confirmed: boolean }>;
+  missing_roles: string[];
+  preprocessing: {
+    grain: string;
+    rows_in: number;
+    rows_out: number;
+    summary_rows_excluded: number;
+    summary_row_labels_matched: string[];
+    normalisations: { column: string; transformation: string }[];
+    derived_metrics: { metric: string; formula: string; undefined_row_count: number; undefined_reason: string | null }[];
+  } | null;
+  findings: MarketingFindingRecord[];
+  skipped_rules: { rule: string; reason: string }[];
+  parameters: Record<string, unknown>;
+  charts?: AnalyticsChartRecord[];
+}
+
 export interface AnalyticsRecord {
   run_id: string;
   run_number: number | null;
