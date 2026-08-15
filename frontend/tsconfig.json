@@ -1,3 +1,14 @@
+// SOLUTION-STYLE CONFIG - it type-checks NOTHING on its own.
+//
+// `files` is empty and the real work lives in the referenced projects, so
+// `tsc --noEmit -p tsconfig.json` (or bare `tsc --noEmit`, which resolves
+// here) exits 0 no matter how broken the code is. Two real type errors
+// shipped behind exactly that invocation.
+//
+// Use one of these instead - both follow the references:
+//     npm run typecheck        (tsc -b --force)
+//     npx tsc -b
+//     npx tsc --noEmit -p tsconfig.app.json
 {
   "files": [],
   "references": [

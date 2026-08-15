@@ -255,6 +255,14 @@ def resolve_node(state: IngestState, config: RunnableConfig) -> dict:
                 db, run, contract, groups_and_events, baseline, diagnostic_agent, _confidence_threshold(), reveal_depth_cap_from_env()
             )
             run.fix_chain = [*(run.fix_chain or []), *queue_outcome.fix_chain]
+            # The cache describes the frame, and the frame just changed. A
+            # run that escalates here sits at awaiting_approval being polled
+            # and would otherwise serve metadata describing the PRE-fix
+            # frame until it eventually reached explore_node - or forever,
+            # if it never does. Free to refresh: process_queue already
+            # carries the post-fix contract, so nothing is rebuilt.
+            if queue_outcome.fix_chain:
+                run.contract_metadata = queue_outcome.contract.metadata()
             db.flush()
 
         still_pending = (

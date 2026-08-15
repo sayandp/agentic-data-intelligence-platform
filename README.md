@@ -85,6 +85,29 @@ cache/artifact directory the app writes at runtime, and returns the
 project to a clean demo state - run `.\start.ps1` afterward to bring it
 back up from scratch.
 
+```powershell
+.\seed-demo.ps1
+```
+
+Resets, restarts, and leaves the platform **paused on exactly one
+escalation** - so a live demo starts at the interesting part instead of
+spending its first few minutes on setup nobody wants to watch.
+
+It ingests a clean CSV to establish the source's provisional baseline,
+then rewrites that same file with nulls past the tolerance and re-ingests
+it. Both steps go through the SAME source on purpose: validation compares
+a run against its source's baseline, so a separately registered file
+would simply establish its own and never be checked against anything.
+
+The corruption targets `null_threshold`, which has no auto-fix in
+`app/gate.py`'s applicability matrix - the gate cannot quietly repair it,
+so it always escalates. The script asserts there is exactly one pending
+escalation before declaring itself ready, and exits non-zero if not: a
+demo that silently seeds the wrong state is worse than one that refuses
+to start.
+
+`-SkipReset` seeds on top of the current database instead of wiping it.
+
 ## Run with Docker Compose
 
 An alternative deployment path - Postgres instead of SQLite, both
@@ -228,6 +251,20 @@ cd frontend
 npm i -D @playwright/test && npx playwright install chromium   # one-time
 npm run test:e2e
 ```
+
+### Type-checking the frontend
+
+```bash
+cd frontend
+npm run typecheck        # tsc -b --force
+npm run verify           # typecheck + lint + e2e
+```
+
+Use one of those, **not** `tsc --noEmit`. The root `tsconfig.json` is
+solution-style (`"files": []` plus project references), so running `tsc`
+against it type-checks *nothing* and exits 0 no matter how broken the code
+is - two real type errors reached the working tree behind exactly that
+invocation. `tsc -b` follows the references and checks the actual projects.
 
 ## What's not here yet (by design)
 

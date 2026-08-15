@@ -38,6 +38,28 @@ function RecentlyResolved({ count, children }: { count: number; children: React.
   );
 }
 
+//: Above this many entries the list is collapsed by default. Provisional
+//: baselines are informational and accumulate one per source per first
+//: ingest, so a long list is normal - and a long NORMAL list pushing the
+//: things that actually need a decision off the screen is the problem.
+const BASELINE_COLLAPSE_THRESHOLD = 10;
+
+/** Collapses a long informational list, with the count in the summary so
+ *  nothing is hidden - a reviewer can see how much is in there without
+ *  scrolling past it. Short lists stay open: collapsing three rows would
+ *  add a click and save no space. */
+function CollapsibleList({ count, noun, children }: { count: number; noun: string; children: React.ReactNode }) {
+  if (count <= BASELINE_COLLAPSE_THRESHOLD) return <>{children}</>;
+  return (
+    <details>
+      <summary className="cursor-pointer text-sm font-medium text-brand-600">
+        Show {count} {noun}s
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
+  );
+}
+
 function ResolvedMeta({ decision, resolvedBy, resolvedAt }: { decision: string | null; resolvedBy: string | null; resolvedAt: string | null }) {
   return (
     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
@@ -238,85 +260,16 @@ export default function ApprovalsPage() {
           </p>
         )}
 
-      <Card title="Provisional baselines" subtitle="Established automatically on a source's first ingest, not yet confirmed by a human.">
-        {!pending ? (
-          <Muted>Loading...</Muted>
-        ) : pending.provisional_baselines.length === 0 ? (
-          <EmptyState
-            neverText="Nothing here yet."
-            resolvedCount={pending.recently_resolved.provisional_baselines.length}
-            triggerText="Appears automatically on a source's first successful ingest, until a human confirms or rejects it."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-border bg-surface-sunken text-ink-muted">
-                <th className="py-2 px-3 font-medium">ID</th>
-                <th className="py-2 px-3 font-medium">Source</th>
-                <th className="py-2 px-3 text-right font-medium">Rows</th>
-                <th className="py-2 px-3 font-medium">Created</th>
-                <th className="py-2 px-3 font-medium">Decision</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pending.provisional_baselines.map((b) => (
-                <tr key={b.id} className="border-b border-border">
-                  <td className="py-2 px-3"><CopyableId id={b.id} /></td>
-                  <td className="py-2 px-3"><CopyableId id={b.source_id} /></td>
-                  <td className="py-2 px-3 text-right font-mono">{b.row_count}</td>
-                  <td className="py-2 px-3 text-ink-muted">{b.created_at}</td>
-                  <td className="py-2 px-3">
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={() =>
-                          resolve(b.id, "approve", `Baseline for source ${b.source_id.slice(0, 8)}`, {
-                            pastTense: BASELINE_DECISION_PAST_TENSE.approve,
-                          })
-                        }
-                        loading={isBusy(b.id, "approve")}
-                        loadingText={DECISION_LABELS.approve}
-                        disabled={isBusy(b.id, "reject_data")}
-                      >
-                        Confirm
-                      </Button>
-                      <Button
-                        variant="danger"
-                        onClick={() =>
-                          resolve(b.id, "reject_data", `Baseline for source ${b.source_id.slice(0, 8)}`, {
-                            confirmMessage: BASELINE_REJECT_CONFIRM_MESSAGE,
-                            pastTense: BASELINE_DECISION_PAST_TENSE.reject_data,
-                          })
-                        }
-                        loading={isBusy(b.id, "reject_data")}
-                        loadingText={DECISION_LABELS.reject_data}
-                        disabled={isBusy(b.id, "approve")}
-                      >
-                        Reject
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        )}
-        {pending && (
-          <RecentlyResolved count={pending.recently_resolved.provisional_baselines.length}>
-            {pending.recently_resolved.provisional_baselines.map((b) => (
-              <div key={b.id} className="rounded-md bg-surface-sunken p-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span>Baseline for source</span>
-                  <CopyableId id={b.source_id} />
-                </div>
-                <ResolvedMeta decision={b.decision} resolvedBy={b.resolved_by} resolvedAt={b.resolved_at} />
-              </div>
-            ))}
-          </RecentlyResolved>
-        )}
-      </Card>
+      {/* ORDERED BY CONSEQUENCE, not by how many rows each has.
+          An escalated validation event is a run PAUSED waiting on a
+          person - nothing downstream of it can proceed. An escalated
+          query or model is an answer withheld. A connector warning is
+          advisory. A provisional baseline is informational: normal on
+          a first ingest and resolvable whenever.
 
+          Baselines used to lead, so ~45 informational rows sat above
+          the one paused thing and told a reviewer the wrong story about
+          what needed them. */}
       <Card title="Escalated validation events" subtitle="A correlated group of failures is shown, and resolved, as ONE item.">
         {!pending ? (
           <Muted>Loading...</Muted>
@@ -439,68 +392,6 @@ export default function ApprovalsPage() {
                 <div className="mt-1 flex items-center justify-between">
                   <ResolvedMeta decision={e.decision} resolvedBy={e.resolved_by} resolvedAt={e.resolved_at} />
                   <RunLinks runId={e.run_id} runNumber={e.run_number} />
-                </div>
-              </div>
-            ))}
-          </RecentlyResolved>
-        )}
-      </Card>
-
-      <Card title="Connector warnings">
-        {!pending ? (
-          <Muted>Loading...</Muted>
-        ) : pending.connector_warnings.length === 0 ? (
-          <EmptyState
-            neverText="Nothing here yet."
-            resolvedCount={pending.recently_resolved.connector_warnings.length}
-            triggerText="Appears for source-level issues like a multi-sheet Excel file or a SQL type mismatch."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-border bg-surface-sunken text-ink-muted">
-                <th className="py-2 px-3 font-medium">Run</th>
-                <th className="py-2 px-3 font-medium">Message</th>
-                <th className="py-2 px-3 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {pending.connector_warnings.map((w) => (
-                <tr key={w.id} className="border-b border-border">
-                  <td className="py-2 px-3">
-                    <div className="flex items-center gap-2">
-                      <RunLabel runNumber={w.run_number} runId={w.run_id} />
-                      <RunLinks runId={w.run_id} runNumber={w.run_number} />
-                    </div>
-                  </td>
-                  <td className="py-2 px-3">{w.message}</td>
-                  <td className="py-2 px-3">
-                    <Button
-                      onClick={() => resolve(w.id, "acknowledge", "Connector warning")}
-                      loading={isBusy(w.id, "acknowledge")}
-                      loadingText={DECISION_LABELS.acknowledge}
-                    >
-                      Acknowledge
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        )}
-        {pending && (
-          <RecentlyResolved count={pending.recently_resolved.connector_warnings.length}>
-            {pending.recently_resolved.connector_warnings.map((w) => (
-              <div key={w.id} className="rounded-md bg-surface-sunken p-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span>{w.message}</span>
-                  <RunLabel runNumber={w.run_number} runId={w.run_id} />
-                </div>
-                <div className="mt-1 flex items-center justify-between">
-                  <ResolvedMeta decision={w.decision} resolvedBy={w.resolved_by} resolvedAt={w.resolved_at} />
-                  <RunLinks runId={w.run_id} runNumber={w.run_number} />
                 </div>
               </div>
             ))}
@@ -638,6 +529,149 @@ export default function ApprovalsPage() {
                   <ResolvedMeta decision={m.decision} resolvedBy={m.resolved_by} resolvedAt={m.resolved_at} />
                   <RunLinks runId={m.run_id} runNumber={m.run_number} />
                 </div>
+              </div>
+            ))}
+          </RecentlyResolved>
+        )}
+      </Card>
+
+      <Card title="Connector warnings">
+        {!pending ? (
+          <Muted>Loading...</Muted>
+        ) : pending.connector_warnings.length === 0 ? (
+          <EmptyState
+            neverText="Nothing here yet."
+            resolvedCount={pending.recently_resolved.connector_warnings.length}
+            triggerText="Appears for source-level issues like a multi-sheet Excel file or a SQL type mismatch."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-sunken text-ink-muted">
+                <th className="py-2 px-3 font-medium">Run</th>
+                <th className="py-2 px-3 font-medium">Message</th>
+                <th className="py-2 px-3 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {pending.connector_warnings.map((w) => (
+                <tr key={w.id} className="border-b border-border">
+                  <td className="py-2 px-3">
+                    <div className="flex items-center gap-2">
+                      <RunLabel runNumber={w.run_number} runId={w.run_id} />
+                      <RunLinks runId={w.run_id} runNumber={w.run_number} />
+                    </div>
+                  </td>
+                  <td className="py-2 px-3">{w.message}</td>
+                  <td className="py-2 px-3">
+                    <Button
+                      onClick={() => resolve(w.id, "acknowledge", "Connector warning")}
+                      loading={isBusy(w.id, "acknowledge")}
+                      loadingText={DECISION_LABELS.acknowledge}
+                    >
+                      Acknowledge
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+        )}
+        {pending && (
+          <RecentlyResolved count={pending.recently_resolved.connector_warnings.length}>
+            {pending.recently_resolved.connector_warnings.map((w) => (
+              <div key={w.id} className="rounded-md bg-surface-sunken p-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span>{w.message}</span>
+                  <RunLabel runNumber={w.run_number} runId={w.run_id} />
+                </div>
+                <div className="mt-1 flex items-center justify-between">
+                  <ResolvedMeta decision={w.decision} resolvedBy={w.resolved_by} resolvedAt={w.resolved_at} />
+                  <RunLinks runId={w.run_id} runNumber={w.run_number} />
+                </div>
+              </div>
+            ))}
+          </RecentlyResolved>
+        )}
+      </Card>
+
+      <Card title="Provisional baselines" subtitle="Established automatically on a source's first ingest, not yet confirmed by a human.">
+        {!pending ? (
+          <Muted>Loading...</Muted>
+        ) : pending.provisional_baselines.length === 0 ? (
+          <EmptyState
+            neverText="Nothing here yet."
+            resolvedCount={pending.recently_resolved.provisional_baselines.length}
+            triggerText="Appears automatically on a source's first successful ingest, until a human confirms or rejects it."
+          />
+        ) : (
+          <CollapsibleList count={pending.provisional_baselines.length} noun="provisional baseline">
+          <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface-sunken text-ink-muted">
+                <th className="py-2 px-3 font-medium">ID</th>
+                <th className="py-2 px-3 font-medium">Source</th>
+                <th className="py-2 px-3 text-right font-medium">Rows</th>
+                <th className="py-2 px-3 font-medium">Created</th>
+                <th className="py-2 px-3 font-medium">Decision</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pending.provisional_baselines.map((b) => (
+                <tr key={b.id} className="border-b border-border">
+                  <td className="py-2 px-3"><CopyableId id={b.id} /></td>
+                  <td className="py-2 px-3"><CopyableId id={b.source_id} /></td>
+                  <td className="py-2 px-3 text-right font-mono">{b.row_count}</td>
+                  <td className="py-2 px-3 text-ink-muted">{b.created_at}</td>
+                  <td className="py-2 px-3">
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() =>
+                          resolve(b.id, "approve", `Baseline for source ${b.source_id.slice(0, 8)}`, {
+                            pastTense: BASELINE_DECISION_PAST_TENSE.approve,
+                          })
+                        }
+                        loading={isBusy(b.id, "approve")}
+                        loadingText={DECISION_LABELS.approve}
+                        disabled={isBusy(b.id, "reject_data")}
+                      >
+                        Confirm
+                      </Button>
+                      <Button
+                        variant="danger"
+                        onClick={() =>
+                          resolve(b.id, "reject_data", `Baseline for source ${b.source_id.slice(0, 8)}`, {
+                            confirmMessage: BASELINE_REJECT_CONFIRM_MESSAGE,
+                            pastTense: BASELINE_DECISION_PAST_TENSE.reject_data,
+                          })
+                        }
+                        loading={isBusy(b.id, "reject_data")}
+                        loadingText={DECISION_LABELS.reject_data}
+                        disabled={isBusy(b.id, "approve")}
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+          </CollapsibleList>
+        )}
+        {pending && (
+          <RecentlyResolved count={pending.recently_resolved.provisional_baselines.length}>
+            {pending.recently_resolved.provisional_baselines.map((b) => (
+              <div key={b.id} className="rounded-md bg-surface-sunken p-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span>Baseline for source</span>
+                  <CopyableId id={b.source_id} />
+                </div>
+                <ResolvedMeta decision={b.decision} resolvedBy={b.resolved_by} resolvedAt={b.resolved_at} />
               </div>
             ))}
           </RecentlyResolved>

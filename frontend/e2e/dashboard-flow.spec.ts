@@ -152,6 +152,12 @@ test.describe("Real dashboard - full human flow", () => {
     await page.goto("/approvals");
     await expect(page.getByRole("heading", { name: "Approvals", exact: true })).toBeVisible();
 
+    // Provisional baselines collapse above ~10 entries, so they cannot bury
+    // the sections that actually need a decision. Past that threshold a
+    // real user expands the list first, and so does this test.
+    const expand = page.getByText(/^Show \d+ provisional baselines$/);
+    if (await expand.count()) await expand.click();
+
     const baselineRow = page.locator("tr", { has: page.locator(`code:text-is("${sourceId}")`) });
     await expect(baselineRow).toBeVisible();
     await baselineRow.getByRole("button", { name: "Confirm", exact: true }).click();

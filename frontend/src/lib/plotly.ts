@@ -1,6 +1,6 @@
 // Shared by every page that renders a deterministic, backend-computed chart
 // (ReportsPage.tsx's report charts, PredictPage.tsx's forecast chart) - one
-// CDN-load implementation, never duplicated per page. Chart TYPE/data is
+// load implementation, never duplicated per page. Chart TYPE/data is
 // always decided server-side (app/narrative/charts.py, app/modeling/
 // automl.py) - this module only ever draws what it's given.
 declare global {
@@ -9,17 +9,35 @@ declare global {
   }
 }
 
-const PLOTLY_CDN_URL = "https://cdn.plot.ly/plotly-2.35.2.min.js";
+type PlotlyModule = { newPlot: (el: HTMLElement, data: unknown, layout: unknown, config?: unknown) => void };
+
+// Plotly is BUNDLED, not fetched from a CDN. It used to be a <script> tag
+// pointing at cdn.plot.ly with no .catch(), so on a machine with no
+// internet - or behind a firewall, or at a conference - every chart on
+// every page silently stayed blank. A demo is exactly where that happens.
+//
+// Imported dynamically so the ~3MB library is a separate chunk fetched on
+// first chart rather than part of the initial bundle: the pages with no
+// chart on them never pay for it.
+let plotlyPromise: Promise<void> | null = null;
 
 export function loadPlotly(): Promise<void> {
   if (window.Plotly) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = PLOTLY_CDN_URL;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("could not load Plotly from CDN"));
-    document.head.appendChild(script);
-  });
+  // One in-flight load shared by every caller - several charts mounting at
+  // once must not each import it.
+  if (plotlyPromise) return plotlyPromise;
+  plotlyPromise = import("plotly.js-dist-min")
+    .then((module) => {
+      const plotly = ((module as { default?: PlotlyModule }).default ?? module) as PlotlyModule;
+      window.Plotly = plotly;
+    })
+    .catch((error) => {
+      // Reset so a later mount can retry rather than being stuck on a
+      // rejected promise forever.
+      plotlyPromise = null;
+      throw error;
+    });
+  return plotlyPromise;
 }
 
 // Chart COLORS follow the active theme; chart TYPE and data do not exist

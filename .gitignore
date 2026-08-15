@@ -16,3 +16,5 @@ node_modules/
 backend/data/uploads/
 # Generated decks are build output, rebuilt on demand from persisted artifacts.
 backend/data/exports/
+# Written fresh by seed-demo.ps1 on every run.
+backend/data/demo_seed/
