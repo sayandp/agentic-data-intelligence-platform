@@ -40,7 +40,7 @@ export default function AuditPage() {
 
   return (
     <div>
-      <h1 className="mb-2 text-[22px] font-semibold text-ink">Audit</h1>
+      <h1 className="mb-2 text-page-title text-ink">Audit</h1>
       <Muted>GET /audit/&#123;run_id&#125; - the canonical, single source of truth for "why did this run produce this output". This page renders that response and nothing else.</Muted>
       <div className="my-6 flex items-center gap-3">
         <input

@@ -113,7 +113,7 @@ export default function ExportPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-[22px] font-semibold text-ink">Export</h1>
+      <h1 className="mb-6 text-page-title text-ink">Export</h1>
 
       <Card>
         <div className="flex flex-col gap-4">

@@ -152,14 +152,27 @@ test.describe("Real dashboard - full human flow", () => {
     await page.goto("/approvals");
     await expect(page.getByRole("heading", { name: "Approvals", exact: true })).toBeVisible();
 
+    const baselineRow = page.locator("tr", { has: page.locator(`code:text-is("${sourceId}")`) });
+
     // Provisional baselines collapse above ~10 entries, so they cannot bury
     // the sections that actually need a decision. Past that threshold a
     // real user expands the list first, and so does this test.
-    const expand = page.getByText(/^Show \d+ provisional baselines$/);
-    if (await expand.count()) await expand.click();
-
-    const baselineRow = page.locator("tr", { has: page.locator(`code:text-is("${sourceId}")`) });
-    await expect(baselineRow).toBeVisible();
+    //
+    // Polled rather than checked once: the card renders "Loading..." before
+    // the pending payload arrives, so a single up-front check can run while
+    // there is nothing to expand yet and then miss the collapsed list
+    // entirely. Clicking is guarded on `open` so this stays idempotent
+    // across retries rather than toggling the list shut.
+    await expect(async () => {
+      const summary = page.getByText(/^Show \d+ provisional baselines$/);
+      if (await summary.count()) {
+        const details = page.locator("details", { has: summary });
+        if (!(await details.evaluate((el) => (el as HTMLDetailsElement).open))) {
+          await summary.click();
+        }
+      }
+      await expect(baselineRow).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 30_000 });
     await baselineRow.getByRole("button", { name: "Confirm", exact: true }).click();
 
     // No manual reload - this only passes if the app's own post-resolve

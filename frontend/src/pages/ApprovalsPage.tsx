@@ -228,7 +228,7 @@ export default function ApprovalsPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-[22px] font-semibold text-ink">Approvals</h1>
+      <h1 className="mb-6 text-page-title text-ink">Approvals</h1>
       <div className="mb-6 flex items-center gap-3">
         <label className="text-sm font-medium text-ink-muted">Resolved by</label>
         <input

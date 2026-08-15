@@ -162,7 +162,7 @@ export default function ReportsPage() {
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-[22px] font-semibold text-ink">Reports</h1>
+        <h1 className="text-page-title text-ink">Reports</h1>
         <div className="flex items-center gap-3">
           <input
             value={runQuery}
@@ -221,7 +221,7 @@ export default function ReportsPage() {
               repaired/unvalidated data is the one thing this page must never
               let happen. */}
           <div className="panel mb-8 rounded-md border border-status-caution bg-status-caution-tint p-6">
-            <h2 className="mb-2 text-[15px] font-semibold text-status-caution">Data quality context</h2>
+            <h2 className="mb-2 text-card-title text-status-caution">Data quality context</h2>
             <div className="max-w-[68ch] whitespace-pre-wrap text-sm leading-relaxed text-ink">{sections.quality}</div>
           </div>
 
@@ -229,13 +229,13 @@ export default function ReportsPage() {
               measured width, no card chrome) - distinct in kind from the
               data panels below, not just another equal-weight box. */}
           <div className="mb-8 max-w-[72ch]">
-            <h2 className="mb-3 text-[15px] font-semibold text-ink">Narrative</h2>
+            <h2 className="mb-3 text-card-title text-ink">Narrative</h2>
             <div className="whitespace-pre-wrap text-base leading-relaxed text-ink">{sections.body}</div>
           </div>
 
           {sections.recommendations && (
             <div className="mb-10 max-w-[72ch]">
-              <h2 className="mb-3 text-[15px] font-semibold text-ink">Recommendations</h2>
+              <h2 className="mb-3 text-card-title text-ink">Recommendations</h2>
               <div className="flex flex-col gap-3">
                 {sections.recommendations
                   .split("\n")
@@ -256,7 +256,7 @@ export default function ReportsPage() {
               scan the set rather than page through one long column. */}
           {report?.chart_refs && report.chart_refs.length > 0 && (
             <div className="mb-8">
-              <h2 className="mb-3 text-[15px] font-semibold text-ink">Charts</h2>
+              <h2 className="mb-3 text-card-title text-ink">Charts</h2>
               <div ref={chartsContainerRef} className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {report.chart_refs.map((chart, i) => (
                   <div key={chart.chart_id} className="panel rounded-md border border-border bg-surface p-4">

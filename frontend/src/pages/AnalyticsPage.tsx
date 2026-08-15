@@ -508,7 +508,7 @@ export default function AnalyticsPage() {
 
   return (
     <div>
-      <h1 className="mb-2 text-[22px] font-semibold text-ink">Analytics</h1>
+      <h1 className="mb-2 text-page-title text-ink">Analytics</h1>
       <Muted>
         Named business analyses, computed deterministically from this run's repaired data. No language model takes part
         in choosing a method or producing a number.

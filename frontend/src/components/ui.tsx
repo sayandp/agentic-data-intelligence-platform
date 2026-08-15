@@ -8,7 +8,7 @@ import type { ToastState } from "../hooks/useToast";
 export function Card({ title, subtitle, children, className = "" }: { title?: string; subtitle?: string; children: ReactNode; className?: string }) {
   return (
     <div className={`panel mb-6 rounded-md border border-border bg-surface p-5 ${className}`}>
-      {title && <h2 className="mb-1 text-[15px] font-semibold text-ink">{title}</h2>}
+      {title && <h2 className="mb-1 text-card-title text-ink">{title}</h2>}
       {subtitle && <p className="mb-4 text-sm text-ink-muted">{subtitle}</p>}
       {children}
     </div>

@@ -134,7 +134,7 @@ export default function PredictPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-[22px] font-semibold text-ink">Predict</h1>
+      <h1 className="mb-6 text-page-title text-ink">Predict</h1>
 
       <Card>
         <form onSubmit={handlePredict} className="flex flex-col gap-4">
@@ -192,7 +192,7 @@ export default function PredictPage() {
           {/* Quality context rendered FIRST, same rule as Reports - the
               caveat can never be separated from the numbers that follow. */}
           <div className="panel mb-6 rounded-md border border-status-caution bg-status-caution-tint p-6">
-            <h2 className="mb-2 text-[15px] font-semibold text-status-caution">Data quality context</h2>
+            <h2 className="mb-2 text-card-title text-status-caution">Data quality context</h2>
             <div className="max-w-[68ch] whitespace-pre-wrap text-sm leading-relaxed text-ink">{result.quality_context_summary ?? ""}</div>
           </div>
 

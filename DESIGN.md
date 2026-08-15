@@ -168,12 +168,36 @@ Restrained strategy: neutrals carry the interface; one accent (signal teal) mark
 **Character:** one workhorse sans for the whole system; monospace is reserved for anything a reader might copy, compare digit-by-digit, or verify (ids, timestamps, scores, code). The pairing is deliberately quiet - legibility over expression, per Operate mode.
 
 ### Hierarchy
-- **Page title** (600, 22px, 1.3): one per page, top-left, never centered.
-- **Card title** (600, 15px, 1.4): section headings inside a card or panel.
-- **Body/UI** (400, 13px, 1.45): default chrome - labels, table cells, buttons, form inputs.
-- **Narrative** (400, 16px, 1.65, max 72ch measure): report prose only. This is the one place text is set FOR READING rather than scanning.
-- **Data/mono** (400, 12px, 1.4): ids, timestamps, numeric table columns, code blocks.
-- **Label** (500, 11px, uppercase, 0.04em tracking): table column headers, small section eyebrows where genuinely structural (never a decorative "STEP 01" style numbered label).
+
+Every step is a NAMED UTILITY, defined once in `frontend/src/index.css`'s
+`@theme` block. The token is the only way to express a step: a literal
+(`text-[22px] font-semibold`) repeated across eight page headers was two
+representations of one documented fact, which is the shape that produced two
+`resolve_run` functions and `--chart-1..6` turning out to be the status
+palette. Each token carries its own size, line-height and weight, so a call
+site cannot apply half a step.
+
+| Step | Utility | Weight | Size | Line-height | Tracking |
+| --- | --- | --- | --- | --- | --- |
+| Page title | `text-page-title` | 600 | 22px | 1.3 | - |
+| Card title | `text-card-title` | 600 | 15px | 1.4 | - |
+| Body/UI | `text-body-ui` | 400 | 13px | 1.45 | - |
+| Narrative | `text-narrative` | 400 | 16px | 1.65 | - |
+| Data/mono | `text-data` | 400 | 12px | 1.4 | - |
+| Label | `text-label` | 500 | 11px | 1.4 | 0.04em |
+
+- **Page title**: one per page, top-left, never centered.
+- **Card title**: section headings inside a card or panel.
+- **Body/UI**: default chrome - labels, table cells, buttons, form inputs.
+- **Narrative**: report prose only, the one place text is set FOR READING rather than scanning. Pair with a `max-w-[72ch]` measure; a font-size utility cannot carry one.
+- **Data/mono**: ids, timestamps, numeric table columns, code blocks.
+- **Label**: small section eyebrows where genuinely structural, and table column headers (never a decorative "STEP 01" style numbered label). Pair with `uppercase` - `text-transform` is not expressible as a font-size modifier, so the utility carries size, weight and tracking and the transform sits beside it.
+
+Two steps are defined but not yet applied anywhere: **Label** (table headers
+currently render at Body/UI size with no transform) and **Narrative** (report
+prose currently uses Tailwind's default scale). Both are recorded here because
+the ramp is the specification; adopting them at those call sites is a visible
+change to the interface, not a refactor, and has not been made.
 
 ### Named Rules
 **The Reading vs. Scanning Rule.** Anything meant to be read start-to-finish (report narrative, recommendations) is set at Narrative scale with a real measure. Anything meant to be scanned (tables, metadata, status) stays at Body/UI or Data scale, dense and left-aligned (numerics right-aligned).

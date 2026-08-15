@@ -176,7 +176,7 @@ export default function SourcesPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-[22px] font-semibold text-ink">Sources</h1>
+      <h1 className="mb-6 text-page-title text-ink">Sources</h1>
 
       <Card title="Upload a CSV or Excel file" subtitle="The simplest way to register a file source - no filesystem path to type or share with the app process.">
         <form onSubmit={handleUpload} className="flex flex-wrap items-center gap-3">

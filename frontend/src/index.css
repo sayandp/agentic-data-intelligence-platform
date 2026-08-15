@@ -337,6 +337,45 @@
   --radius-md: var(--radius-panel);
 
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* -- the typography ramp, as named utilities --
+     DESIGN.md's Typography > Hierarchy is the source; these are the SAME
+     six steps, expressed once so a page cannot spell one out as a literal.
+     `text-[22px] font-semibold` repeated across eight page headers was two
+     representations of one documented fact - the shape that produced two
+     resolve_run functions and --chart-1..6 being the status palette.
+
+     Each step carries its own size, line-height and weight, so a call site
+     needs one class rather than three and cannot apply half a step. */
+  --text-page-title: 22px;
+  --text-page-title--line-height: 1.3;
+  --text-page-title--font-weight: 600;
+
+  --text-card-title: 15px;
+  --text-card-title--line-height: 1.4;
+  --text-card-title--font-weight: 600;
+
+  --text-body-ui: 13px;
+  --text-body-ui--line-height: 1.45;
+  --text-body-ui--font-weight: 400;
+
+  /* The one step set FOR READING rather than scanning. Pair with a measure
+     (`max-w-[72ch]`); a font-size utility cannot carry one. */
+  --text-narrative: 16px;
+  --text-narrative--line-height: 1.65;
+  --text-narrative--font-weight: 400;
+
+  --text-data: 12px;
+  --text-data--line-height: 1.4;
+  --text-data--font-weight: 400;
+
+  /* Pair with `uppercase` - text-transform is not expressible as a
+     font-size modifier, so the utility carries size, weight and tracking
+     and the transform sits beside it. */
+  --text-label: 11px;
+  --text-label--line-height: 1.4;
+  --text-label--font-weight: 500;
+  --text-label--letter-spacing: 0.04em;
 }
 
 html,

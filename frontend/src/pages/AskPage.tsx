@@ -38,7 +38,7 @@ export default function AskPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-[22px] font-semibold text-ink">Ask</h1>
+      <h1 className="mb-6 text-page-title text-ink">Ask</h1>
 
       <Card>
         <form onSubmit={handleAsk} className="flex flex-col gap-4">

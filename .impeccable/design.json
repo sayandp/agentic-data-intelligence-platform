@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-04T15:02:32Z",
+  "generatedAt": "2026-08-15T09:05:03Z",
   "title": "Design System: Agentic Data Intelligence Platform",
   "extensions": {
     "colorMeta": {
@@ -197,6 +197,58 @@
       "data": {
         "displayName": "Data",
         "purpose": "Anything a reader copies, compares digit-by-digit, or verifies: ids, timestamps, scores, counts, code."
+      },
+      "ramp": {
+        "note": "Named utilities defined in frontend/src/index.css's @theme block. The token is the only way to express a step; literals repeated at call sites are a second representation of the same fact.",
+        "steps": [
+          {
+            "step": "Page title",
+            "utility": "text-page-title",
+            "fontWeight": 600,
+            "fontSize": "22px",
+            "lineHeight": 1.3
+          },
+          {
+            "step": "Card title",
+            "utility": "text-card-title",
+            "fontWeight": 600,
+            "fontSize": "15px",
+            "lineHeight": 1.4
+          },
+          {
+            "step": "Body/UI",
+            "utility": "text-body-ui",
+            "fontWeight": 400,
+            "fontSize": "13px",
+            "lineHeight": 1.45
+          },
+          {
+            "step": "Narrative",
+            "utility": "text-narrative",
+            "fontWeight": 400,
+            "fontSize": "16px",
+            "lineHeight": 1.65,
+            "pairsWith": "max-w-[72ch]",
+            "applied": false
+          },
+          {
+            "step": "Data/mono",
+            "utility": "text-data",
+            "fontWeight": 400,
+            "fontSize": "12px",
+            "lineHeight": 1.4
+          },
+          {
+            "step": "Label",
+            "utility": "text-label",
+            "fontWeight": 500,
+            "fontSize": "11px",
+            "lineHeight": 1.4,
+            "letterSpacing": "0.04em",
+            "pairsWith": "uppercase",
+            "applied": false
+          }
+        ]
       }
     },
     "shadows": [
