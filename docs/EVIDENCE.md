@@ -9,8 +9,12 @@ Compiled at commit `cf27f66` (2026-08-16). Counts were produced by the
 commands shown, on that commit.
 
 > **Read section 6 before quoting anything.** Several figures are weaker
-> than they look, and two things you may have been assuming turn out to be
-> wrong. Those are called out in-place with **CORRECTION** markers.
+> than they look, and some things you may have been assuming turn out to
+> be wrong. Those are called out in-place.
+>
+> **One of this dossier's own claims has since been retracted** — see the
+> summary list at the end, item 2. The three-connector equivalence test
+> does exist; the earlier entry saying it did not was my error.
 
 ---
 
@@ -89,7 +93,8 @@ GET    /export/{run_id}/pptx/contents
 
 ```
 cd backend  && .venv/Scripts/python.exe -m pytest --collect-only -q
-   -> 788 tests collected            (60 test files)
+   -> 789 tests collected            (60 test files)
+      (788 at cf27f66; +1 net from splitting the equivalence test in two)
 
 cd frontend && npx playwright test --list
    -> Total: 111 tests in 9 files    (37 specs x 3 themes)
@@ -206,6 +211,7 @@ must catch it."*
 | Band A before value-basis fix | led by `Manual`, `AMAZON FEE` | README §"What value means" | Real dataset |
 | Band A after `Price × Quantity` | led by `REGENCY CAKESTAND 3 TIER` | Same | Real dataset |
 | Contrast audit | **0 failures; 910 text nodes measured identically in each of 3 themes** | `frontend/scripts/contrast-audit.mjs` | Real browser |
+| Three-connector equivalence | Identical validation outcome across file / SQL / API; stable over 5 repeats | `tests/test_three_connector_equivalence.py` | Real CSV, real SQLite, real loopback HTTP server; fake diagnosis client |
 | Corruption harness | 7 injector kinds: rename, dtype, nulls, drop, distribution shift, whitespace/case, truncate | `backend/tests/corruption/suite.py` | Deterministic, seeded |
 
 ### Figures I could NOT verify — do not quote without checking
@@ -216,14 +222,13 @@ must catch it."*
   11/12 figure is diagnosis correctness on 12 correlated groups, which is
   **not** the same measurement. If you have been quoting a "detection rate",
   it needs re-deriving or dropping.
-- **`UNVERIFIED`: three-connector equivalence.** README line 1278 states
-  datetime normalisation metadata is merged "into every connector's metadata
-  identically (`SQLConnector`, ...)", but I found no test or script that
-  ingests the *same logical data* through file / SQL / API and asserts an
-  identical `DataContract`. **CORRECTION: if you have been claiming a
-  demonstrated three-connector equivalence result, the evidence for it is
-  not in this repo.** What exists is a shared `BaseConnector` contract and
-  per-connector tests.
+- **~~`UNVERIFIED`: three-connector equivalence~~ — RETRACTED. This entry
+  was WRONG.** An earlier revision of this dossier stated no such test
+  existed. It does, and has since the initial commit `3a8a3b3`:
+  `backend/tests/test_three_connector_equivalence.py`. The error was mine —
+  I searched the README for a *description* of the result instead of
+  searching the test suite for the test. Corrected at commit `5513055`
+  (see §4.1 for what the test now demonstrates).
 
 ### Stale figures
 
@@ -238,12 +243,54 @@ must catch it."*
 
 ### 5.1 Source-agnosticism
 
-- **Evidence:** one `BaseConnector` contract with three implementations
-  (`file`, `sql`, `api`); `DataContract` is what every downstream agent
-  consumes; `repaired_contract_for_run` is the single rebuild path.
-- **Does NOT demonstrate:** that the three connectors produce equivalent
-  contracts for equivalent data. No such test exists (§4). The claim is
-  *architectural* — the seam is in the right place — not *empirical*.
+- **Evidence, architectural:** one `BaseConnector` contract with three
+  implementations (`file`, `sql`, `api`); `DataContract` is what every
+  downstream agent consumes; `repaired_contract_for_run` is the single
+  rebuild path.
+- **Evidence, empirical:** `backend/tests/test_three_connector_equivalence.py`
+  — two tests:
+  - `test_three_connectors_produce_equivalent_validation_events`
+  - `test_the_equivalence_is_stable_across_repeated_runs`
+
+  One dataset (60 rows: int, categorical, float, datetime), one corruption
+  (`rename_column`, `city` → `town`), one seed (42), loaded through **real**
+  sources: a CSV on disk, a SQLite table via `SQLConnector`, and a real
+  loopback HTTP server via `APIConnector` — not a mocked transport.
+
+  **Asserts sameness:** the sorted set of `(rule family, column, risk level,
+  action taken)` validation events is identical across all three; all three
+  reach the same terminal run state; all three converge on the same
+  `column_types`, including resolving `ordered_at` to `datetime64` — which
+  the file and API paths reach by parse-rate inference over text and the SQL
+  path from the column's declared type. Stable across 5 repeated runs, each
+  in a fresh directory.
+
+  **Asserts difference:** `source_type` differs; the file connector reports
+  `detected_encoding` and `encoding_confidence`, SQL reports a non-empty
+  `declared_schema`, API reports `pages_fetched >= 1` — and each of those
+  markers is asserted **absent** from the other two. Without that half, three
+  connectors silently degrading to the same empty contract would pass.
+
+  **Falsified:** disabling datetime normalisation in `SQLConnector` makes it
+  fail with `connector(s) ['sql'] did not reach the same terminal state as
+  the others. all three: {'file': 'completed', 'sql': 'awaiting_approval',
+  'api': 'completed'}`. Restoring returns it to green.
+
+- **Does NOT demonstrate:** equivalence for *all* corruption kinds, or for
+  sources beyond these three. It covers **one corruption kind (rename)
+  through three connectors**, not the harness's seven kinds through all
+  sources. It also does not demonstrate equivalence under a SQL dialect
+  other than SQLite — `SQLConnector`'s docstring notes SQLite stands in for
+  Postgres/MySQL/MSSQL, and that substitution is untested.
+
+- **Two things the falsification exposed, worth reporting honestly:**
+  1. Before this work the fixture had **no datetime column**, so sabotaging
+     SQL's declared-schema coercion changed nothing and the test passed. It
+     was blind to a whole branch of the contract. The column was added.
+  2. Even with the column, disabling only the *declared-schema* coercion
+     still passes: parse-rate inference reaches the same dtype anyway. The
+     declared-schema path is a **fast path, not the only path** — a useful
+     fact about the connector that the test made visible.
 
 ### 5.2 A new domain fits as configuration plus a rule pack
 
@@ -397,7 +444,10 @@ embarrassment to be minimised.
 ## Things that contradict what you may be assuming
 
 1. **The silent-fallback count is 13, not ~11** (§2).
-2. **There is no three-connector equivalence result** in this repo (§4).
+2. ~~There is no three-connector equivalence result in this repo.~~
+   **RETRACTED — this was my error, not yours.** The test exists and has
+   since the initial commit (§5.1). I searched the README instead of the
+   test suite. It has since been strengthened and falsified.
 3. **There is no per-corruption-kind detection rate** that I could find;
    11/12 is diagnosis correctness, a different measurement (§4).
 4. **The 30.8s status-poll figure is fixed and historical** (§4).
