@@ -5,6 +5,7 @@ import { ApiError, apiFetch } from "../api/client";
 import type { MarketingRecord, MarketingFindingRecord, AnalyticsChartRecord } from "../api/types";
 import { Badge, Card, ErrorMessage, Muted, RunLabel } from "../components/ui";
 import { RunNotFoundHelp, RunPicker, useRunSelection } from "../components/RunPicker";
+import { UploadIngestPanel } from "../components/UploadIngestPanel";
 import { applyAnalyticsColours, loadPlotly } from "../lib/plotly";
 
 // The eighth agent's view. Key values first, then what needs a decision,
@@ -78,7 +79,7 @@ function Breach({ finding }: { finding: MarketingFindingRecord }) {
 }
 
 export default function MarketingPage() {
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const selection = useRunSelection(params.get("run") ?? "");
   const [data, setData] = useState<MarketingRecord | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -106,6 +107,50 @@ export default function MarketingPage() {
   const warnings = (data?.findings ?? []).filter((f) => f.severity === "warning");
   const improvements = (data?.findings ?? []).filter((f) => f.severity === "improvement");
   const t = totals?.payload;
+
+  // An ENTRY POINT, not a second pipeline: the same /sources/upload and
+  // /ingest endpoints the Sources page uses, through the same shared
+  // component, so the file goes through the same detection, validation and
+  // graph run. Only the copy and the landing page are specific to here.
+  //
+  // Always rendered, in ONE position. The run picker defaults to the newest
+  // completed run, so "no run selected" is almost never true and hiding the
+  // upload behind that condition made the entry point unreachable.
+  //
+  // It sits at the end of the page rather than under the picker so it never
+  // pushes a report the user came to read off screen - and it is rendered
+  // from a single place in the tree, because conditionally rendering it in
+  // two positions made React remount it whenever the marketing fetch
+  // resolved, silently discarding the file the user had just chosen.
+  const uploadCard = (
+        <Card
+          title="Upload an ad-platform export"
+          subtitle="Goes through the same ingestion, validation and detection as any other file."
+        >
+          <UploadIngestPanel
+            idPrefix="marketing"
+            autoIngest
+            submitLabel="Upload and analyse"
+            description={
+              <>
+                A campaign or ad-set level export from Meta Ads Manager, Google Ads or similar. It needs a reporting
+                date and an amount-spent column, plus at least one of impressions, clicks, CTR or frequency;
+                conversions and conversion value unlock cost-per-acquisition and ROAS. A platform summary or
+                &ldquo;Total&rdquo; row is fine &mdash; it is excluded before anything is summed.
+              </>
+            }
+            onIngested={(result) => {
+              // Land on this run's Marketing view. If the file turns out not
+              // to be ad data the run is still valid - the view then shows
+              // the capability report rather than an error.
+              const ref = result.run_number != null ? String(result.run_number) : result.run_id;
+              selection.setRunRef(ref);
+              setParams({ run: ref }, { replace: true });
+            }}
+          />
+        </Card>
+
+  );
 
   return (
     <div>
@@ -259,6 +304,8 @@ export default function MarketingPage() {
           )}
         </>
       )}
+
+      {uploadCard}
     </div>
   );
 }

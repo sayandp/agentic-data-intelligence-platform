@@ -18,3 +18,5 @@ backend/data/uploads/
 backend/data/exports/
 # Written fresh by seed-demo.ps1 on every run.
 backend/data/demo_seed/
+# Written fresh by frontend/e2e/marketing-upload.spec.ts on every run.
+backend/data/e2e_upload/

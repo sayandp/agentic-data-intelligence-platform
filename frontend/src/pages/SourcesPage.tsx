@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useState } from "react";
-import { apiFetch, apiPostForm, pollIngestStatus } from "../api/client";
+import { apiFetch } from "../api/client";
 import type { RunSummary, SourceRecord } from "../api/types";
 import { Badge, Button, Card, CopyableId, ErrorMessage, Muted, RunLabel, Toast } from "../components/ui";
+import { UploadIngestPanel, runIngest, runLabelOf } from "../components/UploadIngestPanel";
 import { askLink, auditLink, predictLink, reportLink } from "../lib/runLinks";
 import { useToast } from "../hooks/useToast";
 import { Link } from "react-router-dom";
@@ -17,10 +18,7 @@ export default function SourcesPage() {
   const [runsError, setRunsError] = useState<unknown>(null);
   const [historyLoadingId, setHistoryLoadingId] = useState<string | null>(null);
 
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
-  const [uploadError, setUploadError] = useState<unknown>(null);
-  const [uploading, setUploading] = useState(false);
 
   const [sourceType, setSourceType] = useState<(typeof SOURCE_TYPES)[number]>("file");
   const [configText, setConfigText] = useState('{"path": "/data/orders.csv"}');
@@ -68,18 +66,20 @@ export default function SourcesPage() {
     setIngestingId(sourceId);
     setIngestResultBySource((prev) => ({ ...prev, [sourceId]: { ok: true, message: "Starting ingest..." } }));
     try {
-      const start = await apiFetch<{ run_id: string; run_number: number | null; status: string }>(`/ingest/${sourceId}`, { method: "POST" });
-      const runLabel = start.run_number != null ? `Run #${start.run_number}` : `Run ${start.run_id.slice(0, 8)}`;
-      const result = await pollIngestStatus(start.run_id, (elapsedMs) => {
-        const seconds = Math.round(elapsedMs / 1000);
+      // The SAME runIngest the Marketing page's upload uses - one
+      // implementation of POST /ingest plus polling, not two.
+      let runLabel = "the run";
+      const result = await runIngest(sourceId, ({ runNumber, runId, elapsedSeconds }) => {
+        runLabel = runLabelOf(runNumber, runId);
         setIngestResultBySource((prev) => ({
           ...prev,
           [sourceId]: {
             ok: true,
-            message: `Ingesting ${runLabel}... (${seconds}s elapsed - still running; a slow or retrying LLM call can take a while, this is not stuck)`,
+            message: `Ingesting ${runLabel}... (${elapsedSeconds}s elapsed - still running; a slow or retrying LLM call can take a while, this is not stuck)`,
           },
         }));
       });
+      runLabel = runLabelOf(result.run_number, result.run_id);
       setIngestResultBySource((prev) => ({
         ...prev,
         [sourceId]: {
@@ -122,28 +122,6 @@ export default function SourcesPage() {
     }
   }
 
-  async function handleUpload(e: React.FormEvent) {
-    e.preventDefault();
-    if (!uploadFile) return;
-    setUploading(true);
-    setUploadError(null);
-    setUploadResult(null);
-    try {
-      const formData = new FormData();
-      formData.append("file", uploadFile);
-      const result = await apiPostForm<{ id: string }>("/sources/upload", formData);
-      setUploadResult(result.id);
-      setUploadFile(null);
-      showToast(`Uploaded and registered source ${result.id.slice(0, 8)}.`, "success");
-      loadSources();
-    } catch (err) {
-      setUploadError(err);
-      showToast(`Upload failed: ${err instanceof Error ? err.message : String(err)}`, "error");
-    } finally {
-      setUploading(false);
-    }
-  }
-
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     setRegisterError(null);
@@ -179,23 +157,26 @@ export default function SourcesPage() {
       <h1 className="mb-6 text-page-title text-ink">Sources</h1>
 
       <Card title="Upload a CSV or Excel file" subtitle="The simplest way to register a file source - no filesystem path to type or share with the app process.">
-        <form onSubmit={handleUpload} className="flex flex-wrap items-center gap-3">
-          <input
-            type="file"
-            accept=".csv,.xlsx,.xls"
-            onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-            className="text-sm text-ink-muted file:mr-3 file:rounded-sm file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
-          />
-          <Button type="submit" variant="primary" disabled={!uploadFile} loading={uploading} loadingText="Uploading...">
-            Upload
-          </Button>
-        </form>
+        {/* The SAME component the Marketing page uploads through, so both
+            entry points issue the same requests against the same endpoints.
+            Sources registers many sources and ingests them per row, so it
+            does not auto-ingest; that is the only difference, and it is a
+            prop rather than a second implementation. */}
+        <UploadIngestPanel
+          idPrefix="sources"
+          description="Pick a .csv, .tsv or Excel file. It is registered as a file source; ingest it from the table below."
+          submitLabel="Upload"
+          onUploaded={(sourceId) => {
+            setUploadResult(sourceId);
+            showToast(`Uploaded and registered source ${sourceId.slice(0, 8)}.`, "success");
+            loadSources();
+          }}
+        />
         {uploadResult && (
-          <p className="mt-3 flex items-center gap-2 text-sm text-status-positive">
+          <p className="mt-3 text-sm text-ink-muted">
             Uploaded and registered: <CopyableId id={uploadResult} />
           </p>
         )}
-        <ErrorMessage error={uploadError} />
       </Card>
 
       <Card title="Register a source another way" subtitle="For a SQL/API source, or a file the app process already has a path to.">
