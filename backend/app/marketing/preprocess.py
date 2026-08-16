@@ -168,14 +168,22 @@ def prepare(
                 note["transformation"] = "parsed thousands-separated text to a number"
                 normalisations.append(note)
 
-    # 5. One consistent grain, whatever the export was set to.
+    # 5. One consistent grain, whatever the export was set to. With no date
+    #    column there is nothing to aggregate BY, so the rows stay as
+    #    exported - and the report says so rather than claiming a grain the
+    #    data never reached.
     work = _aggregate_to_grain(work, assigned, config)
+    grain_applied = (
+        config.grain
+        if assigned.get(ColumnRole.EVENT_DATE)
+        else "as exported (no reporting-date column, so no time aggregation was applied)"
+    )
 
     # 6. Derived metrics, each recorded with its formula.
     work, derived = _derive_metrics(work, assigned)
 
     report = PreprocessingReport(
-        grain=config.grain,
+        grain=grain_applied,
         rows_in=rows_in,
         rows_out=len(work),
         summary_rows_excluded=summary_dropped,

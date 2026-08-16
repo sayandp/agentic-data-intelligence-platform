@@ -118,7 +118,10 @@ _NAME_HINTS: dict[ColumnRole, re.Pattern[str]] = {
     ColumnRole.MONETARY: re.compile(r"(revenue|sales|amount|price|value|total|cost|spend|payment|charge|fee)", re.I),
     ColumnRole.QUANTITY: re.compile(r"(quantity|qty|units|count|items|number|volume)", re.I),
     ColumnRole.CAMPAIGN_ID: re.compile(r"(campaign|ad[_\- ]?set|adset|ad[_\- ]?group|adgroup)", re.I),
-    ColumnRole.SPEND: re.compile(r"(spend|cost|budget|amount[_\- ]?spent)", re.I),
+    # `spen[dt]` so a column named `Spent` matches as well as `Spend` - the
+    # past tense was previously only reachable behind an "amount" prefix, so
+    # a file whose column is literally `Spent` was refused as not-ad-data.
+    ColumnRole.SPEND: re.compile(r"(spen[dt]|cost|budget|amount[_\- ]?spent)", re.I),
     ColumnRole.IMPRESSIONS: re.compile(r"(impression|impr|reach)", re.I),
     ColumnRole.CLICKS: re.compile(r"(click|tap)", re.I),
     ColumnRole.CTR: re.compile(r"(ctr|click[_\- ]?through)", re.I),

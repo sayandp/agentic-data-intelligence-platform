@@ -16,17 +16,23 @@ from dataclasses import dataclass, field
 
 from app.analytics.roles import ColumnRole
 
-#: The roles a source MUST have before this agent will run at all. Spend and
-#: a date are the floor: without spend there is no campaign performance to
-#: report, and without a date nothing can be compared over time.
+#: The roles a source MUST have before this agent will run at all.
+#:
+#: Spend alone. Without it there is no campaign performance to report; with
+#: it, plus one of the ad-only signals below, there is.
+#:
+#: A reporting date is deliberately NOT required. Real exports are often
+#: aggregated per ad or per ad set with no date column - Kaggle's Facebook
+#: ad-campaign dataset is one row per ad - and refusing those outright loses
+#: spend, impressions, clicks, conversions, blended CPA and CTR, and ad-set
+#: comparison, all of which need no date at all. The four time-based rules
+#: each skip with a stated reason when there is no date, which is the honest
+#: place for that to be said.
 #:
 #: Deliberately short. Every additional required role is a source this agent
 #: refuses, and the applicability report is a better place to say "ROAS could
 #: not be computed" than the qualification gate is.
-DEFAULT_REQUIRED_ROLES: tuple[ColumnRole, ...] = (
-    ColumnRole.SPEND,
-    ColumnRole.EVENT_DATE,
-)
+DEFAULT_REQUIRED_ROLES: tuple[ColumnRole, ...] = (ColumnRole.SPEND,)
 
 #: At least ONE of these must also be present. Spend and a date alone are
 #: not enough to call a file an ads export - almost any commerce CSV has a
@@ -42,6 +48,7 @@ DEFAULT_REQUIRED_ANY_OF: tuple[ColumnRole, ...] = (
 
 #: Roles that unlock specific rules and key values without gating the agent.
 DEFAULT_OPTIONAL_ROLES: tuple[ColumnRole, ...] = (
+    ColumnRole.EVENT_DATE,
     ColumnRole.CAMPAIGN_ID,
     ColumnRole.IMPRESSIONS,
     ColumnRole.CLICKS,

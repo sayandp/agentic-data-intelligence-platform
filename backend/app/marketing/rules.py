@@ -372,8 +372,13 @@ def account_totals(df, roles, config, baseline_profile=None) -> tuple[list[Marke
 
     undefined: dict[str, str] = {}
 
-    def ratio(numerator, denominator, name, note) -> float | None:
+    def ratio(numerator, denominator, name, note, needs: str) -> float | None:
+        # A blank with no reason is the thing this agent exists to avoid. Two
+        # different absences are possible and they mean different things: the
+        # source never carried the column, or it did and the denominator was
+        # zero. Both are recorded; neither is rendered as 0.
         if numerator is None or denominator is None:
+            undefined[name] = f"this export has no {needs} column, so {name.replace('_', ' ')} cannot be computed"
             return None
         if denominator == 0:
             undefined[name] = note
@@ -388,9 +393,21 @@ def account_totals(df, roles, config, baseline_profile=None) -> tuple[list[Marke
         total_clicks=int(clicks) if clicks is not None else None,
         total_conversions=int(conversions) if conversions is not None else None,
         total_conversion_value=value,
-        blended_cpa=ratio(spend, conversions, "blended_cpa", "no conversions were recorded in this period, so a blended CPA is undefined"),
-        blended_roas=ratio(value, spend, "blended_roas", "no spend was recorded in this period, so a blended ROAS is undefined"),
-        blended_ctr=ratio(clicks, impressions, "blended_ctr", "no impressions were recorded in this period, so a blended CTR is undefined"),
+        blended_cpa=ratio(
+            spend, conversions, "blended_cpa",
+            "no conversions were recorded in this period, so a blended CPA is undefined",
+            needs="conversions",
+        ),
+        blended_roas=ratio(
+            value, spend, "blended_roas",
+            "no spend was recorded in this period, so a blended ROAS is undefined",
+            needs="conversion-value",
+        ),
+        blended_ctr=ratio(
+            clicks, impressions, "blended_ctr",
+            "no impressions were recorded in this period, so a blended CTR is undefined",
+            needs="impressions",
+        ),
         undefined=undefined,
     )
     columns = [c for c in roles.values() if c in df.columns]

@@ -445,3 +445,107 @@ def test_the_ad_specific_requirement_is_configurable():
     assert analyse(df).applicable is False
     relaxed = analyse(df, MarketingConfig(required_any_of=()))
     assert relaxed.applicable is True
+
+
+# ---- regressions from a real Kaggle export (KAG_conversion_data.csv) ----
+#
+# A user uploaded the Facebook ad-campaign dataset and the agent refused it.
+# Two separate defects, both real:
+#   1. the column is literally named `Spent`, which the spend name hint did
+#      not match - `spent` was only reachable behind an "amount" prefix
+#   2. the file is aggregated per AD with no date column at all, and a
+#      reporting date gated the whole agent
+
+
+def kaggle_style_frame(rows: int = 200) -> pd.DataFrame:
+    """The KAG_conversion_data.csv shape: one row per ad, NO date column."""
+    import numpy as np
+
+    rng = np.random.default_rng(7)
+    return pd.DataFrame(
+        {
+            "ad_id": range(700000, 700000 + rows),
+            "xyz_campaign_id": rng.choice([916, 936, 1178], rows),
+            "fb_campaign_id": rng.integers(100000, 180000, rows),
+            "age": rng.choice(["30-34", "35-39", "40-44"], rows),
+            "gender": rng.choice(["M", "F"], rows),
+            "interest": rng.integers(2, 114, rows),
+            "Impressions": rng.integers(500, 3_000_000, rows),
+            "Clicks": rng.integers(0, 400, rows),
+            "Spent": np.round(rng.uniform(0, 640, rows), 2),
+            "Total_Conversion": rng.integers(0, 61, rows),
+            "Approved_Conversion": rng.integers(0, 22, rows),
+        }
+    )
+
+
+@pytest.mark.parametrize("column", ["Spent", "Spend", "Amount spent (USD)", "Cost", "cost"])
+def test_a_spend_column_is_detected_however_the_platform_spells_it(column):
+    """`Spent` is what Kaggle's Facebook export and Google Ads both write."""
+    df = pd.DataFrame(
+        {
+            column: [10.0 + i for i in range(30)],
+            "Impressions": range(1000, 1030),
+            "Clicks": range(10, 40),
+        }
+    )
+    assigned = detect_for_run(df, {}).assigned()
+
+    assert ColumnRole.SPEND in assigned, f"`{column}` was not detected as spend"
+    assert assigned[ColumnRole.SPEND].column == column
+
+
+def test_an_ad_export_with_no_date_column_still_qualifies():
+    """Real exports are often aggregated per ad with no date at all.
+    Refusing them loses spend, clicks, conversions, blended CPA and CTR and
+    ad-set comparison, none of which need a date."""
+    result = analyse(kaggle_style_frame())
+
+    assert result.applicable is True, result.not_applicable_reason
+    assert "event_date" in result.missing_roles
+    totals = findings_of(result, MarketingFindingType.ACCOUNT_TOTALS)[0].payload
+    assert totals.total_spend > 0
+    assert totals.blended_cpa is not None
+    assert totals.blended_ctr is not None
+
+
+def test_the_time_based_rules_skip_with_a_stated_reason_when_there_is_no_date():
+    """The date requirement moved from the gate to the individual rules, so
+    each must say why it did not run."""
+    result = analyse(kaggle_style_frame())
+    reasons = {s["rule"]: s["reason"] for s in result.skipped_rules}
+
+    for rule in (
+        MarketingFindingType.CPA_ABOVE_BASELINE,
+        MarketingFindingType.CTR_DECLINE,
+        MarketingFindingType.BUDGET_MISPACING,
+    ):
+        assert rule.value in reasons, f"{rule.value} neither ran nor said why"
+        assert "date" in reasons[rule.value]
+
+
+def test_the_grain_reports_that_nothing_was_aggregated_when_there_is_no_date():
+    """Claiming a grain the data never reached would be a claim about a
+    transformation that did not run."""
+    result = analyse(kaggle_style_frame())
+
+    assert "no reporting-date column" in result.preprocessing.grain
+    assert result.preprocessing.rows_in == result.preprocessing.rows_out
+
+
+def test_a_key_value_that_needs_an_absent_column_says_which_column():
+    """A blank with no reason is the thing this agent exists to avoid. The
+    Kaggle export has no conversion-value column, so ROAS is undefined - and
+    that has to be distinguishable from a zero denominator."""
+    totals = findings_of(analyse(kaggle_style_frame()), MarketingFindingType.ACCOUNT_TOTALS)[0].payload
+
+    assert totals.blended_roas is None
+    assert "conversion-value" in totals.undefined["blended_roas"]
+
+
+def test_spend_alone_without_an_ad_signal_still_does_not_qualify():
+    """Relaxing the date requirement must not relax the false-positive gate:
+    a commerce CSV with a cost column is still refused."""
+    df = pd.DataFrame({"cost": [10.0 + i for i in range(30)], "region": ["n", "s", "e"] * 10})
+
+    assert analyse(df).applicable is False
