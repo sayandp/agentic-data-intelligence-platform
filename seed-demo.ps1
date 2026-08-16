@@ -97,6 +97,39 @@ $cleanCsv   = (@($header) + $cleanRows)   -join "`n"
 $corruptCsv = (@($header) + $corruptRows) -join "`n"
 Write-Ok "fixture path: $dataPath"
 
+# The orders fixture above is a NON-ads export: it has a price column and no
+# impressions, clicks, CTR or frequency, so the Marketing Agent refuses it and
+# names what was missing. That refusal is one of the two cases
+# frontend/e2e/marketing.spec.ts asserts.
+#
+# This is the other: a Meta-shaped export that qualifies. Both must exist in a
+# seeded database, or those specs have nothing to assert against - and a spec
+# with nothing to assert against is an instrument reporting success while
+# checking nothing.
+$adsPath = Join-Path $SeedDir "meta_ads_export.csv"
+$adsHeader = "Reporting starts,Ad set name,Amount spent (USD),Impressions,Link clicks,Frequency,Results,Purchase conversion value"
+$adsRows = @()
+$adsStart = Get-Date "2026-01-01"
+for ($day = 0; $day -lt 28; $day++) {
+    $date = $adsStart.AddDays($day).ToString("yyyy-MM-dd")
+    foreach ($adset in @("Prospecting - Broad", "Retargeting - 7d", "Lookalike 1%")) {
+        # Retargeting runs a frequency above the 3.5 fatigue threshold, so the
+        # seeded database always contains at least one WARNING to display.
+        $frequency = if ($adset -eq "Retargeting - 7d") { 4.6 } else { 2.2 }
+        # Prospecting's conversions collapse in the second half, so its CPA
+        # lands well above the account median - one IMPROVEMENT as well.
+        $late = $day -ge 14
+        $conversions = if ($late -and $adset -eq "Prospecting - Broad") { 2 } else { 9 }
+        $clicks = if ($late -and $adset -eq "Prospecting - Broad") { 70 } else { 210 }
+        $spend = "`$" + ("{0:N2}" -f (140 + $day))
+        $adsRows += "$date,$adset,`"$spend`",$(12000 + $day * 25),$clicks,$frequency,$conversions,$(700 + $day * 3)"
+    }
+}
+# The platform's own total row, which the agent must exclude before summing.
+$adsRows += ",Total,`"`$99,999.00`",9999999,999999,9.9,99999,999999"
+(@($adsHeader) + $adsRows) -join "`n" | Out-File -FilePath $adsPath -Encoding utf8 -NoNewline
+Write-Ok "ads fixture: $adsPath"
+
 # --------------------------------------------------------------- helpers --
 function Register-Source($path, $label) {
     $body = @{ type = "file"; connection_config = @{ path = $path; original_filename = $label } } | ConvertTo-Json -Depth 5
@@ -134,6 +167,12 @@ $corruptCsv | Out-File -FilePath $dataPath -Encoding utf8 -NoNewline
 $corruptStatus = Invoke-Ingest $sourceId
 Write-Ok "run #$($corruptStatus.run_number) -> $($corruptStatus.status)"
 
+# ------------------------------------------- 3. the ads export (qualifies) --
+Write-Step "Ingesting the ads export (qualifies for the Marketing Agent)"
+$adsSourceId = Register-Source $adsPath "meta_ads_export.csv"
+$adsStatus = Invoke-Ingest $adsSourceId
+Write-Ok "run #$($adsStatus.run_number) -> $($adsStatus.status)"
+
 # --------------------------------------------------------------- verify --
 Write-Step "Verifying the demo state"
 $pending = Invoke-RestMethod -Uri "$Api/approvals/pending" -TimeoutSec 30
@@ -150,7 +189,29 @@ if ($escalated -ne 1) {
     exit 1
 }
 
+# Both marketing cases must be present. frontend/e2e/marketing.spec.ts FAILS
+# rather than skips when either is missing, so a seeded database that lacks
+# one turns those specs red - which is the point: a missing fixture is a
+# broken environment, not a reason to report success.
+$adsMarketing = Invoke-RestMethod -Uri "$Api/marketing/$($adsStatus.run_number)" -TimeoutSec 60
+$ordersMarketing = Invoke-RestMethod -Uri "$Api/marketing/$($cleanStatus.run_number)" -TimeoutSec 60
+
+Write-Host "  marketing: ads run #$($adsStatus.run_number) applicable = $($adsMarketing.applicable)"
+Write-Host "  marketing: orders run #$($cleanStatus.run_number) applicable = $($ordersMarketing.applicable)"
+
+if (-not $adsMarketing.applicable) {
+    Write-Host "`nTHE ADS EXPORT DID NOT QUALIFY FOR THE MARKETING AGENT." -ForegroundColor Red
+    Write-Host "  reason: $($adsMarketing.not_applicable_reason)" -ForegroundColor Red
+    exit 1
+}
+if ($ordersMarketing.applicable) {
+    Write-Host "`nTHE ORDERS EXPORT QUALIFIED FOR THE MARKETING AGENT, WHICH IT MUST NOT." -ForegroundColor Red
+    exit 1
+}
+
 Write-Host "`n=== Ready ===" -ForegroundColor Green
 Write-Host "  Run #$($corruptStatus.run_number) is paused on one escalation."
+Write-Host "  Run #$($adsStatus.run_number) is an ads export the Marketing Agent accepted."
+Write-Host "  Run #$($cleanStatus.run_number) is a non-ads export it refused."
 Write-Host "  Open: http://localhost:5173/approvals"
 Write-Host "  The escalated validation event is the first section on that page."

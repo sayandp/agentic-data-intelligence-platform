@@ -2094,10 +2094,42 @@ compute `metadata` (row count, column types, encoding). On a 1.07M-row,
 
 The audit query itself is fine (6 trace rows, 0 validation events). Every
 page using the run picker pays this to populate its column hints, which is
-why `/audit?run=6` appears to hang. Fixing it means either caching the
-metadata on the Run row at ingest time, making it opt-in behind a query
-parameter, or giving the picker a cheaper endpoint - a contract decision,
-so it is recorded here rather than chosen unilaterally.
+why `/audit?run=6` appears to hang.
+
+**FIXED.** The metadata is now cached on `Run.contract_metadata` when the
+frame is already in hand (`app/graph/nodes.py`, both `ingest_node` and
+`explore_node`), and refreshed whenever resolution changes `fix_chain` so a
+run paused at `awaiting_approval` cannot serve a description of its pre-fix
+frame. A run with no cached value falls back to the live rebuild, so runs
+that completed before the column existed keep working. Held by
+`backend/tests/test_run_metadata_cache.py`, which asserts the endpoint's
+answer matches the frame the run actually has. The measurement above is
+retained as the record of what the problem was.
+
+**The repair path does not recover numbers from human-formatted text.**
+A CSV column holding `$1,234.56`, `1.234,56`, `10 000` or `2.3%` arrives as
+an object-dtype column of strings and stays one: encoding, delimiter, null
+and dtype handling all run, but nothing parses a number back out of a string
+a tool formatted for a person to read. Every downstream consumer then sees
+text where it expected a measure - the column is not profiled numerically,
+not correlated, not chartable, and not detectable as a monetary role.
+
+Found through the marketing roles (an ad export writes spend as `$120.00`
+and CTR as `2.30%`, so neither was detected and the agent refused files it
+exists for), but it is **generic to any CSV with formatted numeric columns**
+and is not specific to advertising data.
+
+Current mitigation is partial and deliberately narrow. `app/numeric_text.py`
+is one shared parser handling currency symbols, thousands separators,
+European decimal commas and percent signs; `app/analytics/roles.py` reads
+*through* it when scoring the marketing roles, and
+`app/marketing/preprocess.py` uses it to transform for real, recording every
+transformation in its output. Two callers, one implementation. But the
+generic repair path is untouched: a formatted-number column in a
+non-marketing CSV still reaches exploration, profiling and the baseline as
+text. Making it general would mean parsing during repair, which changes what
+every downstream agent sees and what a baseline profiles - a contract
+decision, so it is recorded here rather than taken unilaterally.
 
 **Quantity detection rejects real wholesale data.** `Quantity` on Online
 Retail II fails three guards written for small-basket retail: it contains

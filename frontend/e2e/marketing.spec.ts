@@ -28,9 +28,34 @@ async function runsWithMarketing(request: { get: (url: string) => Promise<{ ok: 
   return { qualifying, refusing };
 }
 
+const SEED_HINT =
+  "Run `.\\seed-demo.ps1` to seed one. A missing fixture is a broken environment, " +
+  "not a reason to report success - so this FAILS rather than skipping.";
+
+/**
+ * The run these specs need, or a FAILURE naming the fixture that is missing.
+ *
+ * Never test.skip. A spec that skips when its fixture is absent reports
+ * success over zero assertions - the same failure shape as a solution-style
+ * tsconfig that type-checks nothing, or a contrast audit measuring a loading
+ * shell. An absent fixture is a broken environment and has to be loud.
+ */
+async function requireRun(
+  request: Parameters<typeof runsWithMarketing>[0],
+  which: "qualifying" | "refusing"
+): Promise<number> {
+  const found = await runsWithMarketing(request);
+  const run = found[which];
+  const what =
+    which === "qualifying"
+      ? "no completed run in this database has a marketing analysis that QUALIFIES (an ads export)"
+      : "no completed run in this database has a marketing analysis that was REFUSED (a non-ads export)";
+  expect(run, `${what}. ${SEED_HINT}`).not.toBeNull();
+  return run as number;
+}
+
 test("a qualifying run shows key values, then what needs a decision", async ({ page, request }) => {
-  const { qualifying } = await runsWithMarketing(request);
-  test.skip(qualifying === null, "no qualifying ads run in this database");
+  const qualifying = await requireRun(request, "qualifying");
 
   await page.goto(`/marketing?run=${qualifying}`);
   await expect(page.getByRole("heading", { name: "Marketing", level: 1 })).toBeVisible();
@@ -47,8 +72,7 @@ test("a qualifying run shows key values, then what needs a decision", async ({ p
 });
 
 test("every warning states its rule, observed value, threshold and comparison basis", async ({ page, request }) => {
-  const { qualifying } = await runsWithMarketing(request);
-  test.skip(qualifying === null, "no qualifying ads run in this database");
+  const qualifying = await requireRun(request, "qualifying");
 
   await page.goto(`/marketing?run=${qualifying}`);
   await expect(page.getByRole("heading", { name: "Key values" })).toBeVisible({ timeout: 30_000 });
@@ -66,8 +90,7 @@ test("every warning states its rule, observed value, threshold and comparison ba
 });
 
 test("a non-ads run says why it does not qualify and names the missing role", async ({ page, request }) => {
-  const { refusing } = await runsWithMarketing(request);
-  test.skip(refusing === null, "every run in this database qualifies");
+  const refusing = await requireRun(request, "refusing");
 
   await page.goto(`/marketing?run=${refusing}`);
   await expect(page.getByText("This run is not an ad-campaign export")).toBeVisible({ timeout: 30_000 });
@@ -82,8 +105,7 @@ test("a non-ads run says why it does not qualify and names the missing role", as
 });
 
 test("marketing charts render from the persisted spec", async ({ page, request }) => {
-  const { qualifying } = await runsWithMarketing(request);
-  test.skip(qualifying === null, "no qualifying ads run in this database");
+  const qualifying = await requireRun(request, "qualifying");
 
   await page.goto(`/marketing?run=${qualifying}`);
   await expect(page.getByRole("heading", { name: "Key values" })).toBeVisible({ timeout: 30_000 });

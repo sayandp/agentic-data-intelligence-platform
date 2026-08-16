@@ -1,4 +1,6 @@
-import { test, expect, type Page, type ConsoleMessage } from "./themed-test";
+import { expect, type ConsoleMessage, type Page, type Request, type Response } from "@playwright/test";
+
+import { test } from "./themed-test";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 // Drives the REAL React dashboard end to end against the REAL, already
@@ -35,10 +37,10 @@ function trackDiagnostics(page: Page) {
   page.on("console", (msg: ConsoleMessage) => {
     if (msg.type() === "error") consoleErrors.push(msg.text());
   });
-  page.on("requestfailed", (req) => {
+  page.on("requestfailed", (req: Request) => {
     failedRequests.push(`${req.method()} ${req.url()} - ${req.failure()?.errorText}`);
   });
-  page.on("response", (res) => {
+  page.on("response", (res: Response) => {
     if (res.status() >= 400) failedRequests.push(`${res.status()} ${res.request().method()} ${res.url()}`);
   });
 

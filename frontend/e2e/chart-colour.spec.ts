@@ -119,7 +119,15 @@ test.describe("Colour follows the shape of the data", () => {
     // withDesignColors is the one place a series colour is assigned, so its
     // rule is asserted directly rather than through a rendered figure.
     const colours = await page.evaluate(async () => {
-      const mod = await import("/src/lib/plotly.ts");
+      // Resolved by Vite in the BROWSER, so the specifier is a dev-server
+      // URL rather than a module TypeScript can find on disk. The indirection
+      // keeps it out of TS module resolution without disabling the check.
+      const specifier = "/src/lib/plotly.ts";
+      const mod = (await import(/* @vite-ignore */ specifier)) as {
+        withDesignColors: (data: unknown[], chartType?: string) => unknown[];
+        chartAccent: () => string;
+        chartCategorical: () => string[];
+      };
       const one = mod.withDesignColors([{ type: "bar", marker: {} }]) as Array<Record<string, any>>;
       const many = mod.withDesignColors([
         { type: "bar", marker: {} },
