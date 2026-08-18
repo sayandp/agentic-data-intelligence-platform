@@ -22,6 +22,7 @@ import time
 from app.exploration.findings import ExplorationFindings
 from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError, LLMUnavailableError
 from app.narrative.config import SAMPLE_END_MARKER, SAMPLE_START_MARKER
+from app.privacy.findings_redaction import redact_findings_payload
 from app.narrative.models import ClaimsOutcome, GroundedClaim, GroundedClaimsResponse, NarrativeProse, ProseOutcome
 from app.retry import backoff_delay_seconds
 
@@ -129,7 +130,9 @@ class NarrativeAgent:
 
     # -- stage 1: grounding --
 
-    def generate_claims(self, findings: ExplorationFindings, analytics_findings=None, column_roles=None) -> ClaimsOutcome:
+    def generate_claims(
+        self, findings: ExplorationFindings, analytics_findings=None, column_roles=None, privacy=None
+    ) -> ClaimsOutcome:
         """`analytics_findings` are the Business Analytics Agent's findings,
         offered as ADDITIONAL claim sources on exactly the same terms as
         exploration's: same schema family, same stable ids, the same
@@ -137,9 +140,16 @@ class NarrativeAgent:
         is no separate or looser path for them - a claim citing an analytics
         finding id is validated by app/narrative/grounding.py identically."""
         system = STAGE1_SYSTEM_PROMPT
+        # THE EGRESS BOUNDARY for the narrative path. What leaves here is not
+        # sample rows but the findings object - and it carries real column
+        # values: a categorical column's mode and top frequencies, a Pareto
+        # band's top entities, a basket rule's item names. Those leak exactly
+        # as a sample row would, by a different route, so they are masked with
+        # the same tokens the sample redactor uses.
+        findings_payload, _masked = redact_findings_payload(findings.model_dump(mode="json"), privacy)
         user = (
             f"FINDINGS ({len(findings.findings)} finding(s), schema_version={findings.schema_version}):\n"
-            f"{SAMPLE_START_MARKER}\n{json.dumps(findings.model_dump(mode='json'), default=str)}\n{SAMPLE_END_MARKER}"
+            f"{SAMPLE_START_MARKER}\n{json.dumps(findings_payload, default=str)}\n{SAMPLE_END_MARKER}"
         )
         # What each column MEANS, from the run's one deterministic detection
         # pass (app/semantic_roles.py). CONTEXT ONLY: it is never a claim, is
@@ -155,7 +165,10 @@ class NarrativeAgent:
 
         analysis_findings = list(analytics_findings.all_findings()) if analytics_findings is not None else []
         if analysis_findings:
-            payload = json.dumps([f.model_dump(mode="json") for f in analysis_findings], default=str)
+            analytics_payload, _analytics_masked = redact_findings_payload(
+                {"findings": [f.model_dump(mode="json") for f in analysis_findings]}, privacy
+            )
+            payload = json.dumps(analytics_payload["findings"], default=str)
             user += (
                 f"\n\nBUSINESS ANALYSIS FINDINGS ({len(analysis_findings)} finding(s)) - cite these by id "
                 f"exactly as you would the findings above:\n"

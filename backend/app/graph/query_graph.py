@@ -29,6 +29,8 @@ from langgraph.graph import END, StateGraph
 from typing_extensions import TypedDict
 
 from app.query.models import QueryAnswerStatus, QueryKind
+from app.privacy.classification import PrivacyClassification
+from app.privacy.redaction import redact_records
 from app.semantic_roles import prompt_context
 from app.query.pandas_validation import validate_pandas_code
 from app.query.sandbox import run_pandas_sandbox
@@ -84,7 +86,11 @@ def generate_node(state: QueryState, config) -> dict:
         table_name, allowed_tables, sql_dialect = _sql_validation_inputs(source)
 
     findings_summary = _findings_summary_for_run(db, run)
-    sample_rows = contract.data.head(MAX_SAMPLE_ROWS).to_dict(orient="records")
+    # THE EGRESS BOUNDARY for the query path.
+    sample_rows = redact_records(
+        contract.data.head(MAX_SAMPLE_ROWS).to_dict(orient="records"),
+        PrivacyClassification.from_dict(state["run"].privacy_classification),
+    )
 
     # Roles are CONTEXT for the model, from the run's one detection pass.
     outcome = query_agent.generate(

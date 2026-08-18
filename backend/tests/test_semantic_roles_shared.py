@@ -22,6 +22,7 @@ import pytest
 from app.exploration.engine import ExplorationEngine
 from app.exploration.findings import DataQualityContext, FindingType
 from app.narrative.charts import build_charts
+from app.privacy.redaction import RedactedSample
 from app.semantic_roles import detect_for_run, identifier_exclusions, prompt_context, roles_document
 
 
@@ -229,7 +230,9 @@ def test_each_agent_payload_carries_the_role_block(agent_module, frame, roles, m
 
         agent = QueryAgent(llm_client=_Client(), sleep=lambda _s: None)
         try:
-            agent.generate(QueryKind.PANDAS, "how many orders?", {"Price": "float"}, [], [], column_roles=context)
+            agent.generate(
+                QueryKind.PANDAS, "how many orders?", {"Price": "float"}, RedactedSample(rows=[]), [], column_roles=context
+            )
         except Exception:  # noqa: BLE001 - the prompt is what is under test
             pass
     else:
@@ -237,7 +240,7 @@ def test_each_agent_payload_carries_the_role_block(agent_module, frame, roles, m
 
         agent = ModelingAgent(llm_client=_Client(), sleep=lambda _s: None)
         try:
-            agent.classify_intent("forecast revenue", {"Price": "float"}, [], column_roles=context)
+            agent.classify_intent("forecast revenue", {"Price": "float"}, RedactedSample(rows=[]), column_roles=context)
         except Exception:  # noqa: BLE001 - the prompt is what is under test
             pass
 

@@ -45,6 +45,8 @@ from app.db import SessionLocal
 from app.analytics.pipeline import confirmed_roles_for_source, run_business_analytics_for_run
 from app.exploration.pipeline import run_exploration_for_run
 from app.marketing.pipeline import run_marketing_for_run
+from app.privacy.classification import classify_frame
+from app.privacy.confirmations import confirmed_pii_for_source
 from app.semantic_roles import detect_for_run, roles_document
 from app.gate import DEFAULT_CONFIDENCE_THRESHOLD
 from app.graph.state import IngestState
@@ -422,6 +424,15 @@ def explore_node(state: IngestState, config: RunnableConfig) -> dict:
         # a person's answer carries across every agent, not just analytics.
         roles_detection = detect_for_run(contract.data, confirmed_roles_for_source(db, run.source_id))
         run.semantic_roles = roles_document(roles_detection)
+
+        # Personal data, detected on the SAME repaired frame, deterministically
+        # and with no model involved - using an LLM to find PII would mean
+        # sending the data to a third party to find out whether it may be sent
+        # to a third party. The frame itself is never modified: this decides
+        # what gets masked at the egress boundary, nothing more.
+        run.privacy_classification = classify_frame(
+            contract.data, confirmed=confirmed_pii_for_source(db, run.source_id)
+        ).to_dict()
 
         exploration_record = run_exploration_for_run(
             db,

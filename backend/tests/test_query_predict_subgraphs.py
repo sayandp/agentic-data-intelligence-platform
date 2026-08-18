@@ -24,6 +24,9 @@ class _FakeRun:
     # context (app/semantic_roles.py). None here: this double stands in for
     # a run with no roles detected, which the graph must still handle.
     semantic_roles = None
+    # The egress boundary reads this to decide what to mask. None means
+    # "nothing classified", which redacts nothing - the pre-privacy behaviour.
+    privacy_classification = None
 
 
 class _FakeSource:

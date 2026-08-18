@@ -20,6 +20,8 @@ from dataclasses import dataclass
 from app.contract import DataContract
 from app.correlation import CorrelatedGroup
 from app.diagnosis.cache import DiagnosisCache, cache_key_for_group
+from app.privacy.classification import PrivacyClassification
+from app.privacy.redaction import redact_records
 from app.diagnosis.models import Diagnosis
 from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError, LLMUnavailableError
 from app.retry import backoff_delay_seconds
@@ -80,8 +82,15 @@ class DiagnosticAgent:
         self._rng = rng or random.Random()
 
     def diagnose_group(
-        self, group: CorrelatedGroup, baseline_profile: dict, contract: DataContract
+        self,
+        group: CorrelatedGroup,
+        baseline_profile: dict,
+        contract: DataContract,
+        privacy: "PrivacyClassification | None" = None,
     ) -> DiagnosisOutcome:
+        """`privacy` is the run's PII classification. Optional so a caller
+        without one (an older run) behaves exactly as before - it redacts
+        nothing rather than failing."""
         # provider is the CLIENT CLASS, not just model_name - two providers
         # can coincidentally share a model_name string, and a real
         # GeminiClient run must never share a cache entry with a
@@ -91,7 +100,7 @@ class DiagnosticAgent:
         if cached is not None:
             return DiagnosisOutcome(diagnosis_json=cached, risk_level=cached.get("risk_level"), source="cache")
 
-        system, user = self._build_prompt(group, baseline_profile, contract)
+        system, user = self._build_prompt(group, baseline_profile, contract, privacy)
         outcome = self._call_with_resilience(system, user)
         if outcome.source == "llm":
             self.cache.set(key, outcome.diagnosis_json)
@@ -185,7 +194,11 @@ class DiagnosticAgent:
     # -- prompt construction: affected columns only, capped sample, untrusted data delimited --
 
     def _build_prompt(
-        self, group: CorrelatedGroup, baseline_profile: dict, contract: DataContract
+        self,
+        group: CorrelatedGroup,
+        baseline_profile: dict,
+        contract: DataContract,
+        privacy: "PrivacyClassification | None" = None,
     ) -> tuple[str, str]:
         columns = list(dict.fromkeys(m.column for m in group.members if m.column))
         columns = [c for c in columns if c in contract.data.columns]
@@ -194,7 +207,15 @@ class DiagnosticAgent:
             # affected column; fall back to the whole current schema's columns.
             columns = list(contract.data.columns)
 
-        sample_records = contract.data[columns].head(self.max_sample_rows).to_dict(orient="records")
+        # THE EGRESS BOUNDARY. Everything below this line may leave for a
+        # third-party model, so the sample is redacted here and nowhere else
+        # on this path. `privacy` is the run's classification; None (an older
+        # run, or a caller that has none) redacts nothing and behaves as
+        # before.
+        sample_records = redact_records(
+            contract.data[columns].head(self.max_sample_rows).to_dict(orient="records"),
+            privacy,
+        )
 
         rules_section = "\n".join(
             f"- rule_failed={m.rule_failed!r} column={m.column!r} detail={m.detail}" for m in group.members
@@ -211,6 +232,6 @@ class DiagnosticAgent:
             f"BASELINE PROFILE of affected column(s):\n{baseline_section}\n\n"
             f"CURRENT SCHEMA:\n{schema_section}\n\n"
             f"SAMPLE DATA ({len(sample_records)} row(s), columns {columns}):\n"
-            f"{SAMPLE_START_MARKER}\n{json.dumps(sample_records, default=str)}\n{SAMPLE_END_MARKER}"
+            f"{SAMPLE_START_MARKER}\n{json.dumps(sample_records.rows, default=str)}\n{SAMPLE_END_MARKER}"
         )
         return SYSTEM_PROMPT, user

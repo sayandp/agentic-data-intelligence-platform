@@ -32,6 +32,8 @@ from langgraph.graph import END, StateGraph
 from typing_extensions import TypedDict
 
 from app.modeling.leakage import select_features
+from app.privacy.classification import PrivacyClassification
+from app.privacy.redaction import redact_records
 from app.semantic_roles import prompt_context
 from app.modeling.models import EscalationReason, IntentKind, ModelAnswerStatus, TaskType
 from app.modeling.splitting import split_strategy_for_task
@@ -87,7 +89,13 @@ def classify_node(state: PredictState, config) -> dict:
             )
             return {"result": result, "route": "done"}
 
-        sample_rows = contract.data.head(MAX_SAMPLE_ROWS).to_dict(orient="records")
+        # THE EGRESS BOUNDARY for the modeling-intent path. Not listed in
+        # the brief's three, but it ships rows to a model exactly as the
+        # others do, so it is redacted on the same terms.
+        sample_rows = redact_records(
+            contract.data.head(MAX_SAMPLE_ROWS).to_dict(orient="records"),
+            PrivacyClassification.from_dict(state["run"].privacy_classification),
+        )
         # Roles are CONTEXT from the run's one detection pass - an
         # identifier is not a forecast target just because it is numeric.
         outcome = modeling_agent.classify_intent(

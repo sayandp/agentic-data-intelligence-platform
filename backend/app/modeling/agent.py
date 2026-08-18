@@ -20,6 +20,7 @@ import json
 import random
 import time
 
+from app.privacy.redaction import RedactedSample
 from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError, LLMUnavailableError
 from app.modeling.cache import ModelingCache, cache_key_for_query
 from app.modeling.models import IntentClassification, IntentOutcome
@@ -97,7 +98,7 @@ class ModelingAgent:
         self,
         question: str,
         schema: dict[str, str],
-        sample_rows: list[dict],
+        sample_rows: RedactedSample,
         column_roles: list[dict] | None = None,
     ) -> IntentOutcome:
         """`column_roles` is CONTEXT ONLY (app/semantic_roles.py) - what each
@@ -115,7 +116,7 @@ class ModelingAgent:
             "question": question,
             "schema": schema,
             "column_roles": column_roles or [],
-            "sample_rows": sample_rows[:MAX_SAMPLE_ROWS],
+            "sample_rows": sample_rows.rows[:MAX_SAMPLE_ROWS],
         }
         user = f"QUESTION AND SCHEMA:\n{SAMPLE_START_MARKER}\n{json.dumps(payload, default=str)}\n{SAMPLE_END_MARKER}"
         outcome = self._call_with_resilience(SYSTEM_PROMPT, user)

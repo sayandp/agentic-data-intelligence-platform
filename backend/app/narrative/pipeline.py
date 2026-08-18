@@ -24,6 +24,7 @@ from app.exploration.findings import ExplorationFindings
 from app.analytics.findings import BusinessAnalyticsFindings
 from app.models import AgentTrace, BusinessAnalysis, ExplorationFinding, Report, Run
 from app.narrative.agent import NarrativeAgent
+from app.privacy.classification import PrivacyClassification
 from app.narrative.charts import build_charts
 from app.semantic_roles import prompt_context
 from app.narrative.config import NarrativeConfig
@@ -64,7 +65,13 @@ def run_narrative_for_run(
             analytics_findings = None
 
     report = generate_narrative_report(
-        findings, repaired_df, narrative_agent, config, analytics_findings, roles=run.semantic_roles
+        findings,
+        repaired_df,
+        narrative_agent,
+        config,
+        analytics_findings,
+        roles=run.semantic_roles,
+        privacy=PrivacyClassification.from_dict(run.privacy_classification),
     )
 
     record = Report(
@@ -105,6 +112,7 @@ def generate_narrative_report(
     config: NarrativeConfig | None = None,
     analytics_findings=None,
     roles: dict | None = None,
+    privacy=None,
 ) -> NarrativeReport:
     """`roles` is Run.semantic_roles - the run's one detection pass. It keeps
     identifier columns out of the charts and tells the grounding stage what
@@ -120,7 +128,7 @@ def generate_narrative_report(
         return _template_report(findings, quality_context_summary, charts, reason="no LLM configured for this run")
 
     attempt = _try_llm_report(
-        findings, narrative_agent, config, quality_context_summary, charts, analytics_findings, roles
+        findings, narrative_agent, config, quality_context_summary, charts, analytics_findings, roles, privacy
     )
     if attempt.report is not None:
         return attempt.report
@@ -169,11 +177,13 @@ def _try_llm_report(
     charts: list[ChartRef],
     analytics_findings=None,
     roles: dict | None = None,
+    privacy=None,
 ) -> _LLMAttemptResult:
     claims_outcome = narrative_agent.generate_claims(
         findings,
         analytics_findings=analytics_findings,
         column_roles=prompt_context(roles),
+        privacy=privacy,
     )
     if claims_outcome.claims is not None and len(claims_outcome.claims) == 0:
         # Parsed cleanly and cited nothing. Distinct from a failed stage:

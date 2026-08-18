@@ -82,6 +82,15 @@ class Run(Base):
     # treats an absent document as "no roles known" and behaves as it did
     # before, so old runs keep working.
     semantic_roles: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Which columns hold personal data (app/privacy/), detected ONCE when the
+    # run completes, from the same repaired frame the roles come from. Read at
+    # every egress boundary to decide what is masked before leaving for a
+    # third-party model.
+    #
+    # Null for a run that completed before this column existed; an absent
+    # classification redacts nothing and behaves exactly as the system did
+    # before, so old runs keep working.
+    privacy_classification: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Dashboard UX pass: a short, human-typeable alias for `id` - "Run #17"
     # instead of a UUID. `id` stays the only real primary key (nothing about
     # foreign keys, joins, or the graph's checkpoint thread_id changes); this

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.baseline_sanity import BaselineSanityError, assert_baseline_sane
 from app.connectors.factory import build_connector
 from app.contract import DataContract
+from app.privacy.classification import PrivacyClassification
 from app.correlation import CorrelatedGroup
 from app.diagnosis.agent import DiagnosisOutcome, DiagnosticAgent
 from app.diagnosis.models import FixAction
@@ -111,7 +112,14 @@ def process_group(
     skipped state. diagnostic_agent=None (no LLM configured anywhere in this
     deployment) is handled the same way: every group escalates, nothing
     raises."""
-    outcome = diagnostic_agent.diagnose_group(group, baseline.profile_json, contract) if diagnostic_agent is not None else _no_llm_outcome()
+    # The run's PII classification travels to the egress boundary with the
+    # contract. Without it the diagnosis sample would leave unmasked.
+    privacy = PrivacyClassification.from_dict(run.privacy_classification)
+    outcome = (
+        diagnostic_agent.diagnose_group(group, baseline.profile_json, contract, privacy=privacy)
+        if diagnostic_agent is not None
+        else _no_llm_outcome()
+    )
     for event in events:
         transition(event.state, DIAGNOSED)
         event.state = DIAGNOSED

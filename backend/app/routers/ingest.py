@@ -116,6 +116,10 @@ def _serialize_run_response(db: Session, run_id: str) -> dict:
         "run_number": run.run_number,
         "status": run.status,
         "metadata": metadata,
+        # Which columns hold personal data, which were masked before any
+        # third-party call, and which await a human decision. Reported on the
+        # run itself so the Privacy section needs no extra request.
+        "privacy": run.privacy_classification,
         "validation_failure_count": validation_failure_count,
         "baseline": (
             {"id": baseline.id, "is_active": baseline.is_active, "is_provisional": baseline.is_provisional}

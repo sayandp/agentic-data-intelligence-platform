@@ -20,6 +20,7 @@ import json
 import random
 import time
 
+from app.privacy.redaction import RedactedSample
 from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError, LLMUnavailableError
 from app.query.cache import QueryCache, cache_key_for_query
 from app.query.models import GeneratedQuery, GenerationOutcome, QueryKind
@@ -125,7 +126,7 @@ class QueryAgent:
         query_kind: QueryKind,
         question: str,
         schema: dict[str, str],
-        sample_rows: list[dict],
+        sample_rows: RedactedSample,
         findings_summary: list[str],
         table_name: str | None = None,
         column_roles: list[dict] | None = None,
@@ -149,7 +150,7 @@ class QueryAgent:
             "table": table_name,
             "schema": schema,
             "column_roles": column_roles or [],
-            "sample_rows": sample_rows[:MAX_SAMPLE_ROWS],
+            "sample_rows": sample_rows.rows[:MAX_SAMPLE_ROWS],
             "prior_findings": findings_summary,
         }
         user = f"QUESTION AND SCHEMA:\n{SAMPLE_START_MARKER}\n{json.dumps(payload, default=str)}\n{SAMPLE_END_MARKER}"

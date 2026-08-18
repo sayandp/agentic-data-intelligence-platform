@@ -3,6 +3,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ApiError, apiFetch, pollReportReady } from "../api/client";
 import type { ReportRecord } from "../api/types";
 import { Badge, Button, ErrorMessage, RunLabel } from "../components/ui";
+import { PrivacySection } from "../components/PrivacySection";
+import type { PrivacyClassificationRecord } from "../components/PrivacySection";
 import { loadPlotly, themedLayout, withDesignColors } from "../lib/plotly";
 import { askLink, predictLink } from "../lib/runLinks";
 
@@ -79,6 +81,9 @@ export default function ReportsPage() {
   // scheme this replaced - there is no ambiguity path to handle here.
   const [runQuery, setRunQuery] = useState(params.get("run") ?? "");
   const [report, setReport] = useState<ReportRecord | null>(null);
+  // The privacy classification lives on the run, not the report, so it is
+  // fetched alongside - a run with no report still has one.
+  const [privacy, setPrivacy] = useState<PrivacyClassificationRecord | null | undefined>(undefined);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   // Set while waiting out the completed-but-not-yet-narrated window, so the
@@ -92,9 +97,15 @@ export default function ReportsPage() {
     setLoading(true);
     setError(null);
     setReport(null);
+    setPrivacy(undefined);
     try {
       const data = await apiFetch<ReportRecord>(`/reports/${query}`);
       setReport(data);
+      // The classification is on the RUN. A failure here must not fail the
+      // report - the section renders its own "not classified" state.
+      apiFetch<{ privacy?: PrivacyClassificationRecord | null }>(`/ingest/${query}/status`)
+        .then((status) => setPrivacy(status.privacy ?? null))
+        .catch(() => setPrivacy(null));
       // Normalize the box to the run number once resolved, so a load-by-
       // UUID still ends up showing (and re-loadable by) the short form.
       setRunQuery(data.run_number != null ? String(data.run_number) : data.run_id);
@@ -191,6 +202,12 @@ export default function ReportsPage() {
       )}
 
       <ErrorMessage error={error} />
+
+      {report && (
+        <div className="mb-6">
+          <PrivacySection privacy={privacy} />
+        </div>
+      )}
 
       {sections && (
         <>
