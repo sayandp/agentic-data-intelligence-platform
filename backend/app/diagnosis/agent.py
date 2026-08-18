@@ -21,7 +21,7 @@ from app.contract import DataContract
 from app.correlation import CorrelatedGroup
 from app.diagnosis.cache import DiagnosisCache, cache_key_for_group
 from app.privacy.classification import PrivacyClassification
-from app.privacy.redaction import redact_records
+from app.privacy.redaction import POLICY_BY_PATH, redact_records
 from app.diagnosis.models import Diagnosis
 from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError, LLMUnavailableError
 from app.retry import backoff_delay_seconds
@@ -215,6 +215,7 @@ class DiagnosticAgent:
         sample_records = redact_records(
             contract.data[columns].head(self.max_sample_rows).to_dict(orient="records"),
             privacy,
+            POLICY_BY_PATH["diagnosis"],
         )
 
         rules_section = "\n".join(

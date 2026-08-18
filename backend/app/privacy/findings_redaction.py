@@ -28,18 +28,21 @@ from __future__ import annotations
 from typing import Any
 
 from app.privacy.classification import PrivacyClassification
-from app.privacy.redaction import redact_text_values
+from app.privacy.redaction import POLICY_BY_PATH, redact_text_values
 
 
 def redact_findings_payload(
-    payload: dict, classification: PrivacyClassification | None
+    payload: dict,
+    classification: PrivacyClassification | None,
+    policy=None,
 ) -> tuple[dict, dict[str, int]]:
     """A findings dict with column values masked. Returns (payload, counts).
 
     `counts` is {column: number of value slots masked} for the egress record -
     never the values.
     """
-    redactable = classification.redactable_columns() if classification else {}
+    policy = policy or POLICY_BY_PATH["narrative"]
+    redactable = classification.redactable_columns(policy) if classification else {}
     if not redactable:
         return payload, {}
 
@@ -48,7 +51,7 @@ def redact_findings_payload(
     def mask_for(column: str, values: list[Any]) -> list[Any]:
         if column not in redactable:
             return values
-        result, was = redact_text_values(values, column, classification)
+        result, was = redact_text_values(values, column, classification, policy)
         if was:
             masked_counts[column] = masked_counts.get(column, 0) + len(values)
         return result

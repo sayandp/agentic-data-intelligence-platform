@@ -2079,7 +2079,101 @@ prohibition had to be reworded, because Pydantic copies class docstrings
 into the JSON schema.
 
 
+## Personal data: detection at ingest, redaction at the egress boundary
+
+Every outbound call to a third-party model is a place where personal data can
+leave. The layer that stops that has two halves, and the split between them is
+the design.
+
+**Detection is deterministic. No language model is involved.** Using a model to
+find personal data would mean sending the data to find out whether it should be
+sent, which is circular. `backend/app/privacy/detectors.py` is regex and
+checksum only.
+
+Two tiers, and the tiering is what keeps it honest:
+
+- **High confidence** - email, phone, payment card (Luhn-checked), IP address,
+  government id per locale. Pattern-verifiable, so auto-classified with no
+  human involved: waiting for confirmation would mean leaking while you wait.
+  The Luhn check is what separates a card column from a column of 16-digit
+  order ids - roughly 90% of arbitrary 16-digit numbers fail it.
+- **Low confidence** - person names, postal addresses, free text. These
+  *cannot* be detected reliably from values, and a `customer_name` name
+  heuristic both misses (`contact`, `bill_to`, `recipient`) and over-fires
+  (`product_name`, `campaign_name`, `file_name`). They are never
+  auto-classified as a fact. They are surfaced as **candidates**.
+
+**The stored frame is never mutated.** Redaction applies only to the copy
+leaving for a model - the same detect-before-transform separation the value
+basis and the semantic roles already follow. `redact_records()` is the one
+redaction function, and `RedactedSample` is the only type the agents accept
+for sample rows, so forgetting to redact at a call site is a type error rather
+than a code-review note. Redacted values become stable tokens per column
+(`<EMAIL_1>`, `<EMAIL_2>`), so a model can still see that two rows share a
+value - which is what it needs to spot a duplicate or a join key - without
+seeing the value. Column NAMES are never redacted; the model needs the schema.
+
+### Default-deny on candidates, and the one place it is relaxed
+
+A candidate is masked until a person says otherwise. That default was chosen by
+measurement, not by preference, and the measurement went both ways:
+
+| path | policy | measured effect of masking candidates |
+| --- | --- | --- |
+| diagnosis | strict | none. 3/3 groups produced the same cause and the same confidence with redaction on and off, against a live model |
+| query, modeling | strict | same reasoning; the model is reading structure, not entity names |
+| narrative | permissive | **material**. The report went from 5 claims to 4 and from 574 to 275 characters, losing the value-concentration finding outright |
+
+So the policy is per PATH (`POLICY_BY_PATH` in
+`backend/app/privacy/redaction.py`), never global. Relaxing everywhere to
+protect narrative quality would have traded a real leak for a readability gain.
+Under `PERMISSIVE` only VERIFIED personal data is masked; a Luhn-valid card
+column is masked on every path including that one.
+
+The Privacy section on the Reports page states which columns are masked, on
+which paths, which a person marked safe, and who marked them. There are no user
+accounts, so "who" is stored and displayed as an attribution, not an identity,
+and it is labelled that way.
+
+### Clearing a column, and the one clearing that is refused
+
+`POST /privacy/{run}/decisions` records that a column is or is not personal,
+scoped to the SOURCE so a re-ingest inherits the answer. Two guards:
+
+- A column detection **verified** as personal cannot be marked not personal.
+  It is a 400 with the evidence in the message, not a stored-then-ignored
+  decision - a person who believes their action took effect is worse off than
+  one who was told it did not.
+- A stale "not personal" cannot unmask a column that has since started holding
+  personal data. A source can change shape; detection runs anyway and wins,
+  and the classification says so in its reason rather than dropping the
+  decision silently.
+
+`DELETE /privacy/{run}/decisions/{column}` withdraws a decision, because
+marking a column safe is the one action here that REMOVES protection and that
+must not be a one-way door.
+
+### Prompt versions in the cache key
+
+The diagnosis and query caches were keyed on the failure group and the model,
+not on the prompt. Adding redaction changed the prompt without changing the
+key, so a pre-redaction answer would have been replayed for a redacted prompt.
+Both caches now carry a `PROMPT_VERSION` in the key. This is generic: any
+future prompt change needs a version bump, or it silently serves stale answers.
+
+
 ## Known issues
+
+**Two `pytest` processes cannot run at once.** `backend/tests/conftest.py`
+hard-codes one SQLite path (`%TEMP%/agentic_platform_test.db`) and its autouse
+`_reset_db` fixture calls `Base.metadata.drop_all` before every test. A second
+pytest process therefore deletes the first one's tables mid-test. The result is
+not a clean lock error: it is ~200 fixture errors and ~27 failures spread
+across unrelated files, which reads exactly like a product regression. Both
+runs pass individually. Until the path is made per-process, run the suite
+once at a time — including not starting a `--collect-only` while a full run is
+in flight.
+
 
 **`GET /ingest/{run_id}/status` is O(source size).** `_serialize_run_response`
 rebuilds the repaired frame through the connector on every call, purely to

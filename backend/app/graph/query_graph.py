@@ -30,7 +30,7 @@ from typing_extensions import TypedDict
 
 from app.query.models import QueryAnswerStatus, QueryKind
 from app.privacy.classification import PrivacyClassification
-from app.privacy.redaction import redact_records
+from app.privacy.redaction import POLICY_BY_PATH, redact_records
 from app.semantic_roles import prompt_context
 from app.query.pandas_validation import validate_pandas_code
 from app.query.sandbox import run_pandas_sandbox
@@ -90,6 +90,7 @@ def generate_node(state: QueryState, config) -> dict:
     sample_rows = redact_records(
         contract.data.head(MAX_SAMPLE_ROWS).to_dict(orient="records"),
         PrivacyClassification.from_dict(state["run"].privacy_classification),
+        POLICY_BY_PATH["query"],
     )
 
     # Roles are CONTEXT for the model, from the run's one detection pass.

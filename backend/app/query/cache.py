@@ -34,8 +34,25 @@ def schema_hash(schema: dict[str, str]) -> str:
     return hashlib.sha256(json.dumps(schema, sort_keys=True).encode("utf-8")).hexdigest()
 
 
-def cache_key_for_query(provider: str, model: str, schema: dict[str, str], question: str) -> str:
-    combined = f"{provider}|{model}|{schema_hash(schema)}|{normalize_question(question)}"
+#: Bump when the query/modeling PROMPT changes in a way that could change the
+#: answer. Same reasoning as app/diagnosis/cache.py's version: this key is
+#: derived from (schema, question), not from the prompt text, so a prompt
+#: change without a bump replays answers to a question that is no longer the
+#: one being asked.
+#:
+#:   1 - original prompt
+#:   2 - egress redaction: sample values arrive as stable tokens
+PROMPT_VERSION = 2
+
+
+def cache_key_for_query(
+    provider: str,
+    model: str,
+    schema: dict[str, str],
+    question: str,
+    prompt_version: int = PROMPT_VERSION,
+) -> str:
+    combined = f"v{prompt_version}|{provider}|{model}|{schema_hash(schema)}|{normalize_question(question)}"
     return hashlib.sha256(combined.encode("utf-8")).hexdigest()
 
 

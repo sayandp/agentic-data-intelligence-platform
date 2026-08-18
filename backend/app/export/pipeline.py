@@ -73,7 +73,13 @@ def collect_sources(db: Session, run: Run) -> DeckSources:
     # about what a column means survives re-ingest. A reader needs them
     # because they change what the analytics numbers are measuring.
     confirmed = (
-        db.query(ConfirmedColumnRole).filter(ConfirmedColumnRole.source_id == run.source_id).order_by(ConfirmedColumnRole.role).all()
+        db.query(ConfirmedColumnRole)
+        .filter(
+            ConfirmedColumnRole.source_id == run.source_id,
+            ~ConfirmedColumnRole.role.startswith("pii:"),  # privacy decisions are not semantic roles
+        )
+        .order_by(ConfirmedColumnRole.role)
+        .all()
     )
 
     return DeckSources(

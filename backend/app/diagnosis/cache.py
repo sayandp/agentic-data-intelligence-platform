@@ -33,14 +33,41 @@ def _stable_detail(detail: dict | None) -> str:
     return json.dumps(detail or {}, sort_keys=True, default=str)
 
 
-def cache_key_for_group(members: list[ValidationFailure], provider: str, model: str) -> str:
-    """One key per (provider, model, correlated group). Order-independent
-    over the group's members (sorted), so the same group produces the same
-    key regardless of member ordering - but never order-independent of
-    provider/model, since a different model answering the same question is
-    a different diagnosis, not a cache hit."""
+#: Bump this whenever the diagnosis PROMPT changes in a way that could change
+#: the answer - new context, different framing, a different sample.
+#:
+#: The key below is derived from the failure GROUP, not the prompt text, which
+#: is what makes it stable across runs. The cost of that is real: when egress
+#: redaction was added, the prompt changed (values became tokens) while the key
+#: did not, so pre-redaction answers were replayed for redacted prompts and a
+#: measurement of "did redaction change the diagnosis" silently compared a
+#: cached answer against itself. Found in exactly that way.
+#:
+#: Generic on purpose: any future prompt change would have the same problem.
+#: Bumping this invalidates every entry, which is the correct and cheap
+#: response to "the question we asked is no longer the same question".
+#:
+#:   1 - original prompt
+#:   2 - egress redaction: sample values arrive as stable tokens
+PROMPT_VERSION = 2
+
+
+def cache_key_for_group(
+    members: list[ValidationFailure],
+    provider: str,
+    model: str,
+    prompt_version: int = PROMPT_VERSION,
+) -> str:
+    """One key per (provider, model, prompt version, correlated group).
+
+    Order-independent over the group's members (sorted), so the same group
+    produces the same key regardless of member ordering - but never
+    order-independent of provider, model or PROMPT VERSION, because a
+    different model, or the same model asked a different question, is a
+    different diagnosis rather than a cache hit.
+    """
     parts = sorted(f"{m.rule_failed}|{m.column}|{_stable_detail(m.detail)}" for m in members)
-    combined = f"{provider}|{model}||" + "||".join(parts)
+    combined = f"v{prompt_version}|{provider}|{model}||" + "||".join(parts)
     return hashlib.sha256(combined.encode("utf-8")).hexdigest()
 
 

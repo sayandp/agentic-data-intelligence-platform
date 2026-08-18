@@ -279,6 +279,14 @@ class ConfirmedColumnRole(Base):
     #: table does not import the analytics package.
     role: Mapped[str] = mapped_column(String, nullable=False)
     column_name: Mapped[str] = mapped_column(String, nullable=False)
+    #: Privacy rows only (role `pii:<column>`): what the person decided -
+    #: "not_personal", or a PIIKind value meaning they confirmed it IS
+    #: personal. NULL on semantic-role rows, where the role IS the decision.
+    decision: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: Who recorded it. There is no authentication in this system, so this is
+    #: whatever the caller supplied - an attribution, not an identity, and
+    #: labelled that way wherever it is shown.
+    confirmed_by: Mapped[str | None] = mapped_column(String, nullable=True)
     confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

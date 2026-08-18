@@ -205,7 +205,11 @@ export default function ReportsPage() {
 
       {report && (
         <div className="mb-6">
-          <PrivacySection privacy={privacy} />
+          <PrivacySection
+            privacy={privacy}
+            runRef={report.run_number != null ? String(report.run_number) : report.run_id}
+            onChange={setPrivacy}
+          />
         </div>
       )}
 

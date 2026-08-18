@@ -93,21 +93,22 @@ GET    /export/{run_id}/pptx/contents
 
 ```
 cd backend  && .venv/Scripts/python.exe -m pytest --collect-only -q
-   -> 789 tests collected            (60 test files)
-      (788 at cf27f66; +1 net from splitting the equivalence test in two)
+   -> 860 tests collected            (62 test files)
+      (789 when this document was written; +71 from the privacy layer)
 
 cd frontend && npx playwright test --list
-   -> Total: 111 tests in 9 files    (37 specs x 3 themes)
+   -> Total: 135 tests in 11 files   (45 specs x 3 themes)
+      (111 when this document was written; +24 from marketing-upload
+       and privacy, each x3 themes)
 ```
 
-Both run on commit `cf27f66`. The E2E total is 111 because
-`playwright.config.ts` defines three projects (default / dark / aurora) and
-every spec runs once per theme.
+The E2E total is 135 because `playwright.config.ts` defines three projects
+(default / dark / aurora) and every spec runs once per theme.
 
-**Full-suite pass, most recent run before this document:** 788 backend
-passed (3m54s); 111 E2E passed (7m06s) at commit `34a98e2`. Post-`cf27f66`
-the marketing specs were re-run standalone (12/12) but the full E2E suite
-has **not** been re-run at `cf27f66` — see §6.
+**Full-suite pass, most recent run:** 860 backend passed (4m23s); 123 E2E
+passed (9m54s) across all three themes, plus the 12 privacy E2E tests run
+separately after they were written (2m24s). The 123 figure predates the
+privacy spec; the current total of 135 has not been run as one batch.
 
 ---
 
@@ -212,6 +213,9 @@ must catch it."*
 | Band A after `Price × Quantity` | led by `REGENCY CAKESTAND 3 TIER` | Same | Real dataset |
 | Contrast audit | **0 failures; 910 text nodes measured identically in each of 3 themes** | `frontend/scripts/contrast-audit.mjs` | Real browser |
 | Three-connector equivalence | Identical validation outcome across file / SQL / API; stable over 5 repeats | `tests/test_three_connector_equivalence.py` | Real CSV, real SQLite, real loopback HTTP server; fake diagnosis client |
+| Redaction cost to diagnosis | **none** — 3/3 failure groups produced the same cause and the same confidence with redaction on and off | `backend/scripts/privacy_diagnosis_cost.py` | **Live** Gemini, `source llm` (not cache) |
+| Redaction cost to narrative | **material** — 5 claims / 574 chars clear vs 4 claims / 275 chars redacted (−52%); the Band A value-concentration finding is lost entirely | `backend/scripts/privacy_narrative_cost.py` | **Live** Gemini, `source llm`, analytics findings included |
+| PII detection tiers | 5 high-confidence kinds auto-classified; 3 low-confidence kinds never auto-classified | `backend/app/privacy/detectors.py`, `tests/test_privacy.py` (61 tests) | Deterministic, no LLM |
 | Corruption harness | 7 injector kinds: rename, dtype, nulls, drop, distribution shift, whitespace/case, truncate | `backend/tests/corruption/suite.py` | Deterministic, seeded |
 
 ### Figures I could NOT verify — do not quote without checking

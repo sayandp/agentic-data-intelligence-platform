@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.analytics.chart_specs import charts_for_results
 from app.analytics.engine import run_business_analytics
 from app.models import AgentTrace, BusinessAnalysis, ConfirmedColumnRole, Run
+from app.privacy.confirmations import PII_ROLE_PREFIX
 
 
 def confirmed_roles_for_source(db: Session, source_id: str) -> dict[str, str]:
@@ -29,7 +30,18 @@ def confirmed_roles_for_source(db: Session, source_id: str) -> dict[str, str]:
     the confirmation describes the source's shape rather than one pass over
     it.
     """
-    rows = db.query(ConfirmedColumnRole).filter(ConfirmedColumnRole.source_id == source_id).all()
+    # Privacy decisions share this table but are NOT semantic roles. They are
+    # excluded here explicitly rather than left to be ignored downstream: an
+    # unknown key that happens to be harmless today is a coincidence, not a
+    # design.
+    rows = (
+        db.query(ConfirmedColumnRole)
+        .filter(
+            ConfirmedColumnRole.source_id == source_id,
+            ~ConfirmedColumnRole.role.startswith(PII_ROLE_PREFIX),
+        )
+        .all()
+    )
     return {row.role: row.column_name for row in rows}
 
 

@@ -59,6 +59,8 @@ def init_db() -> None:
         _add_column_if_missing(conn, "runs", "contract_metadata", "JSON")
         _add_column_if_missing(conn, "runs", "semantic_roles", "JSON")
         _add_column_if_missing(conn, "runs", "privacy_classification", "JSON")
+        _add_column_if_missing(conn, "confirmed_column_roles", "decision", "VARCHAR")
+        _add_column_if_missing(conn, "confirmed_column_roles", "confirmed_by", "VARCHAR")
         _backfill_run_numbers(conn)
         # IF NOT EXISTS: idempotent across every startup, not just the
         # first one that actually needed to add the column above. This -

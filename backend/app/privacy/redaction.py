@@ -29,7 +29,45 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from enum import Enum
+
 from app.privacy.classification import PIIKind, PrivacyClassification
+
+
+class RedactionPolicy(str, Enum):
+    """How much to mask on a given outbound path.
+
+    STRICT is DEFAULT-DENY: verified PII *and* unconfirmed candidates
+    (person names, addresses, free text) are masked until a human marks the
+    column not personal. Justified by measurement - diagnosis accuracy was
+    identical with redaction on and off (3/3 same cause, same confidence), so
+    over-redacting costs that path essentially nothing.
+
+    PERMISSIVE masks only what is VERIFIED personal - pattern-matched or
+    human-confirmed - and lets candidates through. Justified by the opposite
+    measurement on the narrative path: with a free-text column redacted, the
+    report went from 5 claims to 4 and from 574 to 275 characters, losing the
+    value-concentration finding outright. A report that is accurate and
+    useless is its own kind of failure.
+
+    The split is per PATH, never global. Relaxing everywhere to protect
+    narrative quality would have traded a real leak for a readability gain,
+    which is the wrong trade and was explicitly ruled out.
+    """
+
+    STRICT = "strict"
+    PERMISSIVE = "permissive"
+
+
+#: Which policy each outbound path uses. Declared as data so a path cannot
+#: quietly pick a different one, and so the UI can state the split from the
+#: same source the code reads.
+POLICY_BY_PATH = {
+    "diagnosis": RedactionPolicy.STRICT,
+    "query": RedactionPolicy.STRICT,
+    "modeling": RedactionPolicy.STRICT,
+    "narrative": RedactionPolicy.PERMISSIVE,
+}
 
 
 @dataclass(frozen=True)
@@ -77,6 +115,7 @@ _TOKEN_PREFIX = {
 def redact_records(
     records: list[dict[str, Any]],
     classification: PrivacyClassification | None,
+    policy: RedactionPolicy = RedactionPolicy.STRICT,
 ) -> RedactedSample:
     """The one redaction function. Every outbound path calls this.
 
@@ -87,7 +126,7 @@ def redact_records(
     if not records:
         return RedactedSample(rows=[])
 
-    redactable = classification.redactable_columns() if classification else {}
+    redactable = classification.redactable_columns(policy) if classification else {}
     if not redactable:
         # Nothing classified. The rows pass through unchanged, but they are
         # still wrapped - so the call site is identical whether or not this
@@ -125,6 +164,7 @@ def redact_text_values(
     values: list[Any],
     column: str,
     classification: PrivacyClassification | None,
+    policy: RedactionPolicy = RedactionPolicy.STRICT,
 ) -> tuple[list[Any], bool]:
     """Mask a bare list of values drawn from ONE column.
 
@@ -135,7 +175,7 @@ def redact_text_values(
 
     Returns (values, was_redacted) so the caller can record the egress.
     """
-    redactable = classification.redactable_columns() if classification else {}
+    redactable = classification.redactable_columns(policy) if classification else {}
     kind = redactable.get(column)
     if kind is None:
         return values, False
