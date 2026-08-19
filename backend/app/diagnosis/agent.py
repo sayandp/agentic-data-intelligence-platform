@@ -21,6 +21,7 @@ from app.contract import DataContract
 from app.correlation import CorrelatedGroup
 from app.diagnosis.cache import DiagnosisCache, cache_key_for_group
 from app.privacy.classification import PrivacyClassification
+from app.privacy.egress_log import EgressRecord, record_for_sample
 from app.privacy.redaction import POLICY_BY_PATH, redact_records
 from app.diagnosis.models import Diagnosis
 from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError, LLMUnavailableError
@@ -62,6 +63,10 @@ class DiagnosisOutcome:
     source: str  # "cache" | "llm" | "escalated_parse_failure" | "escalated_quota_exhausted" | "escalated_unavailable"
     model_name: str | None = None
     temperature: float | None = None
+    #: What this diagnosis actually sent out, as shape only. None for a cache
+    #: hit, which is the honest answer: nothing left the machine. The caller
+    #: holds the DB session and persists it.
+    egress: "EgressRecord | None" = None
 
 
 class DiagnosticAgent:
@@ -100,8 +105,9 @@ class DiagnosticAgent:
         if cached is not None:
             return DiagnosisOutcome(diagnosis_json=cached, risk_level=cached.get("risk_level"), source="cache")
 
-        system, user = self._build_prompt(group, baseline_profile, contract, privacy)
+        system, user, egress = self._build_prompt(group, baseline_profile, contract, privacy)
         outcome = self._call_with_resilience(system, user)
+        outcome.egress = egress
         if outcome.source == "llm":
             self.cache.set(key, outcome.diagnosis_json)
         return outcome
@@ -199,7 +205,7 @@ class DiagnosticAgent:
         baseline_profile: dict,
         contract: DataContract,
         privacy: "PrivacyClassification | None" = None,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, EgressRecord]:
         columns = list(dict.fromkeys(m.column for m in group.members if m.column))
         columns = [c for c in columns if c in contract.data.columns]
         if not columns:
@@ -235,4 +241,14 @@ class DiagnosticAgent:
             f"SAMPLE DATA ({len(sample_records)} row(s), columns {columns}):\n"
             f"{SAMPLE_START_MARKER}\n{json.dumps(sample_records.rows, default=str)}\n{SAMPLE_END_MARKER}"
         )
-        return SYSTEM_PROMPT, user
+        # The record is built FROM the RedactedSample, so it reports what the
+        # redactor did rather than what this function meant to do.
+        egress = record_for_sample(
+            sample_records,
+            agent="diagnosis",
+            provider=type(self.llm_client).__name__,
+            model=self.llm_client.model_name,
+            policy=POLICY_BY_PATH["diagnosis"],
+            columns=columns,
+        )
+        return SYSTEM_PROMPT, user, egress

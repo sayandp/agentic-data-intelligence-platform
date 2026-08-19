@@ -2153,6 +2153,47 @@ scoped to the SOURCE so a re-ingest inherits the answer. Two guards:
 marking a column safe is the one action here that REMOVES protection and that
 must not be a one-way door.
 
+### The egress trail: what left, recorded without recording what left
+
+Every outbound model call writes an `egress_events` row, surfaced as the
+Egress section of `GET /audit/{run}` and the Audit page. It records the agent,
+the provider CLASS and model, the redaction policy in force, which columns
+were included, how much was sent, which columns the redactor masked and how
+many distinct values in each.
+
+"How much" carries its own unit, because the paths do not send the same thing:
+`rows` for diagnosis, query and modeling; `findings` for the narrative agent's
+grounding call; `claims` for its prose call. Both narrative calls are recorded
+- an auditor counting how many times a run reached a third party has to get
+the true number, and folding two calls into one row would give them the wrong
+one. Each prose regeneration attempt is a row too, for the same reason.
+
+**It never records the payload.** Writing the rows down to prove they were
+protected would put a second, unclassified copy of exactly the withheld data
+into the audit store. Column names are recorded because the model receives the
+schema anyway and a name is not personal data; values never appear, masked or
+otherwise - not even as redaction tokens, since a log full of
+`<EMAIL_1>..<EMAIL_2000>` discloses a column's cardinality it was never meant
+to describe.
+
+Two structural guarantees rather than review notes:
+
+- A record is built FROM a `RedactedSample`, and the only way to obtain one is
+  to call `redact_records`. `redacted_columns` and `masked_value_counts` are
+  copied off that object, so a record cannot claim a column was masked unless
+  the redactor masked it. The narrative path, which has no sample to copy
+  from, gets the same invariant by intersecting the policy's redactable set
+  with what the redactor reported masking - a column that is redactable but
+  appears in no finding was not masked on that call and is not claimed as
+  masked. The log reports what happened; it cannot describe an intention.
+- `EgressRecord` has no field a payload could go in, and a test asserts the
+  exact field set. A later edit cannot quietly start putting rows in one.
+
+A cache hit records nothing, because nothing left the machine. A trail that
+counted cache hits as disclosures would overstate the exposure, and this trail
+is worth having only if its numbers are true in both directions.
+
+
 ### Prompt versions in the cache key
 
 The diagnosis and query caches were keyed on the failure group and the model,

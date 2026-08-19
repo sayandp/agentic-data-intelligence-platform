@@ -41,6 +41,21 @@ def _reset_db():
 
 
 @pytest.fixture
+def db_session():
+    """A session for reading what the app WROTE, in tests that assert on
+    stored rows rather than on responses. Separate from the app's own
+    request-scoped sessions on purpose: a test that shares a session with the
+    code under test can pass on uncommitted state."""
+    from app.db import SessionLocal
+
+    session = SessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
+
+
+@pytest.fixture
 def client():
     # No test in this suite may reach a real LLM provider: every ingest that
     # runs through this client gets a fresh FakeLLMClient (deterministic,

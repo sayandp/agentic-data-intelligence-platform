@@ -22,6 +22,8 @@ import time
 from app.exploration.findings import ExplorationFindings
 from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError, LLMUnavailableError
 from app.narrative.config import SAMPLE_END_MARKER, SAMPLE_START_MARKER
+from app.privacy.egress_log import record_for_findings
+from app.privacy.redaction import POLICY_BY_PATH
 from app.privacy.findings_redaction import redact_findings_payload
 from app.narrative.models import ClaimsOutcome, GroundedClaim, GroundedClaimsResponse, NarrativeProse, ProseOutcome
 from app.retry import backoff_delay_seconds
@@ -146,7 +148,7 @@ class NarrativeAgent:
         # band's top entities, a basket rule's item names. Those leak exactly
         # as a sample row would, by a different route, so they are masked with
         # the same tokens the sample redactor uses.
-        findings_payload, _masked = redact_findings_payload(findings.model_dump(mode="json"), privacy)
+        findings_payload, masked = redact_findings_payload(findings.model_dump(mode="json"), privacy)
         user = (
             f"FINDINGS ({len(findings.findings)} finding(s), schema_version={findings.schema_version}):\n"
             f"{SAMPLE_START_MARKER}\n{json.dumps(findings_payload, default=str)}\n{SAMPLE_END_MARKER}"
@@ -165,16 +167,35 @@ class NarrativeAgent:
 
         analysis_findings = list(analytics_findings.all_findings()) if analytics_findings is not None else []
         if analysis_findings:
-            analytics_payload, _analytics_masked = redact_findings_payload(
+            analytics_payload, analytics_masked = redact_findings_payload(
                 {"findings": [f.model_dump(mode="json") for f in analysis_findings]}, privacy
             )
+            for column, count in analytics_masked.items():
+                masked[column] = masked.get(column, 0) + count
             payload = json.dumps(analytics_payload["findings"], default=str)
             user += (
                 f"\n\nBUSINESS ANALYSIS FINDINGS ({len(analysis_findings)} finding(s)) - cite these by id "
                 f"exactly as you would the findings above:\n"
                 f"{SAMPLE_START_MARKER}\n{payload}\n{SAMPLE_END_MARKER}"
             )
-        return self._call_stage1_with_resilience(system, user)
+        # One record for the whole stage-1 call: exploration findings and
+        # analytics findings go out in a single prompt, so counting them as
+        # two disclosures would overstate what happened.
+        policy = POLICY_BY_PATH["narrative"]
+        redactable = privacy.redactable_columns(policy) if privacy is not None else {}
+        outcome = self._call_stage1_with_resilience(system, user)
+        outcome.egress = record_for_findings(
+            masked,
+            agent="narrative",
+            provider=type(self.llm_client).__name__,
+            model=self.llm_client.model_name,
+            policy=policy,
+            columns=sorted({c for f in findings.findings for c in (f.columns or [])}
+                           | {c for f in analysis_findings for c in (f.columns or [])}),
+            finding_count=len(findings.findings) + len(analysis_findings),
+            redacted_columns={column: kind.value for column, kind in redactable.items()},
+        )
+        return outcome
 
     def _call_stage1_with_resilience(self, system: str, user: str) -> ClaimsOutcome:
         for attempt in range(1, self.max_attempts + 1):
@@ -238,7 +259,26 @@ class NarrativeAgent:
             f"GROUNDED CLAIMS ({len(claims)} claim(s)):\n"
             f"{SAMPLE_START_MARKER}\n{json.dumps([c.model_dump(mode='json') for c in claims], default=str)}\n{SAMPLE_END_MARKER}"
         )
-        return self._call_stage2_with_resilience(system, user)
+        outcome = self._call_stage2_with_resilience(system, user)
+        # Stage 2 is a SECOND outbound call, and it is recorded as one. What it
+        # sends is claims - text stage 1 already produced from findings that
+        # were redacted on the way in - so no column's values leave here that
+        # did not already leave at stage 1, and `columns` is empty rather than
+        # repeating stage 1's list. But an auditor counting how many times this
+        # run reached a third party has to get the true number, and silently
+        # folding two calls into one record would give them the wrong one.
+        outcome.egress = record_for_findings(
+            {},
+            agent="narrative",
+            provider=type(self.llm_client).__name__,
+            model=self.llm_client.model_name,
+            policy=POLICY_BY_PATH["narrative"],
+            columns=[],
+            finding_count=len(claims),
+            redacted_columns={},
+            unit="claims",
+        )
+        return outcome
 
     def _call_stage2_with_resilience(self, system: str, user: str) -> ProseOutcome:
         for attempt in range(1, self.max_attempts + 1):

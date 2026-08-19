@@ -77,11 +77,18 @@ GET    /export/{run_id}/pptx/contents
 
 ### 1.3 Database tables
 
-12 tables. Verified by `grep __tablename__ backend/app/models.py`:
+13 tables. Verified by `grep __tablename__ backend/app/models.py`:
 
 `agent_traces`, `baselines`, `business_analyses`, `confirmed_column_roles`,
-`data_sources`, `exploration_findings`, `marketing_analyses`, `model_runs`,
-`query_runs`, `reports`, `runs`, `validation_events`.
+`data_sources`, `egress_events`, `exploration_findings`,
+`marketing_analyses`, `model_runs`, `query_runs`, `reports`, `runs`,
+`validation_events`.
+
+`egress_events` is one row per outbound model call, recorded as shape only
+(README §"The egress trail"). `confirmed_column_roles` also gained `decision`
+and `confirmed_by` for the privacy decision flow, and now holds two kinds of
+row: semantic-role confirmations, and `pii:`-prefixed privacy decisions that
+every semantic-role reader filters out explicitly.
 
 ### 1.4 Dashboard views
 
@@ -93,22 +100,29 @@ GET    /export/{run_id}/pptx/contents
 
 ```
 cd backend  && .venv/Scripts/python.exe -m pytest --collect-only -q
-   -> 860 tests collected            (62 test files)
-      (789 when this document was written; +71 from the privacy layer)
+   -> 873 tests collected            (63 test files)
+      (789 when this document was written; +84 from the privacy layer
+       and the egress audit trail)
 
 cd frontend && npx playwright test --list
-   -> Total: 135 tests in 11 files   (45 specs x 3 themes)
-      (111 when this document was written; +24 from marketing-upload
-       and privacy, each x3 themes)
+   -> Total: 144 tests in 12 files   (48 specs x 3 themes)
+      (111 when this document was written; +33 from marketing-upload,
+       privacy and egress-audit, each x3 themes)
 ```
 
 The E2E total is 135 because `playwright.config.ts` defines three projects
 (default / dark / aurora) and every spec runs once per theme.
 
-**Full-suite pass, most recent run:** 860 backend passed (4m23s); 123 E2E
-passed (9m54s) across all three themes, plus the 12 privacy E2E tests run
-separately after they were written (2m24s). The 123 figure predates the
-privacy spec; the current total of 135 has not been run as one batch.
+**Full-suite pass, most recent run:** 874 backend passed (4m38s); 144 E2E
+passed (16m24s) across all three themes, as one batch.
+
+Caveat on how that number is obtained: the backend suite cannot be run
+concurrently with itself. `tests/conftest.py` hard-codes one SQLite path and
+its autouse fixture calls `drop_all`, so two pytest processes delete each
+other's tables and produce ~40 fixture errors and ~10 failures spread across
+unrelated files. That looks exactly like a product regression and is not one -
+it happened twice while assembling this document. Run the suite once at a
+time. (README §Known issues.)
 
 ---
 
@@ -216,6 +230,7 @@ must catch it."*
 | Redaction cost to diagnosis | **none** — 3/3 failure groups produced the same cause and the same confidence with redaction on and off | `backend/scripts/privacy_diagnosis_cost.py` | **Live** Gemini, `source llm` (not cache) |
 | Redaction cost to narrative | **material** — 5 claims / 574 chars clear vs 4 claims / 275 chars redacted (−52%); the Band A value-concentration finding is lost entirely | `backend/scripts/privacy_narrative_cost.py` | **Live** Gemini, `source llm`, analytics findings included |
 | PII detection tiers | 5 high-confidence kinds auto-classified; 3 low-confidence kinds never auto-classified | `backend/app/privacy/detectors.py`, `tests/test_privacy.py` (61 tests) | Deterministic, no LLM |
+| Egress trail leak scan | **0 data values and 0 redaction tokens** in any stored record or any /audit response, across a run exercising all four outbound paths | `tests/test_egress_audit.py::test_no_record_anywhere_contains_a_data_value`, `frontend/e2e/egress-audit.spec.ts` | Fake clients (backend), live Gemini (E2E) |
 | Corruption harness | 7 injector kinds: rename, dtype, nulls, drop, distribution shift, whitespace/case, truncate | `backend/tests/corruption/suite.py` | Deterministic, seeded |
 
 ### Figures I could NOT verify — do not quote without checking

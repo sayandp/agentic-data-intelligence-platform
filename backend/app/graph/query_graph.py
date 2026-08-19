@@ -30,6 +30,7 @@ from typing_extensions import TypedDict
 
 from app.query.models import QueryAnswerStatus, QueryKind
 from app.privacy.classification import PrivacyClassification
+from app.privacy.egress_log import persist_egress, record_for_sample
 from app.privacy.redaction import POLICY_BY_PATH, redact_records
 from app.semantic_roles import prompt_context
 from app.query.pandas_validation import validate_pandas_code
@@ -92,6 +93,18 @@ def generate_node(state: QueryState, config) -> dict:
         PrivacyClassification.from_dict(state["run"].privacy_classification),
         POLICY_BY_PATH["query"],
     )
+    # What this call WOULD send, as shape only, built from the RedactedSample
+    # above so the figures are the redactor's own. Persisted below only if the
+    # call actually goes out: a cache hit discloses nothing, and a log saying
+    # otherwise would be a false record of a disclosure.
+    egress = record_for_sample(
+        sample_rows,
+        agent="query",
+        provider=type(query_agent.llm_client).__name__,
+        model=query_agent.llm_client.model_name,
+        policy=POLICY_BY_PATH["query"],
+        columns=[str(c) for c in contract.data.columns],
+    )
 
     # Roles are CONTEXT for the model, from the run's one detection pass.
     outcome = query_agent.generate(
@@ -103,6 +116,8 @@ def generate_node(state: QueryState, config) -> dict:
         table_name=table_name,
         column_roles=prompt_context(state["run"].semantic_roles),
     )
+    if outcome.source != "cache":
+        persist_egress(db, run.id, [egress])
     if outcome.query is None:
         result = _persist(
             db, run, source, question, quality_summary,

@@ -302,6 +302,20 @@ export interface AuditModelRun {
   created_at: string;
 }
 
+export interface EgressEntry {
+  id: string;
+  agent: string;
+  provider: string;
+  model: string | null;
+  policy: string;
+  columns: string[];
+  row_count: number;
+  unit: string;
+  redacted_columns: Record<string, string>;
+  masked_value_counts: Record<string, number>;
+  created_at: string;
+}
+
 export interface AuditRecord {
   run_id: string;
   run_number: number | null;
@@ -313,6 +327,7 @@ export interface AuditRecord {
   reveal_depth_reached: number;
   baseline: { id: string; is_active: boolean; is_provisional: boolean } | null;
   trace: AgentTraceEntry[];
+  egress: EgressEntry[];
   validation_events: ValidationEventDetail[];
   exploration: { id: string; schema_version: number; generated_at: string } | null;
   report: { id: string; generation_mode: string | null; post_check_results: unknown[] | null; delivered_at: string | null } | null;

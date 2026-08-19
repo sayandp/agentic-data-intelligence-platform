@@ -25,6 +25,7 @@ from app.analytics.findings import BusinessAnalyticsFindings
 from app.models import AgentTrace, BusinessAnalysis, ExplorationFinding, Report, Run
 from app.narrative.agent import NarrativeAgent
 from app.privacy.classification import PrivacyClassification
+from app.privacy.egress_log import persist_egress
 from app.narrative.charts import build_charts
 from app.semantic_roles import prompt_context
 from app.narrative.config import NarrativeConfig
@@ -64,6 +65,7 @@ def run_narrative_for_run(
         except Exception:  # noqa: BLE001 - a stale payload must not block a report
             analytics_findings = None
 
+    egress_records: list = []
     report = generate_narrative_report(
         findings,
         repaired_df,
@@ -72,7 +74,9 @@ def run_narrative_for_run(
         analytics_findings,
         roles=run.semantic_roles,
         privacy=PrivacyClassification.from_dict(run.privacy_classification),
+        egress_sink=egress_records,
     )
+    persist_egress(db, run.id, egress_records)
 
     record = Report(
         run_id=run.id,
@@ -113,8 +117,13 @@ def generate_narrative_report(
     analytics_findings=None,
     roles: dict | None = None,
     privacy=None,
+    egress_sink: list | None = None,
 ) -> NarrativeReport:
-    """`roles` is Run.semantic_roles - the run's one detection pass. It keeps
+    """`egress_sink`, when given, collects the EgressRecord for each outbound
+    call so the caller - which holds the DB session, unlike this function -
+    can persist it. A None sink records nothing and changes no behaviour.
+
+    `roles` is Run.semantic_roles - the run's one detection pass. It keeps
     identifier columns out of the charts and tells the grounding stage what
     each column MEANS. None for an older run, which behaves as before."""
     config = config or NarrativeConfig()
@@ -128,7 +137,8 @@ def generate_narrative_report(
         return _template_report(findings, quality_context_summary, charts, reason="no LLM configured for this run")
 
     attempt = _try_llm_report(
-        findings, narrative_agent, config, quality_context_summary, charts, analytics_findings, roles, privacy
+        findings, narrative_agent, config, quality_context_summary, charts, analytics_findings, roles, privacy,
+        egress_sink=egress_sink,
     )
     if attempt.report is not None:
         return attempt.report
@@ -178,6 +188,7 @@ def _try_llm_report(
     analytics_findings=None,
     roles: dict | None = None,
     privacy=None,
+    egress_sink: list | None = None,
 ) -> _LLMAttemptResult:
     claims_outcome = narrative_agent.generate_claims(
         findings,
@@ -185,6 +196,10 @@ def _try_llm_report(
         column_roles=prompt_context(roles),
         privacy=privacy,
     )
+    # Recorded whatever the outcome: the payload left the machine even when
+    # the model's answer came back unusable.
+    if egress_sink is not None and claims_outcome.egress is not None:
+        egress_sink.append(claims_outcome.egress)
     if claims_outcome.claims is not None and len(claims_outcome.claims) == 0:
         # Parsed cleanly and cited nothing. Distinct from a failed stage:
         # source is "llm" here, so without this branch it read as
@@ -228,6 +243,12 @@ def _try_llm_report(
     # config.max_regeneration_attempts further tries before giving up.
     for attempt_number in range(1, config.max_regeneration_attempts + 2):
         prose_outcome = narrative_agent.generate_prose(claims)
+        # Inside the loop deliberately: each regeneration attempt is its own
+        # outbound call, and a run that regenerated three times reached a
+        # third party three times. Recording one row for the loop would make
+        # the trail's call count quietly wrong.
+        if egress_sink is not None and prose_outcome.egress is not None:
+            egress_sink.append(prose_outcome.egress)
         if prose_outcome.prose is None:
             _log_stage_failure("stage 2 (expansion)", prose_outcome.source, prose_outcome.rejected_reasons)
             return _LLMAttemptResult(

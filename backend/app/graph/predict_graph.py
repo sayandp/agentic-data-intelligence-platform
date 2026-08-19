@@ -33,6 +33,7 @@ from typing_extensions import TypedDict
 
 from app.modeling.leakage import select_features
 from app.privacy.classification import PrivacyClassification
+from app.privacy.egress_log import persist_egress, record_for_sample
 from app.privacy.redaction import POLICY_BY_PATH, redact_records
 from app.semantic_roles import prompt_context
 from app.modeling.models import EscalationReason, IntentKind, ModelAnswerStatus, TaskType
@@ -97,11 +98,27 @@ def classify_node(state: PredictState, config) -> dict:
             PrivacyClassification.from_dict(state["run"].privacy_classification),
             POLICY_BY_PATH["modeling"],
         )
+        # What this call WOULD send, as shape only, built from the
+        # RedactedSample above so the figures are the redactor's own.
+        # Persisted below only if the call actually goes out: a cache hit
+        # discloses nothing, and a log saying otherwise would be a false
+        # record of a disclosure.
+        egress = record_for_sample(
+            sample_rows,
+            agent="modeling",
+            provider=type(modeling_agent.llm_client).__name__,
+            model=modeling_agent.llm_client.model_name,
+            policy=POLICY_BY_PATH["modeling"],
+            columns=[str(c) for c in contract.data.columns],
+        )
+
         # Roles are CONTEXT from the run's one detection pass - an
         # identifier is not a forecast target just because it is numeric.
         outcome = modeling_agent.classify_intent(
             question or "", schema, sample_rows, column_roles=prompt_context(state["run"].semantic_roles)
         )
+        if outcome.source != "cache":
+            persist_egress(db, run.id, [egress])
         if outcome.classification is None:
             result = _persist(
                 db, run, source, question, quality_summary,

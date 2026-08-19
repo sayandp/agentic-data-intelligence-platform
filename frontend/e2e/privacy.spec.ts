@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 
-import { expect } from "@playwright/test";
+import { expect, type APIRequestContext } from "@playwright/test";
 
 import { test } from "./themed-test";
 
@@ -59,14 +59,37 @@ async function ingestFixture(page: import("@playwright/test").Page, path: string
   return Number(match![1]);
 }
 
-async function openPrivacy(page: import("@playwright/test").Page, runNumber: number) {
-  await page.goto(`/reports?run=${runNumber}`);
-  await expect(page.getByRole("heading", { name: "Privacy", exact: true })).toBeVisible({ timeout: 180_000 });
+/**
+ * The Privacy section renders only once the run HAS a report, and a run
+ * reports "completed" before the narrative stage finishes - the same
+ * completed-but-not-yet-narrated window ReportsPage itself polls through.
+ * Navigating on run completion alone lands on the page a beat early and the
+ * section is simply not there yet, which reads as a missing feature rather
+ * than as a race.
+ */
+async function waitForReport(request: APIRequestContext, runNumber: number) {
+  const deadline = Date.now() + 180_000;
+  while (Date.now() < deadline) {
+    const response = await request.get(`${API}/reports/${runNumber}`);
+    if (response.ok()) return;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  throw new Error(`run ${runNumber} never produced a report within 180s`);
 }
 
-test("the Privacy section names which columns are masked and on which paths", async ({ page }) => {
+async function openPrivacy(
+  page: import("@playwright/test").Page,
+  request: APIRequestContext,
+  runNumber: number
+) {
+  await waitForReport(request, runNumber);
+  await page.goto(`/reports?run=${runNumber}`);
+  await expect(page.getByRole("heading", { name: "Privacy", exact: true })).toBeVisible({ timeout: 60_000 });
+}
+
+test("the Privacy section names which columns are masked and on which paths", async ({ page, request }) => {
   const runNumber = await ingestFixture(page, writeFixture("privacy_people.csv", PII_CSV));
-  await openPrivacy(page, runNumber);
+  await openPrivacy(page, request, runNumber);
 
   // Verified PII: masked on every path, with its evidence.
   const everywhere = page.locator("li", { hasText: "email" }).first();
@@ -82,9 +105,9 @@ test("the Privacy section names which columns are masked and on which paths", as
   await expect(page.locator("li", { hasText: "customer_name" }).first()).toContainText("masked by default");
 });
 
-test("a person can mark a candidate not personal, and the page says who did", async ({ page }) => {
+test("a person can mark a candidate not personal, and the page says who did", async ({ page, request }) => {
   const runNumber = await ingestFixture(page, writeFixture("privacy_people.csv", PII_CSV));
-  await openPrivacy(page, runNumber);
+  await openPrivacy(page, request, runNumber);
 
   page.once("dialog", (dialog) => dialog.accept("sayan"));
   await page
@@ -104,9 +127,9 @@ test("a person can mark a candidate not personal, and the page says who did", as
   });
 });
 
-test("a decision can be undone from the page", async ({ page }) => {
+test("a decision can be undone from the page", async ({ page, request }) => {
   const runNumber = await ingestFixture(page, writeFixture("privacy_people.csv", PII_CSV));
-  await openPrivacy(page, runNumber);
+  await openPrivacy(page, request, runNumber);
 
   page.once("dialog", (dialog) => dialog.accept("sayan"));
   await page.locator("li", { hasText: "notes" }).first().getByRole("button", { name: "mark not personal" }).click();
@@ -132,6 +155,6 @@ test("verified personal data cannot be cleared, and the refusal is shown", async
   expect(response.status()).toBe(400);
   expect((await response.json()).detail).toContain("cannot be marked not personal");
 
-  await openPrivacy(page, runNumber);
+  await openPrivacy(page, request, runNumber);
   await expect(page.locator("li", { hasText: "email" }).first()).toContainText("masked");
 });

@@ -214,6 +214,9 @@ class ClaimsOutcome(BaseModel):
     rejected_reasons: list[str] = Field(default_factory=list)
     model_name: str | None = None
     temperature: float | None = None
+    #: What this call sent out, as shape only (app/privacy/egress_log.py).
+    #: The narrative pipeline holds the DB session and persists it.
+    egress: object | None = None
     #: Short, user-facing phrase naming WHY the stage failed ("the model's
     #: response was cut off before it finished"). Separate from
     #: rejected_reasons, which holds the full technical detail for logs and
@@ -232,3 +235,5 @@ class ProseOutcome(BaseModel):
     temperature: float | None = None
     rejected_reasons: list[str] = Field(default_factory=list)
     failure_summary: str | None = None
+    #: What this call sent out, as shape only (app/privacy/egress_log.py).
+    egress: object | None = None

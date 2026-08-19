@@ -60,6 +60,7 @@ def test_query_graph_generate_routes_done_when_no_llm_available(monkeypatch):
 
 
 def test_predict_graph_classify_routes_retrieval_without_persisting_anything(monkeypatch):
+    import app.graph.predict_graph as predict_graph
     import app.modeling.pipeline as modeling_pipeline
 
     calls = []
@@ -71,10 +72,26 @@ def test_predict_graph_classify_routes_retrieval_without_persisting_anything(mon
 
     class _Outcome:
         classification = _Classification()
+        source = "llm"
+
+    class _Client:
+        model_name = "fake-model"
 
     class _Agent:
+        # The node reads the client to record WHICH provider the sample went
+        # to, so the double carries one - a stand-in that cannot answer that
+        # question is not standing in for the real agent.
+        llm_client = _Client()
+
         def classify_intent(self, *a, **k):
             return _Outcome()
+
+    # The egress record is captured rather than written: this test has no DB
+    # (db=None, deliberately) and persist_egress is not None-tolerant, because
+    # a persist that silently does nothing when handed no session is exactly
+    # the silent fallback this codebase keeps removing.
+    egress = []
+    monkeypatch.setattr(predict_graph, "persist_egress", lambda db, run_id, records: egress.extend(records))
 
     state = {
         "db": None, "modeling_agent": _Agent(), "run": _FakeRun(), "source": _FakeSource(),
@@ -85,3 +102,10 @@ def test_predict_graph_classify_routes_retrieval_without_persisting_anything(mon
     assert result["route"] == "done"
     assert result["is_retrieval"] is True
     assert calls == []  # a retrieval-routed question never persists a ModelRun
+    # But the sample DID go to a model to find that out, and that is recorded.
+    # "We only routed it" is not the same as "nothing left the machine".
+    assert len(egress) == 1
+    assert egress[0].agent == "modeling"
+    # The CLIENT class, not the agent wrapper - two agents sharing a
+    # provider must read as the same disclosure, and vice versa.
+    assert egress[0].provider == "_Client"

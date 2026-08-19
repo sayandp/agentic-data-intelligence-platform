@@ -290,6 +290,47 @@ class ConfirmedColumnRole(Base):
     confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class EgressEvent(Base):
+    """One outbound call to a third-party model, recorded as SHAPE ONLY.
+
+    THE PAYLOAD IS NEVER STORED HERE. Writing the rows down to prove they
+    were protected would put a second, unclassified copy of exactly the data
+    the redaction withheld into the audit store. What is recorded is what an
+    auditor actually needs and what cannot itself leak: which agent called
+    out, to which provider and model, under which redaction policy, which
+    COLUMNS were involved (names only - the model receives the schema
+    anyway), how many rows, and which columns the redactor masked with how
+    many distinct values each.
+
+    Written by the caller that holds the session, from an EgressRecord the
+    redactor produced (app/privacy/egress_log.py). A row here means the call
+    was prepared; it is not a delivery receipt for the provider.
+    """
+
+    __tablename__ = "egress_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    run_id: Mapped[str] = mapped_column(String, ForeignKey("runs.id"), nullable=False)
+    #: "diagnosis" | "query" | "modeling" | "narrative"
+    agent: Mapped[str] = mapped_column(String, nullable=False)
+    #: The client CLASS, not just the model string - a FakeLLMClient run and
+    #: a GeminiClient run must never read as the same disclosure.
+    provider: Mapped[str] = mapped_column(String, nullable=False)
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    #: The RedactionPolicy in force for this path ("strict" | "permissive").
+    policy: Mapped[str] = mapped_column(String, nullable=False)
+    columns_json: Mapped[list] = mapped_column(JSON, nullable=False)
+    row_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    #: "rows" for the sample paths, "findings" for the narrative path, which
+    #: sends findings rather than rows. Recorded so a reader is never left
+    #: comparing a row count against a finding count.
+    unit: Mapped[str] = mapped_column(String, nullable=False, default="rows")
+    redacted_columns_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    #: {column: distinct values masked}. A count, never a value.
+    masked_value_counts_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class MarketingAnalysis(Base):
     """Written by the Marketing Agent - one row per run, only ever for a run
     that reached 'completed', exactly like BusinessAnalysis.

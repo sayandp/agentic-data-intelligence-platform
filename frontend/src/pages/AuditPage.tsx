@@ -110,6 +110,87 @@ export default function AuditPage() {
             </div>
           </Card>
 
+          {/* What this run sent to a third-party model. Deliberately placed
+              directly under the timeline: the timeline says what the run did,
+              and this says what left the machine while doing it.
+
+              There is no payload column and there is no way to open one -
+              the API does not carry the rows, by design. A reader looking for
+              "what exactly was sent" should be able to tell from this table
+              that the answer is not recorded anywhere, rather than hunting
+              for a link that does not exist. */}
+          <Card
+            title="Egress - what left this machine"
+            subtitle="Every outbound call to a third-party model, recorded as shape only. The rows themselves are never stored: an audit log holding the data it protected would be a second unclassified copy of it."
+          >
+            {audit.egress.length === 0 ? (
+              <Muted>
+                This run sent nothing to a third-party model. A run whose diagnoses all came from cache, or one with no
+                LLM configured, discloses nothing - and this is what that looks like.
+              </Muted>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-surface-sunken text-ink-muted">
+                      <th className="py-2 px-3 font-medium">Agent</th>
+                      <th className="py-2 px-3 font-medium">Provider / model</th>
+                      <th className="py-2 px-3 font-medium">Policy</th>
+                      <th className="py-2 px-3 text-right font-medium">Sent</th>
+                      <th className="py-2 px-3 font-medium">Columns included</th>
+                      <th className="py-2 px-3 font-medium">Columns masked</th>
+                      <th className="py-2 px-3 font-medium">Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {audit.egress.map((e) => {
+                      const masked = Object.keys(e.redacted_columns);
+                      return (
+                        <tr key={e.id} className="border-b border-border align-top">
+                          <td className="py-2 px-3 font-medium text-ink">{e.agent}</td>
+                          <td className="py-2 px-3">
+                            <div className="font-mono text-xs text-ink">{e.provider}</div>
+                            <div className="font-mono text-xs text-ink-faint">{e.model ?? "-"}</div>
+                          </td>
+                          <td className="py-2 px-3">
+                            <Badge value={e.policy} tone={e.policy === "strict" ? "positive" : "caution"} />
+                          </td>
+                          <td className="py-2 px-3 text-right font-mono">
+                            {e.row_count} <span className="text-ink-faint">{e.unit}</span>
+                          </td>
+                          <td className="py-2 px-3 font-mono text-xs text-ink-muted">
+                            {e.columns.length > 0 ? e.columns.join(", ") : <span className="text-ink-faint">-</span>}
+                          </td>
+                          <td className="py-2 px-3">
+                            {masked.length === 0 ? (
+                              <span className="text-ink-faint">nothing masked</span>
+                            ) : (
+                              <ul>
+                                {masked.map((column) => (
+                                  <li key={column} className="font-mono text-xs text-ink">
+                                    {column}{" "}
+                                    <span className="text-ink-faint">
+                                      {e.redacted_columns[column].replace(/_/g, " ")}
+                                      {e.masked_value_counts[column] != null
+                                        ? `, ${e.masked_value_counts[column]} distinct values`
+                                        : ""}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 font-mono text-xs text-ink-muted">{e.created_at}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+
           <Card title="Validation events">
             <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">

@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.id_lookup import resolve_run
-from app.models import AgentTrace, Baseline, DataSource, ExplorationFinding, ModelRun, QueryRun, Report, Run, ValidationEvent
+from app.models import AgentTrace, Baseline, DataSource, EgressEvent, ExplorationFinding, ModelRun, QueryRun, Report, Run, ValidationEvent
 
 router = APIRouter(tags=["audit"])
 
@@ -144,6 +144,24 @@ def _serialize_model_run(m: ModelRun) -> dict:
     }
 
 
+def _serialize_egress(event: EgressEvent) -> dict:
+    """Shape only. There is no payload field to serialise, by design - see
+    app/models.py::EgressEvent."""
+    return {
+        "id": event.id,
+        "agent": event.agent,
+        "provider": event.provider,
+        "model": event.model,
+        "policy": event.policy,
+        "columns": event.columns_json,
+        "row_count": event.row_count,
+        "unit": event.unit,
+        "redacted_columns": event.redacted_columns_json,
+        "masked_value_counts": event.masked_value_counts_json,
+        "created_at": event.created_at.isoformat(),
+    }
+
+
 @router.get("/audit/{run_id}")
 def get_audit(run_id: str, db: Session = Depends(get_db)):
     """The canonical Phase 8 audit surface. Everything that happened for
@@ -153,8 +171,14 @@ def get_audit(run_id: str, db: Session = Depends(get_db)):
     and the gate trace that follows it), who resolved each escalation and
     how, the baseline in force, and every query/model run answered against
     this run's data (Part 0's condition on keeping those approvals outside
-    the graph: this endpoint must still cover them) - assembled from
-    already-committed rows, never re-derived or guessed. `trace` is ordered
+    the graph: this endpoint must still cover them), and every outbound call
+    this run made to a third-party model - assembled from already-committed
+    rows, never re-derived or guessed.
+
+    `egress` answers a different question from the rest: not "why did this run
+    produce this output" but "what left this machine while producing it". It
+    carries shape only and never the payload, for the reason given on
+    app/models.py::EgressEvent. `trace` is ordered
     by timestamp and is the answer to "why did this run produce this
     output"; `validation_events` and the query/model lists fill in the
     per-decision detail a trace's summary alone doesn't carry (gate_reasons,
@@ -171,6 +195,7 @@ def get_audit(run_id: str, db: Session = Depends(get_db)):
     model_runs = db.query(ModelRun).filter(ModelRun.run_id == run_id).order_by(ModelRun.created_at).all()
     exploration = db.query(ExplorationFinding).filter(ExplorationFinding.run_id == run_id).one_or_none()
     report = db.query(Report).filter(Report.run_id == run_id).one_or_none()
+    egress = db.query(EgressEvent).filter(EgressEvent.run_id == run_id).order_by(EgressEvent.created_at).all()
 
     return {
         "run_id": run.id,
@@ -187,6 +212,9 @@ def get_audit(run_id: str, db: Session = Depends(get_db)):
             else None
         ),
         "trace": [_serialize_trace(t) for t in traces],
+        # What this run sent to a third-party model. Empty is a real answer:
+        # a run whose diagnoses all came from cache disclosed nothing.
+        "egress": [_serialize_egress(e) for e in egress],
         "validation_events": [_serialize_validation_event(e) for e in events],
         "exploration": (
             {"id": exploration.id, "schema_version": exploration.schema_version, "generated_at": exploration.generated_at.isoformat()}

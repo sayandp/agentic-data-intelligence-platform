@@ -22,6 +22,7 @@ from app.baseline_sanity import BaselineSanityError, assert_baseline_sane
 from app.connectors.factory import build_connector
 from app.contract import DataContract
 from app.privacy.classification import PrivacyClassification
+from app.privacy.egress_log import persist_egress
 from app.correlation import CorrelatedGroup
 from app.diagnosis.agent import DiagnosisOutcome, DiagnosticAgent
 from app.diagnosis.models import FixAction
@@ -120,6 +121,11 @@ def process_group(
         if diagnostic_agent is not None
         else _no_llm_outcome()
     )
+    # What this diagnosis sent to a third party, as shape only. A cache hit
+    # produces no record, because nothing left the machine.
+    if outcome.egress is not None:
+        persist_egress(db, run.id, [outcome.egress])
+
     for event in events:
         transition(event.state, DIAGNOSED)
         event.state = DIAGNOSED
