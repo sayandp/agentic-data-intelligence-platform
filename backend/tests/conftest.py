@@ -4,16 +4,32 @@ from pathlib import Path
 
 import pytest
 
+# PER-PROCESS PATHS. Both stores below used to have one fixed name in the
+# system temp directory, shared by every pytest process on the machine. The
+# autouse fixture below calls drop_all before EVERY test, so a second pytest
+# run - a `--collect-only` alongside a full run, two terminals, a watcher -
+# deleted the first one's tables mid-test.
+#
+# The failure did not look like a collision. It looked like ~40 fixture errors
+# and ~10 failures scattered across unrelated files, in a suite that passes
+# clean when run alone. It was reported as a product regression three times
+# before it was fixed, which is three times more than the fix cost.
+#
+# The pid is in the FILENAME rather than guarded by a lock or a warning,
+# because a name that cannot collide needs no check that must catch one -
+# the same reason the redaction boundary is a type rather than a review note.
+_TEST_TMP = Path(tempfile.gettempdir())
+
 # Must be set before any `app.*` module is imported, since app/db.py reads
 # DATABASE_URL at import time.
-_TEST_DB_PATH = Path(tempfile.gettempdir()) / "agentic_platform_test.db"
+_TEST_DB_PATH = _TEST_TMP / f"agentic_platform_test_{os.getpid()}.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB_PATH.as_posix()}"
 
 # Phase 8: the graph's checkpointer is a SEPARATE store from the app DB
 # (app/graph/checkpointer.py) - it needs its own isolated, resettable path
 # for the same reason DATABASE_URL gets one, or checkpointed positions from
 # one test's runs would leak into the next.
-_TEST_CHECKPOINT_PATH = Path(tempfile.gettempdir()) / "agentic_platform_test_checkpoints.db"
+_TEST_CHECKPOINT_PATH = _TEST_TMP / f"agentic_platform_test_checkpoints_{os.getpid()}.db"
 os.environ["GRAPH_CHECKPOINT_PATH"] = _TEST_CHECKPOINT_PATH.as_posix()
 
 from fastapi.testclient import TestClient  # noqa: E402
@@ -28,6 +44,30 @@ from app.narrative.dependency import get_narrative_agent  # noqa: E402
 from app.query.dependency import get_query_agent  # noqa: E402
 from app.routers.ingest import get_diagnostic_agent  # noqa: E402
 from tests.fakes import FakeLLMClient, InMemoryDiagnosisCache  # noqa: E402
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _remove_this_process_databases():
+    """Delete this process's two stores when the run ends.
+
+    Per-process names fix the collision but would otherwise leave a pair of
+    files in temp for every pytest run ever started on the machine. Cleanup is
+    best-effort: on Windows a still-open handle makes the unlink fail, and a
+    leftover temp file is not worth failing a green suite over."""
+    yield
+    # Both connections must be closed first. On Windows an open sqlite handle
+    # holds an OS-level file lock and the unlink simply fails - which is how
+    # the checkpoint store survived the first version of this fixture.
+    # engine.dispose() covers the app DB; reset_graph() closes the
+    # checkpointer's own raw sqlite3 connection, which the engine knows
+    # nothing about.
+    engine.dispose()
+    reset_graph()
+    for path in (_TEST_DB_PATH, _TEST_CHECKPOINT_PATH):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 @pytest.fixture(autouse=True)

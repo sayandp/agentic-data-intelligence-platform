@@ -116,13 +116,15 @@ The E2E total is 135 because `playwright.config.ts` defines three projects
 **Full-suite pass, most recent run:** 874 backend passed (4m38s); 144 E2E
 passed (16m24s) across all three themes, as one batch.
 
-Caveat on how that number is obtained: the backend suite cannot be run
-concurrently with itself. `tests/conftest.py` hard-codes one SQLite path and
-its autouse fixture calls `drop_all`, so two pytest processes delete each
-other's tables and produce ~40 fixture errors and ~10 failures spread across
-unrelated files. That looks exactly like a product regression and is not one -
-it happened twice while assembling this document. Run the suite once at a
-time. (README §Known issues.)
+The suite is now safe to run concurrently with itself. It was not, until
+`tests/conftest.py` was fixed: one hard-coded SQLite path plus an autouse
+`drop_all` meant two pytest processes deleted each other's tables, producing
+~40 fixture errors and ~10 failures across unrelated files. That pattern was
+recorded in this document twice as a caveat and reported three times as a
+product regression before the cause was found; each time the suite passed
+clean when run alone. Fixed by putting the pid in both store filenames.
+**Verified:** two full suites started deliberately overlapping - 874 passed in
+each, 6m32s both.
 
 ---
 

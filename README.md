@@ -217,6 +217,25 @@ directory automatically if one exists.
 
 ## Tests
 
+**The suite is safe to run concurrently with itself**, and this is not
+incidental. `tests/conftest.py` puts the process id in both store filenames
+(`agentic_platform_test_<pid>.db` and its checkpoint counterpart), and a
+session-scoped fixture deletes them when the run ends.
+
+It used to hard-code one name for each. Since the autouse fixture calls
+`drop_all` before every test, a second pytest process — a `--collect-only`
+alongside a full run, a second terminal, a file watcher — deleted the first
+one's tables mid-test. What that produced was not a lock error: it was ~40
+fixture errors and ~10 failures scattered across unrelated files, in a suite
+that passed clean when run alone. It was reported as a product regression
+three separate times before the cause was found. A name that cannot collide
+needs no check that must catch a collision.
+
+Cleanup closes both connections before unlinking. On Windows an open sqlite
+handle holds an OS-level file lock, so the first version of the fixture
+silently left every run's checkpoint file behind.
+
+
 ```bash
 cd backend
 pip install -r requirements.txt
@@ -2204,17 +2223,6 @@ future prompt change needs a version bump, or it silently serves stale answers.
 
 
 ## Known issues
-
-**Two `pytest` processes cannot run at once.** `backend/tests/conftest.py`
-hard-codes one SQLite path (`%TEMP%/agentic_platform_test.db`) and its autouse
-`_reset_db` fixture calls `Base.metadata.drop_all` before every test. A second
-pytest process therefore deletes the first one's tables mid-test. The result is
-not a clean lock error: it is ~200 fixture errors and ~27 failures spread
-across unrelated files, which reads exactly like a product regression. Both
-runs pass individually. Until the path is made per-process, run the suite
-once at a time — including not starting a `--collect-only` while a full run is
-in flight.
-
 
 **`GET /ingest/{run_id}/status` is O(source size).** `_serialize_run_response`
 rebuilds the repaired frame through the connector on every call, purely to
