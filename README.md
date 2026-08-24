@@ -2100,6 +2100,11 @@ into the JSON schema.
 
 ## Personal data: detection at ingest, redaction at the egress boundary
 
+> The full threat model — including what is deliberately **not** defended, and
+> why this must not be exposed to a network you do not control — is in
+> [SECURITY.md](SECURITY.md). Read §2 before deploying anything.
+
+
 Every outbound call to a third-party model is a place where personal data can
 leave. The layer that stops that has two halves, and the split between them is
 the design.
@@ -2212,6 +2217,43 @@ A cache hit records nothing, because nothing left the machine. A trail that
 counted cache hits as disclosures would overstate the exposure, and this trail
 is worth having only if its numbers are true in both directions.
 
+
+### Limits, and why each one refuses instead of truncating
+
+| Limit | Default | Env var |
+| --- | --- | --- |
+| Upload size | 200 MB | `MAX_UPLOAD_BYTES` |
+| Ingest rows | 2,000,000 | `MAX_INGEST_ROWS` |
+| Ingest columns | 4,096 | `MAX_INGEST_COLUMNS` |
+| Requests per window | 60 / 60s | `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW_SECONDS` |
+
+The row and column limits live on `DataContract` — the one type every
+connector produces and every agent consumes — so there is no ingest path that
+skips them. They **refuse**; they never truncate. Analysing the first two
+million rows of a larger file and reporting that as the dataset's profile
+would give a baseline, a null rate and a Pareto band computed over part of the
+data, with nothing in the report saying so: a silent fallback producing
+confidently wrong output, which is the failure this codebase keeps removing.
+
+An unparseable override (`MAX_INGEST_ROWS=lots`) raises at startup rather than
+reverting to the default, for the same reason: a limit the operator believes
+is in force but is not is worse than no limit.
+
+**Uploads are checked for content/extension agreement.** An extension is a
+claim made by whoever named the file; the first bytes are the evidence. An
+`.xlsx` renamed to `.csv`, a CSV renamed to `.xlsx`, a legacy `.xls` posing as
+a modern one, and binary junk are each refused by name, and the refused file is
+deleted rather than left on disk. This replaces a pandas traceback from inside
+a connector — which reads as "the tool is broken" — with "this file is not
+what it says it is". It is not virus scanning and does not claim to be.
+
+**Rate limiting is off by default and always exempts loopback callers.** This
+is a local-first tool: the normal deployment is one person on localhost, where
+a limiter would only ever throttle its own operator, and the first thing
+anyone would do is turn it off — leaving it off in the one deployment that
+needs it. Exempting local callers is what lets it stay on when the app is
+exposed. Its limitations are real and are stated in
+[SECURITY.md](SECURITY.md) §2.3 rather than implied away.
 
 ### Prompt versions in the cache key
 

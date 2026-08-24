@@ -100,9 +100,9 @@ every semantic-role reader filters out explicitly.
 
 ```
 cd backend  && .venv/Scripts/python.exe -m pytest --collect-only -q
-   -> 873 tests collected            (63 test files)
-      (789 when this document was written; +84 from the privacy layer
-       and the egress audit trail)
+   -> 901 tests collected            (65 test files)
+      (789 when this document was written; +84 privacy and egress audit,
+       +28 hardening limits and SECURITY.md drift checks)
 
 cd frontend && npx playwright test --list
    -> Total: 144 tests in 12 files   (48 specs x 3 themes)
@@ -233,6 +233,7 @@ must catch it."*
 | Redaction cost to narrative | **material** — 5 claims / 574 chars clear vs 4 claims / 275 chars redacted (−52%); the Band A value-concentration finding is lost entirely | `backend/scripts/privacy_narrative_cost.py` | **Live** Gemini, `source llm`, analytics findings included |
 | PII detection tiers | 5 high-confidence kinds auto-classified; 3 low-confidence kinds never auto-classified | `backend/app/privacy/detectors.py`, `tests/test_privacy.py` (61 tests) | Deterministic, no LLM |
 | Egress trail leak scan | **0 data values and 0 redaction tokens** in any stored record or any /audit response, across a run exercising all four outbound paths | `tests/test_egress_audit.py::test_no_record_anywhere_contains_a_data_value`, `frontend/e2e/egress-audit.spec.ts` | Fake clients (backend), live Gemini (E2E) |
+| Hardening guards, falsified | **4/4 caught** — middleware unregistered, loopback exemption removed, upload sniffing disabled, contract size gate removed; each broke exactly the test claiming that guarantee | `backend/scripts/falsify_hardening.py` | Deterministic |
 | Corruption harness | 7 injector kinds: rename, dtype, nulls, drop, distribution shift, whitespace/case, truncate | `backend/tests/corruption/suite.py` | Deterministic, seeded |
 
 ### Figures I could NOT verify — do not quote without checking

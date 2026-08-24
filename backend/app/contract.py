@@ -14,6 +14,16 @@ from typing import Any
 
 import pandas as pd
 
+from app.security.config import MAX_INGEST_COLUMNS, MAX_INGEST_ROWS
+
+
+class FrameTooLargeError(ValueError):
+    """Raised when a frame exceeds a configured ingest limit.
+
+    Its own type, not a bare ValueError, so the ingest path can turn it
+    into a clear refusal instead of a stack trace that reads like a
+    parsing bug."""
+
 
 class SourceType(str, Enum):
     SQL = "sql"
@@ -30,6 +40,36 @@ class DataContract:
     connector_metadata: dict[str, Any] = field(default_factory=dict)
     detected_encoding: str | None = None
     encoding_confidence: float | None = None
+
+    def __post_init__(self) -> None:
+        """The size limits, enforced where a frame ENTERS the system.
+
+        Here rather than in each connector, because this is the one type every
+        connector must produce and every agent must consume: a frame that
+        exceeds the limits cannot be represented, rather than being caught by
+        three checks that must each be remembered.
+
+        It REFUSES; it never truncates. Analysing the first two million rows
+        of a larger file and reporting the result as the dataset's profile
+        would be a silent fallback producing confidently wrong output - a
+        baseline, a null rate and a Pareto band computed over a fraction of
+        the data, with nothing in the report saying so.
+        """
+        rows = len(self.data)
+        if rows > MAX_INGEST_ROWS:
+            raise FrameTooLargeError(
+                f"this source has {rows:,} rows, above the {MAX_INGEST_ROWS:,}-row ingest limit. "
+                "Nothing was analysed: a partial read would produce a profile of part of the data "
+                "and report it as the whole. Raise MAX_INGEST_ROWS to accept it, or narrow the "
+                "source (a SQL row_limit, a smaller export)."
+            )
+        columns = len(self.data.columns)
+        if columns > MAX_INGEST_COLUMNS:
+            raise FrameTooLargeError(
+                f"this source has {columns:,} columns, above the {MAX_INGEST_COLUMNS:,}-column ingest limit. "
+                "A frame this wide is usually a parse gone wrong - a mis-detected delimiter, or a header "
+                "row that is really data. Check the file, or raise MAX_INGEST_COLUMNS."
+            )
 
     @property
     def row_count(self) -> int:

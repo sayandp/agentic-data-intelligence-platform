@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 from app.connectors.file_connector import EXCEL_EXTENSIONS
 from app.db import get_db
 from app.models import DataSource, Run
+from app.security.config import MAX_UPLOAD_BYTES
+from app.security.file_type import SNIFF_BYTES, detect_mismatch
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 
@@ -20,7 +22,6 @@ VALID_SOURCE_TYPES = {"sql", "file", "api"}
 # already accepts - imported, not duplicated, so the two can't drift.
 ALLOWED_UPLOAD_EXTENSIONS = {".csv", *EXCEL_EXTENSIONS}
 DEFAULT_UPLOAD_DIR = "data/uploads"
-MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB - generous for a demo CSV/Excel file, not unbounded
 
 
 def _upload_dir() -> Path:
@@ -83,6 +84,7 @@ async def upload_source(file: UploadFile = File(...), db: Session = Depends(get_
     dest = upload_dir / f"{uuid.uuid4()}{extension}"
 
     size = 0
+    head = b""
     with dest.open("wb") as out:
         while chunk := await file.read(1024 * 1024):
             size += len(chunk)
@@ -90,10 +92,21 @@ async def upload_source(file: UploadFile = File(...), db: Session = Depends(get_
                 out.close()
                 dest.unlink(missing_ok=True)
                 raise HTTPException(status_code=413, detail=f"file exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB upload limit")
+            if len(head) < SNIFF_BYTES:
+                head += chunk[: SNIFF_BYTES - len(head)]
             out.write(chunk)
     if size == 0:
         dest.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail="uploaded file is empty")
+
+    # The extension is a claim; the bytes are the evidence. Checked AFTER the
+    # write so the size cap still bounds what a hostile client can make this
+    # process buffer, and the file is removed on refusal so a rejected upload
+    # leaves nothing behind.
+    mismatch = detect_mismatch(head, extension)
+    if mismatch is not None:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=mismatch.message())
 
     source = _create_source(db, "file", {"path": str(dest), "original_filename": original_name})
     return {"id": source.id}

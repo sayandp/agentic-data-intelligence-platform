@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.security.rate_limit import RateLimitMiddleware
+
 load_dotenv()  # GEMINI_API_KEY, GEMINI_MODEL, LLM_PROVIDER, etc. - see .env.example
 
 from app.db import init_db  # noqa: E402
@@ -60,6 +62,11 @@ _DEFAULT_FRONTEND_ORIGINS = ",".join(
     ["http://localhost:3000", *[f"http://localhost:{5173 + i}" for i in range(5)]]
 )
 _frontend_origins = [o.strip() for o in os.environ.get("FRONTEND_ORIGINS", _DEFAULT_FRONTEND_ORIGINS).split(",") if o.strip()]
+# Off unless RATE_LIMIT_ENABLED is set, and never applied to loopback
+# callers - see app/security/rate_limit.py for why both of those are
+# deliberate rather than a weakened default.
+app.add_middleware(RateLimitMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_frontend_origins,
