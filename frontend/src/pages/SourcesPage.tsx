@@ -17,6 +17,24 @@ export default function SourcesPage() {
   const [runsBySource, setRunsBySource] = useState<Record<string, RunSummary[]>>({});
   const [runsError, setRunsError] = useState<unknown>(null);
   const [historyLoadingId, setHistoryLoadingId] = useState<string | null>(null);
+  // Runs picked for comparison, keyed by source so expanding a second
+  // source's history cannot silently carry the first one's selection - the
+  // backend refuses a cross-source comparison, and offering one in the UI
+  // would just be a button that always errors.
+  const [selectedRuns, setSelectedRuns] = useState<Record<string, string[]>>({});
+
+  function toggleSelected(sourceId: string, runRef: string) {
+    setSelectedRuns((prev) => {
+      const current = prev[sourceId] ?? [];
+      if (current.includes(runRef)) {
+        return { ...prev, [sourceId]: current.filter((r) => r !== runRef) };
+      }
+      // Two at a time. Picking a third drops the oldest pick rather than
+      // refusing the click, so the control never feels stuck.
+      const next = [...current, runRef].slice(-2);
+      return { ...prev, [sourceId]: next };
+    });
+  }
 
   const [uploadResult, setUploadResult] = useState<string | null>(null);
 
@@ -323,9 +341,41 @@ export default function SourcesPage() {
                             <Muted>No runs yet.</Muted>
                           ) : (
                             <div className="overflow-x-auto">
+                            {(() => {
+                              const picked = selectedRuns[s.id] ?? [];
+                              const completed = runsBySource[s.id].filter((r) => r.status === "completed");
+                              return (
+                                <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
+                                  <span className="text-ink-muted">
+                                    {picked.length === 0
+                                      ? "Tick two completed runs to compare them."
+                                      : picked.length === 1
+                                        ? "Tick one more run to compare."
+                                        : `Comparing run ${picked[0]} with run ${picked[1]}.`}
+                                  </span>
+                                  {completed.length < 2 && (
+                                    <span className="text-ink-faint">
+                                      This source has {completed.length} completed run(s); a comparison needs two.
+                                    </span>
+                                  )}
+                                  <Link
+                                    className={
+                                      picked.length === 2
+                                        ? "rounded-sm bg-brand-600 px-3 py-1 text-on-accent hover:bg-brand-700"
+                                        : "pointer-events-none rounded-sm bg-surface px-3 py-1 text-ink-faint"
+                                    }
+                                    aria-disabled={picked.length !== 2}
+                                    to={picked.length === 2 ? `/compare?run_a=${picked[0]}&run_b=${picked[1]}` : "#"}
+                                  >
+                                    Compare selected
+                                  </Link>
+                                </div>
+                              );
+                            })()}
                             <table className="w-full text-left text-sm">
                               <thead>
                                 <tr className="text-ink-muted">
+                                  <th className="py-1 px-3 font-medium"><span className="sr-only">Select</span></th>
                                   <th className="py-1 px-3 font-medium">Run</th>
                                   <th className="py-1 px-3 font-medium">Status</th>
                                   <th className="py-1 px-3 font-medium">Started</th>
@@ -336,6 +386,21 @@ export default function SourcesPage() {
                               <tbody>
                                 {runsBySource[s.id].map((r) => (
                                   <tr key={r.id}>
+                                    <td className="py-1 px-3">
+                                      {/* Only a completed run can be compared:
+                                          exploration and analytics run only on
+                                          one, so offering an incomplete run
+                                          would produce a blocked comparison
+                                          the user could have been spared. */}
+                                      {r.status === "completed" && (
+                                        <input
+                                          type="checkbox"
+                                          aria-label={`Select run ${r.run_number ?? r.id} for comparison`}
+                                          checked={(selectedRuns[s.id] ?? []).includes(String(r.run_number ?? r.id))}
+                                          onChange={() => toggleSelected(s.id, String(r.run_number ?? r.id))}
+                                        />
+                                      )}
+                                    </td>
                                     <td className="py-1 px-3">
                                       <RunLabel runNumber={r.run_number} runId={r.id} />
                                     </td>

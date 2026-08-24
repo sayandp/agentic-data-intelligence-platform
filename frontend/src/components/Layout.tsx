@@ -83,11 +83,22 @@ function IconMarketing() {
   );
 }
 
+function IconCompare() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M10 3.25v13.5" />
+      <path d="M6.25 6.5H3.5l2.25 4.75L8 6.5H6.25Z" />
+      <path d="M14.25 6.5H11.5l2.25 4.75L16 6.5h-1.75Z" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS = [
   { to: "/sources", label: "Sources", Icon: IconSources },
   { to: "/approvals", label: "Approvals", Icon: IconApprovals },
   { to: "/reports", label: "Reports", Icon: IconReports },
   { to: "/audit", label: "Audit", Icon: IconAudit },
+  { to: "/compare", label: "Compare", Icon: IconCompare },
   { to: "/ask", label: "Ask", Icon: IconAsk },
   { to: "/predict", label: "Predict", Icon: IconPredict },
   { to: "/analytics", label: "Analytics", Icon: IconAnalytics },

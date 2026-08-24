@@ -4,6 +4,7 @@ import SourcesPage from "./pages/SourcesPage";
 import ApprovalsPage from "./pages/ApprovalsPage";
 import ReportsPage from "./pages/ReportsPage";
 import AuditPage from "./pages/AuditPage";
+import ComparePage from "./pages/ComparePage";
 import AskPage from "./pages/AskPage";
 import PredictPage from "./pages/PredictPage";
 import ExportPage from "./pages/ExportPage";
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/approvals" element={<ApprovalsPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/audit" element={<AuditPage />} />
+          <Route path="/compare" element={<ComparePage />} />
           <Route path="/ask" element={<AskPage />} />
           <Route path="/predict" element={<PredictPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />

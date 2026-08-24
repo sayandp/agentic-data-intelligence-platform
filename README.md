@@ -172,6 +172,15 @@ curl -X POST http://localhost:8000/ingest/b3f1...
 # -> {"run_id": "...", "status": "completed", "metadata": {"source_type": "file", "source_id": "b3f1...", "ingestion_timestamp": "...", "row_count": 99441, "column_types": {...}}}
 ```
 
+**Validation is on demand.** That `POST /ingest` is the only thing that starts
+a run (a human resolving an escalation resumes a paused one; there is no third
+way). The platform does not watch a source, poll it, or re-ingest it on a
+cadence - there is no scheduler here. Drift detection is real and works across
+repeated ingests of the same source, comparing each against the baseline an
+earlier one established, but **you trigger each of those ingests.** Nothing
+notices that a file changed on disk.
+
+
 Check the results directly in Postgres:
 
 ```bash
@@ -2263,6 +2272,51 @@ key, so a pre-redaction answer would have been replayed for a redacted prompt.
 Both caches now carry a `PROMPT_VERSION` in the key. This is generic: any
 future prompt change needs a version bump, or it silently serves stale answers.
 
+
+## Run comparison
+
+`GET /compare?run_a=&run_b=` (or `?source_id=` for that source's two most
+recent completed runs), and a Compare screen. Two completed runs of ONE source,
+side by side across schema, data quality, exploration, analytics, marketing and
+model score.
+
+**Computed on read; nothing is persisted.** A comparison is a pure function of
+two already-stored artifacts, so caching it would create a second copy of facts
+the run rows already hold. More importantly it would go stale: a completed
+run's artifacts are not actually frozen - confirming a column role recomputes
+that run's analytics in place (`replace=True`), and recording a privacy
+decision recomputes its classification. A stored comparison would be wrong from
+the moment someone acts on the system, and nothing would notice. Recomputing is
+a handful of JSON reads and dict diffs: no model call, no connector fetch, no
+frame rebuild.
+
+### The refusals are the feature
+
+A comparison view exists to report change, so the dangerous output is not an
+error - it is a plausible number. Four things are refused rather than rendered:
+
+| Situation | What happens |
+| --- | --- |
+| Different sources | The whole comparison is blocked. Every column, rule and finding would read as "changed", which describes two unrelated datasets rather than a change over time. |
+| A run that never completed | Blocked. Exploration and analytics run only on a completed run, so the diff would be against partial output. |
+| **Different value bases** | Analytics is `not_comparable`, with both bases named. Every value figure is a sum over that basis; a unit-price basis and a `price x quantity` basis differ by orders of magnitude and both look reasonable in isolation. |
+| **A baseline superseded between the runs** | Analytics is `not_comparable`. The later run's figures are measured against a different definition of normal, so a delta would mix a change in the data with a change in what it was compared to. |
+
+An analysis present in one run only is reported as **membership** (`appeared` /
+`disappeared`), never as a delta against nothing - `Membership` and `Delta` are
+separate types precisely so the two cannot be flattened into one shape where
+"appeared" renders as a change from zero.
+
+A relative change from zero is reported as **no relative change**, not as 0%,
+not as infinity, and not as "new" - each of those is a different wrong answer.
+
+Finding identity is built from type and columns, never from the finding's id.
+Exploration ids are positional (`correlation-3` is the third correlation), so
+inserting one earlier finding renumbers every later one and an id-based match
+would report them all as simultaneously disappeared and appeared.
+
+Nothing in the comparison is causal, in output or in UI copy. Two runs differ
+in every uncontrolled way at once.
 
 ## Known issues
 

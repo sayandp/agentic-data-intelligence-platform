@@ -302,6 +302,49 @@ export interface AuditModelRun {
   created_at: string;
 }
 
+export interface ComparisonDelta {
+  label: string;
+  before: number | null;
+  after: number | null;
+  absolute: number | null;
+  relative: number | null;
+  unit: string | null;
+  basis: string | null;
+  changed: boolean;
+}
+
+export interface ComparisonMembership {
+  label: string;
+  side: "a_only" | "b_only";
+  detail: Record<string, unknown>;
+}
+
+export interface ComparisonSection {
+  name: string;
+  comparability: "comparable" | "one_sided" | "not_comparable" | "absent";
+  reason: string;
+  deltas: ComparisonDelta[];
+  memberships: ComparisonMembership[];
+  notes: Record<string, unknown>;
+}
+
+export interface ComparedRun {
+  run_id: string;
+  run_number: number | null;
+  status: string;
+  started_at: string | null;
+  completed_at: string | null;
+  source_id: string;
+}
+
+export interface RunComparison {
+  run_a: ComparedRun;
+  run_b: ComparedRun;
+  comparable: boolean;
+  blocked_reason: string | null;
+  sections: ComparisonSection[];
+}
+
 export interface EgressEntry {
   id: string;
   agent: string;
