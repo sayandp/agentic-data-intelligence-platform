@@ -415,6 +415,30 @@ must catch it."*
 
 11. **The value basis is convention, not structure** (§3.2).
 
+12. **Nothing runs on a schedule. The platform validates ON DEMAND.** A run
+    happens when a user triggers an ingest (`POST /ingest/{source_id}`), or
+    when a human resolves an escalation and the paused run resumes. That is
+    the complete list of ways a run starts. The platform does not watch a
+    source, poll it, or re-ingest it on a cadence: there is no scheduler, no
+    cron, no timer, no file watcher, and no scheduling dependency in
+    `requirements.txt` (verified by grep across `backend/app/`; the only
+    `while True` loops are API pagination and LLM key rotation, and the only
+    "watchdog" is the query sandbox's timeout killer).
+
+    Drift detection is real and works exactly as documented - a second
+    ingest of a source is compared against the baseline the first one
+    established - **but both ingests are user-initiated.** Nothing notices
+    that a file changed on disk.
+
+    This is not contradicted anywhere: no line in README, SECURITY.md or this
+    document claims continuous, scheduled or automatic monitoring (verified
+    by grep for continuous/monitor/autonomous/24-7/real-time/schedule/cron/
+    periodic/nightly/cadence/recurring/unattended - four hits, all unrelated).
+    It is recorded here because the absence was only ever *inferable* from a
+    route signature, and a system described as an "Agentic Data Intelligence
+    Platform" that detects drift against a stored baseline invites the
+    assumption that something is watching. Nothing is.
+
 ---
 
 ## 7. Timeline

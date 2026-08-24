@@ -7,6 +7,7 @@ reader would act on (env var names, default values, the endpoints named), not
 the prose around them.
 """
 
+import ast
 import re
 from pathlib import Path
 
@@ -92,3 +93,96 @@ def test_the_export_claim_matches_the_only_export_route(document):
             f"a non-PPTX export route exists ({route}); SECURITY.md §2.4 concludes that nothing this "
             "system produces can execute a formula, which that route may make false"
         )
+
+
+# ---- the on-demand claim ----
+#
+# README, SECURITY.md 2.7 and EVIDENCE.md item 12 all now state that this
+# platform validates on demand and never on a cadence. Two assertions keep
+# that honest. Both are deliberately cheap and specific: they fail on the
+# actual act of adding a scheduler, not on unrelated edits.
+
+
+SCHEDULING_PACKAGES = (
+    "apscheduler",
+    "celery",
+    "croniter",
+    "dramatiq",
+    "huey",
+    "rq",
+    "arq",
+    "schedule",
+    "watchdog",
+    "watchfiles",
+    "python-crontab",
+)
+
+
+def test_no_scheduling_dependency_is_declared():
+    """A scheduler almost always arrives as a dependency first.
+
+    Checked against requirements.txt rather than installed packages, because
+    a direct dependency is a deliberate act and a transitive one is not."""
+    requirements = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8")
+    declared = {
+        line.split("[")[0].split("=")[0].split(">")[0].split("<")[0].strip().lower()
+        for line in requirements.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    }
+
+    found = declared & set(SCHEDULING_PACKAGES)
+    assert not found, (
+        f"a scheduling dependency was added ({sorted(found)}). The platform's on-demand claim is stated in "
+        "README (after the ingest example), SECURITY.md 2.7 and EVIDENCE.md item 12 - update all three, "
+        "or remove the dependency."
+    )
+
+
+def test_the_ingest_graph_has_exactly_two_entry_points_and_both_are_http_handlers():
+    """`invoke_in_background` is the only way the ingest graph runs.
+
+    The modules that IMPORT it are therefore the complete list of places a run
+    can start from, and today both are request handlers: POST
+    /ingest/{source_id} and POST /approvals/{id}/resolve. A scheduler,
+    watcher or timer would have to import it from somewhere that is not a
+    router, and that is what this notices.
+
+    Detected by parsing imports rather than by searching for the name. A first
+    version of this test looked for "invoke_in_background(" and missed
+    approvals.py entirely, because there the function is PASSED as a callback
+    (`add_task(invoke_in_background, ...)`) rather than called - which is
+    precisely how a scheduler would register it too. Text-matching was the
+    wrong instrument for the thing being guarded.
+
+    A legitimate new caller failing this is the intended outcome, not a false
+    positive - the same shape as the authentication check above. It asks
+    whoever adds one to confirm the docs still describe reality."""
+    app_dir = Path(__file__).resolve().parents[1] / "app"
+
+    importers = set()
+    for path in app_dir.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and any(
+                alias.name == "invoke_in_background" for alias in node.names
+            ):
+                importers.add(path.relative_to(app_dir).as_posix())
+
+    assert importers == {"routers/ingest.py", "routers/approvals.py"}, (
+        f"the set of things that can start an ingest run changed: {sorted(importers)}. "
+        "If a scheduler, watcher or timer was added, README (after the ingest example), "
+        "SECURITY.md 2.7 and EVIDENCE.md item 12 all claim the platform never re-ingests on a "
+        "cadence, and SECURITY.md 2.6's SSRF bound depends on it. Update them."
+    )
+
+
+def test_the_documents_state_the_on_demand_limitation(document):
+    """The claim must actually be present to be worth guarding."""
+    flat = " ".join(document.split())
+    assert "There is no scheduled or continuous monitoring" in flat
+
+    readme = " ".join((Path(__file__).resolve().parents[2] / "README.md").read_text(encoding="utf-8").split())
+    assert "Validation is on demand." in readme
+
+    evidence = " ".join((Path(__file__).resolve().parents[2] / "docs/EVIDENCE.md").read_text(encoding="utf-8").split())
+    assert "Nothing runs on a schedule." in evidence

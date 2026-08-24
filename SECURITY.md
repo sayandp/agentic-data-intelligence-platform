@@ -176,14 +176,41 @@ A SQL connector runs the query in its `connection_config` against the
 credentials it is given. An API connector fetches the URL it is given. Neither
 is a sandbox: whoever can create a source can make the server issue those
 requests, which on an exposed instance is server-side request forgery. See
-§2.1 — this is another consequence of having no authentication.
+§2.1 — this is another consequence of having no authentication. What limits it
+today is that those requests only happen when a person triggers an ingest
+(§2.7).
 
-### 2.7 Dependencies are not audited here
+### 2.7 There is no scheduled or continuous monitoring
+
+The platform validates **on demand**. A run happens when a user triggers an
+ingest (`POST /ingest/{source_id}`), or when a human resolves an escalation
+and the paused run resumes. There is no scheduler, cron, timer or file
+watcher, and no scheduling dependency. Drift detection works across repeated
+ingests of the same source, but every one of those ingests is user-initiated.
+
+This belongs in a threat model because it cuts both ways.
+
+**It reduces attack surface.** There is no unattended code path that fetches a
+URL or opens a file on its own. That materially bounds §2.6: a hostile source
+registered on an exposed instance causes an outbound request only when
+somebody triggers an ingest of it. Were a scheduler ever added, a source
+registered once — which §2.1 says anyone who can reach the port may do —
+would become a recurring, unattended outbound request from this host, and
+§2.6 would become considerably more serious than it currently is.
+
+**It also means nothing here will alert you.** This is not a detection system.
+It will not notice that a file changed, that a feed started returning nulls,
+or that a source was tampered with, until a person asks it to look. Any
+expectation of timely detection has to be met by whatever schedules the
+ingest — this platform is the thing being called, not the thing doing the
+calling.
+
+### 2.8 Dependencies are not audited here
 
 No supply-chain verification, pinning policy, or vulnerability scanning is
 part of this system.
 
-### 2.8 The audit trail is not tamper-evident
+### 2.9 The audit trail is not tamper-evident
 
 `egress_events`, `agent_traces` and validation events are ordinary rows in the
 same database everything else uses. Anyone who can write to that database can
