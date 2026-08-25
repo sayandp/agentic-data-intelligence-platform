@@ -4,6 +4,10 @@ __pycache__/
 venv/
 .env
 *.db
+# SQLite's transient rollback journal, created while the dev DB is written.
+*.db-journal
+*.db-wal
+*.db-shm
 .pytest_cache/
 .cache/
 .run_artifacts/

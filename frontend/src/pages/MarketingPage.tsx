@@ -104,9 +104,35 @@ export default function MarketingPage() {
 
   const notFound = error instanceof ApiError && error.status === 404;
   const totals = data?.findings.find((f) => f.finding_type === "account_totals");
-  const warnings = (data?.findings ?? []).filter((f) => f.severity === "warning");
-  const improvements = (data?.findings ?? []).filter((f) => f.severity === "improvement");
   const t = totals?.payload;
+
+  // AD-SET FILTERING. Purely deterministic and purely local: the findings
+  // are already persisted per ad set (payload.scope), so narrowing the view
+  // is a filter over what the run produced, never a new request and never a
+  // new model call. Clicking the selected ad set again clears it.
+  const [selectedAdset, setSelectedAdset] = useState<string | null>(null);
+
+  const adsets = Array.from(
+    new Set(
+      (data?.findings ?? [])
+        .map((f) => (f.payload as { scope?: string | null }).scope)
+        .filter((scope): scope is string => Boolean(scope))
+    )
+  ).sort();
+
+  // Account-wide findings (no scope) stay visible under a filter: an ad set
+  // is read against the account it sits in, and hiding the totals would
+  // leave the reader comparing a number to nothing.
+  const inScope = (f: MarketingFindingRecord) => {
+    if (!selectedAdset) return true;
+    const scope = (f.payload as { scope?: string | null }).scope;
+    return !scope || scope === selectedAdset;
+  };
+
+  const visible = (data?.findings ?? []).filter(inScope);
+  const warnings = visible.filter((f) => f.severity === "warning");
+  const improvements = visible.filter((f) => f.severity === "improvement");
+  const concentration = visible.filter((f) => f.finding_type === "spend_concentration");
 
   // An ENTRY POINT, not a second pipeline: the same /sources/upload and
   // /ingest endpoints the Sources page uses, through the same shared
@@ -226,6 +252,80 @@ export default function MarketingPage() {
                   note={t.undefined?.blended_ctr}
                 />
               </div>
+            </Card>
+          )}
+
+          {adsets.length > 0 && (
+            <Card
+              title="Ad sets"
+              subtitle="Select one to narrow this page to its own metrics, trend and warnings. Account-wide figures stay visible, so a filtered ad set is still read against the account it sits in."
+            >
+              <div className="flex flex-wrap gap-2">
+                {adsets.map((adset) => {
+                  const active = selectedAdset === adset;
+                  return (
+                    <button
+                      key={adset}
+                      type="button"
+                      aria-pressed={active}
+                      data-testid="marketing-adset-chip"
+                      className={
+                        active
+                          ? "rounded-sm bg-brand-600 px-3 py-1 text-sm text-on-accent"
+                          : "rounded-sm border border-border-strong px-3 py-1 text-sm text-ink hover:bg-surface-sunken"
+                      }
+                      onClick={() => setSelectedAdset(active ? null : adset)}
+                    >
+                      {adset}
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedAdset && (
+                <p className="mt-3 text-sm text-ink-muted" data-testid="marketing-filter-note">
+                  Showing <span className="font-medium text-ink">{selectedAdset}</span> and account-wide figures.{" "}
+                  <button type="button" className="text-brand-600 underline" onClick={() => setSelectedAdset(null)}>
+                    Show all ad sets
+                  </button>
+                </p>
+              )}
+            </Card>
+          )}
+
+          {concentration.length > 0 && (
+            <Card
+              title="Where the budget goes, and where the return comes from"
+              subtitle="Computed by the same ABC/Pareto engine the analytics agent uses, applied to ad sets."
+            >
+              <ul>
+                {concentration.map((f) => {
+                  const p = f.payload as {
+                    measured_over: string;
+                    entity_count: number;
+                    value_share: number;
+                    band_cutoff: number;
+                    top_entities: string[];
+                    compared_against: string;
+                  };
+                  return (
+                    <li key={f.id} className="border-b border-border py-2 last:border-b-0">
+                      <div className="flex flex-wrap items-baseline gap-x-3">
+                        <Badge value={p.measured_over} tone="neutral" />
+                        <span className="text-ink">
+                          {p.entity_count} ad set(s) account for {(p.value_share * 100).toFixed(1)}% of{" "}
+                          {p.measured_over}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-ink-faint">{p.compared_against}</p>
+                      {p.top_entities.length > 0 && (
+                        <p className="mt-1 text-sm text-ink-muted">
+                          Band A: {p.top_entities.join(", ")}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
             </Card>
           )}
 

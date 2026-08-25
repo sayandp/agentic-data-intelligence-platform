@@ -90,6 +90,88 @@ def marketing_charts(df: pd.DataFrame, roles: dict, config: MarketingConfig) -> 
                 )
             )
 
+    # -- efficiency against the account median: UNORDERED categories --
+    # A comparison across ad sets, so a bar with the categorical palette. The
+    # median is drawn as a line on the same axes rather than stated only in
+    # prose: a reader comparing bars to a number in a caption has to hold it
+    # in their head.
+    for metric in ("cpa", "roas"):
+        if not campaign_col or metric not in df.columns:
+            continue
+        by_adset = df.groupby(campaign_col, observed=True)[metric].mean().dropna()
+        if by_adset.empty or len(by_adset) < config.min_adsets_for_ranking:
+            continue
+        ranked = by_adset.sort_values(ascending=(metric == "cpa")).head(MAX_ADSETS_CHARTED)
+        median = float(by_adset.median())
+        charts.append(
+            _spec(
+                f"adset_{metric}_vs_median",
+                f"{metric.upper()} by ad set, against the account median ({median:,.4g})",
+                [
+                    {
+                        "x": [str(i) for i in ranked.index],
+                        "y": [float(v) for v in ranked.values],
+                        "type": "bar",
+                        "name": metric,
+                    },
+                    {
+                        "x": [str(i) for i in ranked.index],
+                        "y": [median] * len(ranked),
+                        "type": "scatter",
+                        "mode": "lines",
+                        "name": f"account median {metric}",
+                        "line": {"width": 2, "dash": "dash"},
+                    },
+                ],
+                {
+                    "xaxis": {"title": "ad set"},
+                    "yaxis": {"title": metric},
+                    "margin": {"t": 16, "r": 16, "b": 96, "l": 64},
+                    "showlegend": True,
+                },
+                [ROLE_CATEGORICAL, ROLE_ACCENT],
+            )
+        )
+
+    # -- spend against return per ad set: UNORDERED categories --
+    # Two bars per ad set answers "is the money going where the return is"
+    # in one picture, which is the question the concentration finding states
+    # in numbers.
+    value_col = roles.get(ColumnRole.CONVERSION_VALUE)
+    if campaign_col and spend_col and value_col and {spend_col, value_col} <= set(df.columns):
+        totals = df.groupby(campaign_col, observed=True)[[spend_col, value_col]].sum().dropna()
+        totals = totals.sort_values(spend_col, ascending=False).head(MAX_ADSETS_CHARTED)
+        if not totals.empty:
+            charts.append(
+                _spec(
+                    "adset_spend_vs_return",
+                    "Spend and return by ad set",
+                    [
+                        {
+                            "x": [str(i) for i in totals.index],
+                            "y": [float(v) for v in totals[spend_col].values],
+                            "type": "bar",
+                            "name": "spend",
+                        },
+                        {
+                            "x": [str(i) for i in totals.index],
+                            "y": [float(v) for v in totals[value_col].values],
+                            "type": "bar",
+                            "name": "return",
+                        },
+                    ],
+                    {
+                        "xaxis": {"title": "ad set"},
+                        "yaxis": {"title": "value"},
+                        "barmode": "group",
+                        "margin": {"t": 16, "r": 16, "b": 96, "l": 64},
+                        "showlegend": True,
+                    },
+                    [ROLE_CATEGORICAL, ROLE_CATEGORICAL],
+                )
+            )
+
+
     # -- CPA over time: ORDERED, single series, accent --
     if date_col and "cpa" in df.columns and df["cpa"].notna().any():
         x, y = _daily(df, date_col, "cpa", how="mean")

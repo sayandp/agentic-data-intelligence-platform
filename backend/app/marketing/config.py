@@ -97,6 +97,26 @@ class MarketingConfig:
     #: Days in the "recent" window for trend comparisons. The prior window
     #: of the same length is what it is compared against.
     trend_window_days: int = 7
+
+    #: Length of each half of a period-over-period comparison, in days.
+    #: Separate from trend_window_days: a trend is measured within one
+    #: window, a movement between two.
+    comparison_window_days: int = 7
+
+    #: The cumulative share band A accounts for. Stated here so the
+    #: marketing pack reports the same cutoff the analytics Pareto engine
+    #: applies, rather than a second number that could drift from it.
+    concentration_band_cutoff: float = 0.8
+
+    #: Below this many ad sets, a median is a statement about two or three
+    #: numbers and ranking against it says nothing.
+    min_adsets_for_ranking: int = 3
+
+    #: How large a period-over-period move must be, relative to the prior
+    #: window, before it is reported. Without it every ad set reports a
+    #: movement every run - a CTR shifting by 0.002% is arithmetic, not a
+    #: finding, and a list of them buries the one move that matters.
+    min_relative_movement: float = 0.05
     #: Minimum rows in a window before a trend rule will fire. Below this a
     #: comparison is noise, and the rule reports that it was skipped.
     min_rows_for_trend: int = 3
@@ -131,6 +151,10 @@ class MarketingConfig:
             "roas_target": self.roas_target,
             "underperformance_multiple": self.underperformance_multiple,
             "trend_window_days": self.trend_window_days,
+            "comparison_window_days": self.comparison_window_days,
+            "concentration_band_cutoff": self.concentration_band_cutoff,
+            "min_adsets_for_ranking": self.min_adsets_for_ranking,
+            "min_relative_movement": self.min_relative_movement,
             "min_rows_for_trend": self.min_rows_for_trend,
             "ctr_percent_detection_threshold": self.ctr_percent_detection_threshold,
             "summary_row_labels": list(self.summary_row_labels),

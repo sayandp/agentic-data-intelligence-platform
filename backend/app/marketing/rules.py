@@ -425,6 +425,11 @@ def account_totals(df, roles, config, baseline_profile=None) -> tuple[list[Marke
 #: Every rule, in report order: key values first, then warnings, then
 #: improvements. Declared as data so the engine cannot run a rule the
 #: severity table does not know about.
+# Part 3's deeper analyses, appended so the engine's existing guarantees
+# (one rule never sinking the rest, stable ids over the final list) cover
+# them unchanged.
+from app.marketing.depth import DEPTH_RULES  # noqa: E402
+
 RULES = (
     account_totals,
     cpa_above_baseline,
@@ -433,4 +438,5 @@ RULES = (
     budget_mispacing,
     roas_below_target,
     adset_underperforming,
+    *DEPTH_RULES,
 )

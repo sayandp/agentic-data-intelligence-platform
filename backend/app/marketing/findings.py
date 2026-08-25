@@ -51,8 +51,14 @@ class MarketingFindingType(str, Enum):
     # IMPROVEMENT
     ROAS_BELOW_TARGET = "roas_below_target"
     ADSET_UNDERPERFORMING = "adset_underperforming"
+    # IMPROVEMENT (Part 3 depth)
+    ADSET_PERIOD_MOVEMENT = "adset_period_movement"
+    ADSET_EFFICIENCY_RANK = "adset_efficiency_rank"
+    # WARNING (Part 3 depth)
+    ADSET_FATIGUE_TREND = "adset_fatigue_trend"
     # KEY_VALUE
     ACCOUNT_TOTALS = "account_totals"
+    SPEND_CONCENTRATION = "spend_concentration"
 
 
 #: Which severity each finding type carries. Declared as data so a rule
@@ -66,6 +72,14 @@ SEVERITY_OF: dict[MarketingFindingType, MarketingSeverity] = {
     MarketingFindingType.ROAS_BELOW_TARGET: MarketingSeverity.IMPROVEMENT,
     MarketingFindingType.ADSET_UNDERPERFORMING: MarketingSeverity.IMPROVEMENT,
     MarketingFindingType.ACCOUNT_TOTALS: MarketingSeverity.KEY_VALUE,
+    # Part 3 depth. Fatigue escalates because a rising frequency against a
+    # falling performance trend is the case an operator most needs to see;
+    # movement and ranking are improvements, since a number moving is not
+    # by itself a problem.
+    MarketingFindingType.ADSET_FATIGUE_TREND: MarketingSeverity.WARNING,
+    MarketingFindingType.ADSET_PERIOD_MOVEMENT: MarketingSeverity.IMPROVEMENT,
+    MarketingFindingType.ADSET_EFFICIENCY_RANK: MarketingSeverity.IMPROVEMENT,
+    MarketingFindingType.SPEND_CONCENTRATION: MarketingSeverity.KEY_VALUE,
 }
 
 
@@ -100,6 +114,11 @@ class ThresholdBreachPayload(BaseModel):
         MarketingFindingType.BUDGET_MISPACING,
         MarketingFindingType.ROAS_BELOW_TARGET,
         MarketingFindingType.ADSET_UNDERPERFORMING,
+        # Part 3 depth. Each states an observed value against a stated
+        # threshold, which is exactly what this shape exists for.
+        MarketingFindingType.ADSET_PERIOD_MOVEMENT,
+        MarketingFindingType.ADSET_FATIGUE_TREND,
+        MarketingFindingType.ADSET_EFFICIENCY_RANK,
     ]
     severity: MarketingSeverity
     metric: str                    # "cpa", "frequency", "ctr", "daily_spend", "roas"
@@ -144,8 +163,37 @@ class AccountTotalsPayload(BaseModel):
     undefined: dict[str, str] = Field(default_factory=dict)
 
 
+class SpendConcentrationPayload(BaseModel):
+    """How concentrated spend - or return - is across ad sets.
+
+    Computed by the business-analytics agent's ABC/Pareto engine
+    (app/analytics/pareto.py), called unmodified over ad sets. `measured_over`
+    says which quantity was ranked, because "the top 2 ad sets hold 80%" means
+    something different about spend than about return, and a reader comparing
+    the two needs to know which is which.
+
+    A KEY VALUE, not a breach: nothing here is exceeded. Concentration is a
+    shape, and reporting it as a threshold breach would invent a target the
+    account never set.
+    """
+
+    finding_type: Literal[MarketingFindingType.SPEND_CONCENTRATION] = MarketingFindingType.SPEND_CONCENTRATION
+    severity: Literal[MarketingSeverity.KEY_VALUE] = MarketingSeverity.KEY_VALUE
+    #: "spend" or "return".
+    measured_over: str
+    band: str
+    entity_count: int
+    value_share: float
+    #: The cumulative-share cutoff band A is defined by, stated so the share
+    #: above is readable without knowing the engine's defaults.
+    band_cutoff: float
+    top_entities: list[str] = Field(default_factory=list)
+    #: The column ranked and the column grouped by, in words.
+    compared_against: str
+
+
 MarketingPayload = Annotated[
-    Union[ThresholdBreachPayload, AccountTotalsPayload],
+    Union[ThresholdBreachPayload, AccountTotalsPayload, SpendConcentrationPayload],
     Field(discriminator="finding_type"),
 ]
 

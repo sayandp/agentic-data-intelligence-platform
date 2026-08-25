@@ -2374,6 +2374,69 @@ that reads more honestly in the trace. Like narration, it is a
 **degrade-not-fail** concern: a run whose analysis succeeded is never reported
 as failed because its summary could not be written.
 
+## Marketing depth (Part 3)
+
+Four analyses added to the existing pack, all deterministic and all
+capability-gated like the seven before them. Registered in the same `RULES`
+tuple, so the engine's guarantees - one rule never sinking the rest, stable ids
+assigned over the final list - cover them unchanged.
+
+| Analysis | What it reports |
+| --- | --- |
+| Period-over-period movement | How each ad set's CPA, ROAS and CTR moved between the last window and the one before it |
+| Fatigue | An ad set whose frequency rose while its CTR or ROAS fell, over the same days |
+| Spend concentration | Which ad sets consume the budget, and which return it |
+| Efficiency ranking | Each ad set's CPA and ROAS against the account median, with the median's value stated |
+
+### Two pieces of machinery are reused, not rebuilt
+
+`Delta` (`app/comparison/models.py`, Part 1) computes every movement, including
+its rule that a relative change from zero is **undefined** rather than infinite
+or zero.
+
+`run_abc_pareto` (`app/analytics/pareto.py`) computes spend concentration. It is
+called **unmodified**, through a synthetic `RoleDetection` naming the ad set as
+the item and spend as the monetary column. The band cutoffs, the concentration
+floor, the held-out non-contributing entities and the "concentration is weak for
+this data" note stay one implementation; ad-set spend is simply another subject
+to run it over. Both reuses are asserted structurally, by parsing
+`app/marketing/depth.py`'s imports and checking it contains no band arithmetic
+of its own.
+
+### The materiality floor
+
+`min_relative_movement` (default 5%) exists because without it every ad set
+reported a movement on every run - a CTR shifting by 0.002% is arithmetic, not a
+finding, and a list of them buries the one move that matters. A move **from
+zero** is exempt: `Delta.relative` is undefined there, and that IS material - a
+metric appearing from nothing - so it is reported rather than filtered out by a
+comparison it cannot be measured against.
+
+### The median, not the mean
+
+Efficiency ranking compares against the account median. One runaway ad set drags
+a mean far enough that most ad sets sit "below average", which is arithmetic
+rather than a finding. The median's **value** is stated in every finding's
+`compared_against`, not merely the word.
+
+### Nothing here is causal
+
+A frequency trend rising while a performance trend falls is reported as two
+co-occurring movements over the same period, in those words. That is what the
+columns support; anything stronger would be a claim they cannot carry. And every
+finding about a derived metric still states its within-run basis, because CPA,
+ROAS and CTR are derived *after* baseline profiling and no stored baseline
+exists for them.
+
+### Interactivity
+
+Selecting an ad set narrows the page to it. Deterministic and entirely local:
+the findings are already persisted per ad set (`payload.scope`), so filtering is
+a filter over what the run produced - no new request, no model call. An E2E test
+counts backend requests across the interaction and asserts zero. Account-wide
+figures stay visible while a filter is on, because an ad set is read against the
+account it sits in.
+
 ## Known issues
 
 **`GET /ingest/{run_id}/status` is O(source size).** `_serialize_run_response`
