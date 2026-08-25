@@ -18,6 +18,14 @@ const FIXTURE_DIR = "D:/main_project/backend/data/e2e_upload";
  * the page.
  */
 
+// Each test drives a COMPLETE pipeline run - ingest, exploration, analytics,
+// narrative and summary, the last two through a real model - and then waits
+// for the summary row. The internal deadlines here (300s for the ingest, 180s
+// for the summary) already exceed Playwright's 3-minute per-test default, so
+// the default could never be honoured; under load in the last theme to run it
+// timed out. Declared once, at the budget the tests actually need.
+test.describe.configure({ timeout: 600_000 });
+
 const CAUSAL_WORDS = ["because", "caused", "due to", "drove", "led to", "resulted in"];
 
 const CSV = `region,amount\n${Array.from({ length: 60 }, (_, i) => `north,${i}`).join("\n")}\n`;
@@ -109,7 +117,10 @@ test("a summary written without a model says so, with its reason", async ({ page
 
   if (summary.generation_mode === "template") {
     await expect(page.getByText("written without a model")).toBeVisible();
-    await expect(page.getByText(String(summary.fallback_reason))).toBeVisible();
+    // .first(): the reason appears twice by design - once inside the template
+    // text ("This summary was written without a language model (...)") and
+    // once as the mode badge's note. Both are correct; the locator was not.
+    await expect(page.getByText(String(summary.fallback_reason)).first()).toBeVisible();
   } else {
     await expect(page.getByText("written by a model")).toBeVisible();
   }

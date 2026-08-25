@@ -44,6 +44,7 @@ from app.correlation import CorrelatedGroup, correlate_events
 from app.db import SessionLocal
 from app.analytics.pipeline import confirmed_roles_for_source, run_business_analytics_for_run
 from app.exploration.pipeline import run_exploration_for_run
+from app.agriculture.pipeline import run_agriculture_for_run
 from app.marketing.pipeline import run_marketing_for_run
 from app.privacy.classification import classify_frame
 from app.privacy.confirmations import confirmed_pii_for_source
@@ -468,6 +469,23 @@ def explore_node(state: IngestState, config: RunnableConfig) -> dict:
             )
         except Exception as exc:  # noqa: BLE001 - additive reporting never fails a run
             print(f"[marketing] marketing analysis failed for run {run.id}: {type(exc).__name__}: {exc}")
+
+        # The Agriculture Agent, on the same REPAIRED frame and the same single
+        # role detection, wrapped for the same reason. A source that is not
+        # agricultural data is not a failure - it is recorded as not
+        # applicable, with the missing role named. The two domain packs are
+        # independent: a run can qualify for neither, either, or in principle
+        # both, and neither pack's refusal affects the other's.
+        try:
+            run_agriculture_for_run(
+                db,
+                run,
+                contract.data,
+                roles_detection,
+                baseline_profile=baseline.profile_json if baseline else None,
+            )
+        except Exception as exc:  # noqa: BLE001 - additive reporting never fails a run
+            print(f"[agriculture] agriculture analysis failed for run {run.id}: {type(exc).__name__}: {exc}")
         db.commit()
 
     return {"route": "narrate" if exploration_record is not None else "done"}

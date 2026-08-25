@@ -451,6 +451,75 @@ the new prompt has not been run over a comparable corpus.
 
 ---
 
+## 5.6 The extensibility claim, tested by a second domain pack
+
+§5.2 claimed "a new domain fits as configuration plus a rule pack" on the
+evidence of ONE pack. The agriculture pack is the second data point, and it
+mostly holds - with one honest qualification.
+
+### What each pack needed OUTSIDE its own directory
+
+| Shared file | Marketing (1st) | Agriculture (2nd) |
+| --- | --- | --- |
+| `analytics/roles.py` (roles + scorers) | +225 lines | +~150 lines |
+| `graph/nodes.py` (run the pack) | +18 | +16 |
+| `main.py` (register router) | +3 | +2 |
+| `models.py` (findings table) | +19 | +18 |
+| frontend route / types / nav | 3 files | 3 files |
+| `numeric_text.py` (NEW shared module) | **+96** | not needed |
+| `lib/plotly.ts` (chart colours) | **+15** | not needed |
+| `export/chart_images.py` (deck colours) | **+14** | not needed |
+| `comparison/engine.py` | did not exist yet | **generalised** |
+| `summary/facts.py` | did not exist yet | **generalised** |
+| `domain_packs.py` (NEW shared module) | n/a | **new** |
+
+### The honest reading
+
+The pack-local surface is identical: eight modules, a router, a page, tests.
+Nothing about the agriculture rules, preprocessing, charts or applicability
+required a change to any shared abstraction - the pack slotted into the same
+`RULES` tuple, the same three severities, the same "a row is written even when
+the run does not qualify" contract, and the same chart-spec path with the same
+colour-role vocabulary.
+
+**The second pack DID need two shared consumers generalised, and marketing did
+not.** That is not evidence the domain abstraction is weak. Those two consumers
+- the run comparison and the Session Summary - **did not exist when marketing
+was built**; they were written in Parts 1 and 2 of this same task, against a
+codebase containing exactly one domain pack, and both read `MarketingAnalysis`
+by name. Hardcoding the only pack that existed was reasonable and became a
+special case the moment a second appeared.
+
+So the cost was: one new registry module (`domain_packs.py`) and two consumers
+switched from naming a table to iterating a list. Marketing's equivalent cost
+was one new shared module (`numeric_text.py`) plus two colour-path extensions.
+The two packs cost about the same amount of shared work, for different reasons.
+
+**UNVERIFIED:** that a THIRD pack would need zero consumer edits. The registry
+is designed for it and the two consumers now iterate it, but nothing has
+exercised that path. The claim in README that "a third pack means appending one
+entry" is a design intention, not a measurement.
+
+### What the second pack found that the first did not
+
+Building agriculture surfaced two guards the marketing pack never needed,
+because its domain has confusable measures where marketing's does not:
+
+- A crop YEAR satisfies every shape test area, production, rainfall and price
+  apply. Summed as production it yields a plausible total in the millions.
+- Area, production and yield are three non-negative numerics on the same rows;
+  a 2.5-hectare area and a 2.5 t/ha yield are the same number.
+
+Both are guarded and falsified (10/10, `backend/scripts/falsify_agriculture.py`).
+Falsification also showed two of those guards are **redundant in outcome** with
+mechanisms already present - the confidence floor rejects an unnamed
+shape-only score anyway, and the sibling stand-down changes the refusal REASON
+rather than the refusal. That is recorded in the tests rather than hidden,
+because a guard whose value is the error message should be described that way
+and not claimed as load-bearing.
+
+---
+
 ## 6. Limitations, honestly
 
 1. **The container path has never been run.** `docker-compose.yml`,

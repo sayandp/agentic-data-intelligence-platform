@@ -54,6 +54,20 @@ class ColumnRole(str, Enum):
     CONVERSIONS = "conversions"            # non-negative counts, sparse
     CONVERSION_VALUE = "conversion_value"  # monetary, revenue attributed to ads
 
+    # -- agriculture roles (app/agriculture/) --
+    # Same detector, same confidence bands, same refuse-rather-than-guess
+    # floor as everything above. A second detector would be two things that
+    # must agree about what a column is.
+    SEASON = "season"                # kharif / rabi / whole year, or a season label
+    CROP_YEAR = "crop_year"          # the year a season belongs to - a LABEL, never a measure
+    DISTRICT = "district"            # district / region / state - the geographic grain
+    CROP = "crop"                    # what was grown
+    AREA_CULTIVATED = "area_cultivated"      # hectares or acres sown
+    PRODUCTION_QUANTITY = "production_quantity"  # tonnes / quintals harvested
+    CROP_YIELD = "crop_yield"        # production per unit area
+    RAINFALL = "rainfall"            # millimetres
+    MARKET_PRICE = "market_price"    # price per unit
+
 
 class Confidence(str, Enum):
     """Banded rather than a bare float so the rule is legible in output.
@@ -128,6 +142,18 @@ _NAME_HINTS: dict[ColumnRole, re.Pattern[str]] = {
     ColumnRole.FREQUENCY: re.compile(r"(frequency|freq)", re.I),
     ColumnRole.CONVERSIONS: re.compile(r"(conversion|purchase|result|lead|signup|install)", re.I),
     ColumnRole.CONVERSION_VALUE: re.compile(r"(conversion[_\- ]?value|purchase[_\- ]?value|revenue|action[_\- ]?value)", re.I),
+    # -- agriculture. `crop_yield` deliberately does NOT include "production":
+    #    a yield IS production per area, and the two names must stay
+    #    separable or the three measures collapse into each other.
+    ColumnRole.SEASON: re.compile(r"(season|kharif|rabi|zaid|autumn|summer|winter|whole[_\- ]?year)", re.I),
+    ColumnRole.CROP_YEAR: re.compile(r"(crop[_\- ]?year|harvest[_\- ]?year|^year$|_year$)", re.I),
+    ColumnRole.DISTRICT: re.compile(r"(district|region|state|taluk|tehsil|block|mandal|county|province|zone)", re.I),
+    ColumnRole.CROP: re.compile(r"(crop|commodity|produce|cultivar|variety)", re.I),
+    ColumnRole.AREA_CULTIVATED: re.compile(r"(area|hectare|hectrare|acre|acreage|sown|cultivat)", re.I),
+    ColumnRole.PRODUCTION_QUANTITY: re.compile(r"(production|produced|output|harvest(ed)?|tonne|tons?|quintal)", re.I),
+    ColumnRole.CROP_YIELD: re.compile(r"(yield|productivity|per[_\- ]?hectare|per[_\- ]?acre|kg[_/\- ]?ha|t[_/\- ]?ha)", re.I),
+    ColumnRole.RAINFALL: re.compile(r"(rain|rainfall|precip|precipitation)", re.I),
+    ColumnRole.MARKET_PRICE: re.compile(r"(msp|market[_\- ]?price|modal[_\- ]?price|price|rate)", re.I),
 }
 
 #: Names that mark an id as belonging to the ROW rather than to a repeating
@@ -628,6 +654,170 @@ def _score_conversion_value(series: pd.Series, column: str, rows: int) -> tuple[
     return _score_ad_monetary(series, column, ColumnRole.CONVERSION_VALUE)
 
 
+# ---------------------------------------------------------------------------
+# agriculture
+#
+# TWO TRAPS ARE GUARDED HERE EXPLICITLY, because four detector bugs in this
+# project came from a plausible-but-wrong role assignment producing confident
+# nonsense (cost beating revenue; Impressions taken as transaction_id).
+#
+# TRAP 1 - A YEAR IS A LABEL, NOT A MEASURE. `Crop_Year` holds integers like
+# 2015..2023: non-negative, whole, low-cardinality. It satisfies every shape
+# test area, production, rainfall and price apply. Summed, it produces a
+# "total production" in the millions that looks entirely plausible. Every
+# agricultural MEASURE scorer therefore refuses a column that reads as a year,
+# by name or by value range.
+#
+# TRAP 2 - AREA, PRODUCTION AND YIELD ARE MUTUALLY CONFUSABLE. All three are
+# non-negative continuous numerics on the same rows. Shape cannot separate
+# them - a yield of 2.5 t/ha and an area of 2.5 ha are the same number. So for
+# these three the NAME IS MANDATORY: a column with no matching name hint
+# scores zero rather than taking a shape-only score, and each scorer stands
+# down when a more specific sibling name matches. Refusing to fill the slot is
+# the correct output when the only evidence available cannot distinguish the
+# three.
+# ---------------------------------------------------------------------------
+
+#: Plausible crop years. Wide enough for historical series, narrow enough that
+#: a production figure in tonnes never lands inside it by accident.
+_YEAR_MIN, _YEAR_MAX = 1900, 2100
+
+
+def _reads_as_year(series: pd.Series, column: str) -> bool:
+    """A column that is a year LABEL rather than a measured quantity.
+
+    Name first, then values: a column literally named `Crop_Year` is a year
+    whatever it holds, and an unnamed integer column whose every value sits in
+    a plausible year range is one too.
+    """
+    if _NAME_HINTS[ColumnRole.CROP_YEAR].search(column):
+        return True
+    non_null = _numeric_non_null(series)
+    if non_null is None or non_null.empty:
+        return False
+    if not bool((non_null == non_null.round()).all()):
+        return False
+    return bool((non_null >= _YEAR_MIN).all() and (non_null <= _YEAR_MAX).all())
+
+
+def _score_agri_measure(
+    series: pd.Series,
+    column: str,
+    role: ColumnRole,
+    conflicting: tuple[ColumnRole, ...] = (),
+    allow_zero: bool = True,
+) -> tuple[float, list[str]]:
+    """A non-negative agricultural quantity whose NAME must identify it.
+
+    `conflicting` names the siblings whose hint, if present, means this column
+    belongs to them instead.
+    """
+    non_null = _numeric_non_null(series)
+    if non_null is None:
+        return 0.0, ["not a numeric column"]
+    if _reads_as_year(series, column):
+        return 0.0, ["reads as a crop year - a label, not a measured quantity"]
+    if _IDENTIFIER_NAME.search(column):
+        return 0.0, ["name reads as an identifier, not a measured quantity"]
+    if bool((non_null < 0).any()):
+        return 0.0, ["contains negative values"]
+    if not allow_zero and bool((non_null == 0).all()):
+        return 0.0, ["every value is zero"]
+
+    for other in conflicting:
+        if _NAME_HINTS[other].search(column) and not _NAME_HINTS[role].search(column):
+            return 0.0, [f"name reads as {other.value}, which is a different measure"]
+
+    if not _NAME_HINTS[role].search(column):
+        # THE GUARD. Area, production and yield are the same shape; without a
+        # name there is no evidence distinguishing them, and a shape-only
+        # score here is how one becomes the other.
+        return 0.0, [
+            f"no name evidence for {role.value} - area, production and yield share a shape, "
+            "so a column that does not name itself is not assigned to any of them"
+        ]
+
+    return min(1.0, SHAPE_ONLY_SCORE + _name_bonus(column, role) * 2.5), [
+        f"non-negative numeric named as {role.value}"
+    ]
+
+
+def _score_area_cultivated(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    return _score_agri_measure(
+        series, column, ColumnRole.AREA_CULTIVATED,
+        conflicting=(ColumnRole.PRODUCTION_QUANTITY, ColumnRole.CROP_YIELD),
+    )
+
+
+def _score_production_quantity(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    return _score_agri_measure(
+        series, column, ColumnRole.PRODUCTION_QUANTITY,
+        conflicting=(ColumnRole.AREA_CULTIVATED, ColumnRole.CROP_YIELD),
+    )
+
+
+def _score_crop_yield(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    return _score_agri_measure(
+        series, column, ColumnRole.CROP_YIELD,
+        conflicting=(ColumnRole.AREA_CULTIVATED, ColumnRole.PRODUCTION_QUANTITY),
+    )
+
+
+def _score_rainfall(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    return _score_agri_measure(series, column, ColumnRole.RAINFALL)
+
+
+def _score_market_price(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    # `price` also matches the generic MONETARY hint; both may score, and the
+    # agriculture pack asks for MARKET_PRICE specifically.
+    return _score_agri_measure(series, column, ColumnRole.MARKET_PRICE)
+
+
+def _score_agri_label(series: pd.Series, column: str, role: ColumnRole) -> tuple[float, list[str]]:
+    """Season, district and crop: repeating text labels, not measurements."""
+    if not _NAME_HINTS[role].search(column):
+        return 0.0, [f"name does not read as {role.value}"]
+    non_null = series.dropna()
+    if non_null.empty:
+        return 0.0, ["column is entirely null"]
+    if column_kind(series) is ColumnKind.DATETIME:
+        return 0.0, ["datetime column - an event date, not a label"]
+    if _looks_like_a_measure(series):
+        return 0.0, ["continuous numeric column - a measurement, not a label"]
+
+    uniques = int(non_null.nunique())
+    if uniques <= 1:
+        return 0.0, [f"only {uniques} distinct value - nothing to group by"]
+    return min(1.0, SHAPE_ONLY_SCORE + _name_bonus(column, role) * 2.5), [
+        f"{uniques} distinct repeating labels"
+    ]
+
+
+def _score_season(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    return _score_agri_label(series, column, ColumnRole.SEASON)
+
+
+def _score_district(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    return _score_agri_label(series, column, ColumnRole.DISTRICT)
+
+
+def _score_crop(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    return _score_agri_label(series, column, ColumnRole.CROP)
+
+
+def _score_crop_year(series: pd.Series, column: str, rows: int) -> tuple[float, list[str]]:
+    """The year a season belongs to. Scored as a LABEL so nothing downstream
+    can sum it: it fills its own slot precisely so no measure slot takes it."""
+    if not _reads_as_year(series, column):
+        return 0.0, ["does not read as a crop year"]
+    non_null = series.dropna()
+    if non_null.empty:
+        return 0.0, ["column is entirely null"]
+    return min(1.0, SHAPE_ONLY_SCORE + _name_bonus(column, ColumnRole.CROP_YEAR) * 2.5), [
+        f"{int(non_null.nunique())} distinct year value(s)"
+    ]
+
+
 _SCORERS = {
     ColumnRole.ENTITY_ID: _score_entity_id,
     ColumnRole.TRANSACTION_ID: _score_transaction_id,
@@ -642,6 +832,15 @@ _SCORERS = {
     ColumnRole.FREQUENCY: _score_frequency,
     ColumnRole.CONVERSIONS: _score_conversions,
     ColumnRole.CONVERSION_VALUE: _score_conversion_value,
+    ColumnRole.SEASON: _score_season,
+    ColumnRole.CROP_YEAR: _score_crop_year,
+    ColumnRole.DISTRICT: _score_district,
+    ColumnRole.CROP: _score_crop,
+    ColumnRole.AREA_CULTIVATED: _score_area_cultivated,
+    ColumnRole.PRODUCTION_QUANTITY: _score_production_quantity,
+    ColumnRole.CROP_YIELD: _score_crop_yield,
+    ColumnRole.RAINFALL: _score_rainfall,
+    ColumnRole.MARKET_PRICE: _score_market_price,
 }
 
 

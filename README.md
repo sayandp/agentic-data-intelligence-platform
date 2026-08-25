@@ -2437,6 +2437,79 @@ counts backend requests across the interaction and asserts zero. Account-wide
 figures stay visible while a filter is on, because an ad set is read against the
 account it sits in.
 
+## The Agriculture Agent (the second domain pack)
+
+Crop production statistics: yield, area and rainfall by district, crop and
+season. Built to the Marketing Agent's structure - the same eight modules,
+the same three severities, the same "a row is written even when the run does
+not qualify" contract - because that structure is the extensibility claim and
+this is the test of it.
+
+### The two traps, guarded explicitly
+
+Four detector bugs in this project came from a plausible-but-wrong role
+assignment producing confident nonsense. This domain has two obvious ones.
+
+**A crop year is a label, not a measure.** `Crop_Year` holds integers like
+2015-2022: non-negative, whole, low cardinality. It satisfies every shape test
+area, production, rainfall and price apply, and summed it yields a "total
+production" in the millions that looks entirely plausible. Every agricultural
+measure scorer refuses a column that reads as a year, by name **or** by value
+range - the second half matters for a column named `Production_Year`, which
+matches the production hint and would otherwise be taken as production.
+
+**Area, production and yield are mutually confusable.** All three are
+non-negative continuous numerics on the same rows, and shape cannot separate
+them: a yield of 2.5 t/ha and an area of 2.5 ha are the same number. So for
+these three the NAME IS MANDATORY - a column with no matching name hint scores
+zero rather than taking a shape-only score, and each scorer stands down when a
+more specific sibling name matches. Refusing to fill the slot is the correct
+output when the only available evidence cannot distinguish the three.
+
+### Preprocessing states everything it did
+
+**Zero area never produces an infinity.** A crop listed but not sown is common
+in real crop statistics, and `production / 0` gives `inf`, which propagates
+through a mean and emerges as a plausible average. Those rows are counted,
+excluded from the derived yield as NULL, and reported with the count.
+
+**Every label normalisation is recorded.** Real season labels arrive as
+`"Kharif     "`, `"kharif"` and `"Kharif"`; districts as `PALAKKAD` and
+`Palakkad`. Collapsing them is necessary to group at all, and doing it silently
+would leave a reader unable to tell whether two districts merged because they
+are the same place or because the normaliser was too aggressive.
+
+**The grain is stated and configurable** (district-crop-season by default). A
+yield averaged over the wrong grain is a different number that looks equally
+reasonable. The crop year is always part of the grain when present - collapsing
+across years would silently average a district with its own history.
+
+### Rules
+
+| Severity | Rules |
+| --- | --- |
+| WARNING (escalates) | yield collapse against the district's **own** history, production drop beyond a margin, rainfall outside the season's own range, sharp fall in area |
+| IMPROVEMENT | districts below the median yield **for that crop**, high yield variance |
+| KEY VALUE | total area, total production, average yield with its basis, top crops, rainfall summary |
+
+Every history rule compares a district-crop with **its own past**: soil,
+rainfall and crop mix differ between districts, so a cross-district comparison
+dressed as a collapse would be a false alarm every season. Below-median is per
+crop, since rice and coconut yields differ by orders of magnitude and one
+pooled median would rank every low-yield crop as underperforming.
+
+Nothing here is causal. A yield falling in a season when rainfall also fell is
+two measurements over the same period; this pack reports both and connects
+neither.
+
+### The domain-pack registry
+
+`app/domain_packs.py` exists because the SECOND pack needed it. The run
+comparison and the Session Summary both read the marketing table by name -
+correct when there was one pack, a special case the moment there were two. They
+now iterate the registry, so a third pack means appending one entry rather than
+editing any consumer.
+
 ## Known issues
 
 **`GET /ingest/{run_id}/status` is O(source size).** `_serialize_run_response`

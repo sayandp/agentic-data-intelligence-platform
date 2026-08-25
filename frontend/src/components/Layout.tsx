@@ -93,6 +93,17 @@ function IconCompare() {
   );
 }
 
+function IconAgriculture() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M10 17V8.5" />
+      <path d="M10 11.5C10 9.5 8.4 7.9 6.4 7.9c0 2 1.6 3.6 3.6 3.6Z" />
+      <path d="M10 9.6c0-2 1.6-3.6 3.6-3.6 0 2-1.6 3.6-3.6 3.6Z" />
+      <path d="M4.5 17h11" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS = [
   { to: "/sources", label: "Sources", Icon: IconSources },
   { to: "/approvals", label: "Approvals", Icon: IconApprovals },
@@ -103,6 +114,7 @@ const NAV_ITEMS = [
   { to: "/predict", label: "Predict", Icon: IconPredict },
   { to: "/analytics", label: "Analytics", Icon: IconAnalytics },
   { to: "/marketing", label: "Marketing", Icon: IconMarketing },
+  { to: "/agriculture", label: "Agriculture", Icon: IconAgriculture },
   { to: "/export", label: "Export", Icon: IconExport },
 ];
 

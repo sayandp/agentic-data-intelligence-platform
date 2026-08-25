@@ -35,10 +35,10 @@ from sqlalchemy.orm import Session
 
 from app.comparison.engine import compare_runs
 from app.comparison.models import Comparability
+from app.domain_packs import DOMAIN_PACKS
 from app.models import (
     BusinessAnalysis,
     ExplorationFinding,
-    MarketingAnalysis,
     ModelRun,
     Run,
     ValidationEvent,
@@ -274,10 +274,14 @@ def _domain_facts(db: Session, run: Run) -> list[SummaryFact]:
     Reads the persisted findings rather than re-running the rules, so a domain
     pack needs no change here to be summarised - the seam Part 4 will use.
     """
-    record = db.query(MarketingAnalysis).filter(MarketingAnalysis.run_id == run.id).one_or_none()
-    if record is None:
-        return []
-    payload = record.findings_json or {}
+    facts: list[SummaryFact] = []
+    for pack in DOMAIN_PACKS:
+        facts.extend(_facts_for_pack(db, run, pack, start=len(facts)))
+    return facts
+
+
+def _facts_for_pack(db: Session, run: Run, pack, start: int) -> list[SummaryFact]:
+    payload = pack.payload_for(db, run.id)
     if not payload.get("applicable"):
         return []
 
@@ -301,16 +305,16 @@ def _domain_facts(db: Session, run: Run) -> list[SummaryFact]:
         quoted = {"scope": [fp["scope"]]} if fp.get("scope") else {}
         facts.append(
             SummaryFact(
-                id=f"fact-finding-{200 + len(facts)}",
+                id=f"fact-finding-{200 + start + len(facts)}",
                 group=FactGroup.ATTENTION if severity.lower() == "warning" else FactGroup.FINDING,
                 text=(
-                    f"The marketing pack reported {rule}"
+                    f"The {pack.label} reported {rule}"
                     + (f", compared against {basis}" if basis else "")
                     + "."
                 ),
                 values=values,
                 column_values=quoted,
-                origin="marketing_analyses",
+                origin=f"{pack.name}_analyses",
             )
         )
     return facts

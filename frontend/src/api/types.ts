@@ -586,6 +586,44 @@ export interface MarketingTotalsPayload {
   undefined: Record<string, string>;
 }
 
+export interface AgricultureFindingRecord {
+  id: string;
+  finding_type: string;
+  severity: "warning" | "improvement" | "key_value";
+  columns: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payload: any;
+  evidence: {
+    row_count: number;
+    grain: string[];
+    observations: number | null;
+    parameters: Record<string, unknown>;
+  };
+}
+
+export interface AgricultureRecord {
+  run_id: string;
+  run_number: number | null;
+  schema_version: number;
+  generated_at: string | null;
+  applicable: boolean;
+  not_applicable_reason: string | null;
+  resolved_roles: Record<string, { column: string; confidence: string; reasons: string[] }>;
+  missing_roles: string[];
+  preprocessing: {
+    rows_in: number;
+    rows_out: number;
+    grain: string[];
+    aggregations: Record<string, string>;
+    normalisations: { role: string; column: string; normalised_to: string; from: string[] }[];
+    derived: { metric: string; formula: string; undefined_row_count: number; undefined_reason: string | null }[];
+  } | null;
+  findings: AgricultureFindingRecord[];
+  skipped_rules: { rule: string; reason: string }[];
+  parameters: Record<string, unknown>;
+  charts?: AnalyticsChartRecord[];
+}
+
 export interface MarketingFindingRecord {
   id: string;
   finding_type: string;

@@ -4,6 +4,7 @@ import SourcesPage from "./pages/SourcesPage";
 import ApprovalsPage from "./pages/ApprovalsPage";
 import ReportsPage from "./pages/ReportsPage";
 import AuditPage from "./pages/AuditPage";
+import AgriculturePage from "./pages/AgriculturePage";
 import ComparePage from "./pages/ComparePage";
 import AskPage from "./pages/AskPage";
 import PredictPage from "./pages/PredictPage";
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="/predict" element={<PredictPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/marketing" element={<MarketingPage />} />
+          <Route path="/agriculture" element={<AgriculturePage />} />
           <Route path="/export" element={<ExportPage />} />
           {/* Any unrecognised path lands somewhere real. Without this, an
               unknown route rendered the nav and an EMPTY main area - no

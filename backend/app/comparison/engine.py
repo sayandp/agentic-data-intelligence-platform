@@ -40,11 +40,11 @@ from app.comparison.models import (
     RunComparison,
     SectionComparison,
 )
+from app.domain_packs import DOMAIN_PACKS, DomainPack
 from app.models import (
     Baseline,
     BusinessAnalysis,
     ExplorationFinding,
-    MarketingAnalysis,
     ModelRun,
     Run,
     ValidationEvent,
@@ -458,15 +458,18 @@ def _compare_analytics(db: Session, run_a: Run, run_b: Run) -> SectionComparison
 _MARKETING_NUMERIC_FIELDS = ("observed", "observed_value", "threshold", "value", "median", "share")
 
 
-def _compare_marketing(db: Session, run_a: Run, run_b: Run) -> SectionComparison:
-    record_a = db.query(MarketingAnalysis).filter(MarketingAnalysis.run_id == run_a.id).one_or_none()
-    record_b = db.query(MarketingAnalysis).filter(MarketingAnalysis.run_id == run_b.id).one_or_none()
+def _compare_domain_pack(db: Session, run_a: Run, run_b: Run, pack: DomainPack) -> SectionComparison:
+    """One domain pack, compared. Called once per registered pack rather
+    than written per pack: the second pack is configuration, not a fork.
+    """
+    record_a = pack.record_for(db, run_a.id)
+    record_b = pack.record_for(db, run_b.id)
 
     if record_a is None and record_b is None:
         return SectionComparison(
-            name="marketing",
+            name=pack.name,
             comparability=Comparability.ABSENT,
-            reason="neither run has a marketing analysis",
+            reason=f"neither run has {pack.label} output",
         )
 
     payload_a = (record_a.findings_json if record_a else None) or {}
@@ -487,10 +490,10 @@ def _compare_marketing(db: Session, run_a: Run, run_b: Run) -> SectionComparison
         which = "the earlier run" if qualifies_b else "the later run"
         missing = (payload_a if not qualifies_a else payload_b).get("missing_roles") or []
         return SectionComparison(
-            name="marketing",
+            name=pack.name,
             comparability=Comparability.ONE_SIDED,
             reason=(
-                f"only one of these runs qualifies for the marketing pack - {which} is missing "
+                f"only one of these runs qualifies for the {pack.label} - {which} is missing "
                 f"{', '.join(str(r) for r in missing) or 'a required role'}"
             ),
             notes={"qualifies_a": qualifies_a, "qualifies_b": qualifies_b},
@@ -527,7 +530,7 @@ def _compare_marketing(db: Session, run_a: Run, run_b: Run) -> SectionComparison
             )
 
     return SectionComparison(
-        name="marketing",
+        name=pack.name,
         comparability=Comparability.COMPARABLE,
         deltas=deltas,
         memberships=memberships,
@@ -646,7 +649,7 @@ def compare_runs(db: Session, run_a: Run, run_b: Run) -> RunComparison:
             _compare_data_quality(db, run_a, run_b),
             _compare_exploration(db, run_a, run_b),
             _compare_analytics(db, run_a, run_b),
-            _compare_marketing(db, run_a, run_b),
+            *[_compare_domain_pack(db, run_a, run_b, pack) for pack in DOMAIN_PACKS],
             _compare_model(db, run_a, run_b),
         ],
     )

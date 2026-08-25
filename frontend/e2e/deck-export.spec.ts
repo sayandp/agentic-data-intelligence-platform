@@ -21,7 +21,12 @@ type Api = { get: (url: string) => Promise<{ ok: () => boolean; json: () => Prom
 /** A run with a report AND analytics, so the "real content" assertions are
  *  about a deck that genuinely has something to render. */
 async function richestRun(request: Api): Promise<number> {
-  const runs = (await (await request.get(`${API}/runs?status=completed&limit=20`)).json()) as { run_number: number }[];
+  // Widened from 20. The suite shares one backend, so a spec that adds
+  // several runs of its own can push every analytics-rich run out of a
+  // narrow window - and this test then falls back to a sparse run and
+  // asserts sections it does not have. The Part 4 agriculture spec did
+  // exactly that.
+  const runs = (await (await request.get(`${API}/runs?status=completed&limit=60`)).json()) as { run_number: number }[];
   let fallback: number | null = null;
   for (const run of runs) {
     const report = await request.get(`${API}/reports/${run.run_number}`);
@@ -109,8 +114,14 @@ test("the built deck carries the run's analytics and model content, not placehol
   expect(withContent, "this run has no analytics to prove anything with").toEqual(
     expect.arrayContaining(["What the value figures measure"])
   );
+  // Scoped to the outline list. An unscoped getByText matched the run
+  // picker's hidden <option> for a run whose SOURCE FILENAME contained a
+  // section word ("agri_charts.csv" vs the "Charts" section), so this
+  // asserted visibility of a <select> option and failed. The outline is
+  // where these names are supposed to appear.
+  const outline = page.locator("ul").filter({ hasText: withContent[0] }).first();
   for (const section of withContent) {
-    await expect(page.getByText(section, { exact: false }).first()).toBeVisible();
+    await expect(outline.getByText(section, { exact: false }).first()).toBeVisible();
   }
 });
 
