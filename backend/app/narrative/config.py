@@ -16,23 +16,63 @@ from app.exploration.config import DEFAULT_MODALITY_BINS
 # Exploration Agent's vocabulary has no causal words to draw from at all;
 # see app/exploration/findings.py).
 DEFAULT_CAUSAL_LEXICON: tuple[str, ...] = (
-    r"\bcause[sd]?\b",
-    r"\bcausing\b",
+    # -- asserting a cause directly --
+    r"\bcaus(e|es|ed|ing|al)\b",
+    # -- one thing producing another --
+    r"\bdriv(e|es|en|ing|er|ers)\b",
     r"\bdrove\b",
-    r"\bdrivers?\b",
-    r"\bdrives\b",
-    r"\bdriving\b",
-    r"\bled to\b",
+    r"\blead(s|ing)?\s+to\b",
+    r"\bled\s+to\b",
     r"\bresults?\s+in\b",
-    r"\bresulted\s+in\b",
-    r"\bresulting\s+in\b",
-    r"\bdue to\b",
-    r"\bbecause of\b",
+    r"\bresult(ed|ing)\s+in\b",
+    r"\bstem(s|med|ming)?\s+from\b",
+    r"\baris(e|es|ing)\s+from\b",
+    r"\barose\s+from\b",
+    # -- attributing an outcome to a source --
+    r"\bdue\s+to\b",
+    r"\bowing\s+to\b",
+    r"\bthanks\s+to\b",
+    r"\bresponsible\s+for\b",
+    r"\battributable\s+to\b",
+    r"\battributed\s+to\b",
+    # -- bare "because" and its variants. `because of` alone left the single
+    #    most common causal connective in English uncaught: "sales fell
+    #    because the feed broke" cleared this check from Phase 5 until a live
+    #    Session Summary produced one and it was noticed in an aurora E2E run.
+    #    The bare form subsumes "because of", so that entry is gone rather
+    #    than kept as a narrower duplicate.
+    r"\bbecause\b",
+    # -- inferential connectives. Each asserts that one fact FOLLOWS from
+    #    another, which is the claim this check exists to prevent even when
+    #    no cause is named outright.
+    r"\bas\s+a\s+result\b",
+    r"\bconsequently\b",
+    r"\btherefore\b",
+    r"\bhence\b",
+    r"\bthus\b",
+    # -- "the reason ..." REQUIRES its causal continuation. A bare
+    #    `\bthe reason\b` would flag a dataset with a column literally named
+    #    `reason` the moment prose mentioned it ("the reason column has 3
+    #    nulls"), which is a description, not a claim.
+    r"\bthe\s+reason\s+(for|why|behind|that)\b",
+    # -- effect and influence --
     r"\bimpact(s|ed|ing)?\b",
     r"\beffects?\b",
     r"\binfluenc(es?|ed|ing)\b",
     r"\bexplain(s|ed|ing)?\b",
 )
+
+# DELIBERATELY NOT IN THE LEXICON, with the reason, so a later audit does not
+# "complete" it by adding them without measuring first:
+#
+#   affect/affects/affected - "the affected column" and "affected rows" are
+#     this system's own descriptive vocabulary for what a validation event
+#     touched. "X affects Y" is causal and "the affected rows" is not, and no
+#     word-boundary pattern separates them. Left out rather than guessed at.
+#
+#   correlat* - explicitly permitted below. A correlation is what this system
+#     measures; banning the word would ban the finding.
+NOT_BANNED_WITH_REASON: tuple[str, ...] = ("affect", "affects", "affected", "correlates")
 
 # Phrasing the brief explicitly permits - never flagged even though some
 # share a root with a banned word (e.g. "correlates" is fine; "influences"

@@ -80,7 +80,11 @@ Rules:
 - Use ONLY what the claims state. You have no other information, and inventing
   detail is the single worst failure here.
 - Never state a number that is not in a claim.
-- Never assert or imply that one thing CAUSED another.
+- Never assert or imply that one thing CAUSED another, and never use a
+  connective that implies it: because, therefore, thus, hence, consequently,
+  as a result, due to, leads to, stems from. State facts side by side instead.
+  Write "This is the first completed run, so there is nothing to compare
+  against" rather than "...because this is the first completed run".
 - Plain sentences. No headings, no bullet points, no markdown.
 - Answer in this order: whether the data was OK and what was fixed, what still
   needs a person, the findings that matter, and what changed since last time."""
