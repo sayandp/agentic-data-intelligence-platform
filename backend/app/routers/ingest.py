@@ -63,11 +63,12 @@ from app.id_lookup import resolve_run
 from app.models import AgentTrace, Baseline, DataSource, ExplorationFinding, Report, Run, ValidationEvent
 from app.narrative.agent import NarrativeAgent
 from app.narrative.dependency import get_narrative_agent
+from app.summary.dependency import get_summary_agent
 from app.repair import repaired_contract_for_run
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
-__all__ = ["router", "get_diagnostic_agent", "get_narrative_agent"]
+__all__ = ["router", "get_diagnostic_agent", "get_narrative_agent", "get_summary_agent"]
 
 
 def next_run_number(db: Session) -> int:
@@ -145,6 +146,7 @@ def _run_graph_in_background(
     source_id: str,
     diagnostic_agent: DiagnosticAgent | None,
     narrative_agent: NarrativeAgent | None,
+    summary_agent=None,
 ) -> None:
     """diagnostic_agent/narrative_agent are resolved via FastAPI's
     Depends()/dependency_overrides at request time (BEFORE this function
@@ -152,7 +154,14 @@ def _run_graph_in_background(
     request's own db session or anything else request-scoped, so nothing
     about deferring their USE to a background task changes what a test's
     app.dependency_overrides[get_diagnostic_agent] override controls."""
-    config = {"configurable": {"thread_id": run_id, "diagnostic_agent": diagnostic_agent, "narrative_agent": narrative_agent}}
+    config = {
+        "configurable": {
+            "thread_id": run_id,
+            "diagnostic_agent": diagnostic_agent,
+            "narrative_agent": narrative_agent,
+            "summary_agent": summary_agent,
+        }
+    }
     invoke_in_background(run_id, {"run_id": run_id, "source_id": source_id}, config)
 
 
@@ -163,6 +172,7 @@ def ingest(
     db: Session = Depends(get_db),
     diagnostic_agent: DiagnosticAgent | None = Depends(get_diagnostic_agent),
     narrative_agent: NarrativeAgent | None = Depends(get_narrative_agent),
+    summary_agent=Depends(get_summary_agent),
 ):
     source = db.get(DataSource, source_id)
     if source is None:
@@ -175,7 +185,7 @@ def ingest(
     db.refresh(run)
     run_id = run.id
 
-    background_tasks.add_task(_run_graph_in_background, run_id, source_id, diagnostic_agent, narrative_agent)
+    background_tasks.add_task(_run_graph_in_background, run_id, source_id, diagnostic_agent, narrative_agent, summary_agent)
 
     return {"run_id": run_id, "run_number": run.run_number, "status": run.status}
 

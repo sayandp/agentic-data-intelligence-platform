@@ -52,6 +52,7 @@ from app.gate import DEFAULT_CONFIDENCE_THRESHOLD
 from app.graph.state import IngestState
 from app.models import AgentTrace, Baseline, DataSource, Run, ValidationEvent
 from app.narrative.pipeline import run_narrative_for_run
+from app.summary.pipeline import run_summary_for_run
 from app.profiling import BaselineProfiler
 from app.repair import repaired_contract_for_run
 from app.resolution import (
@@ -67,7 +68,7 @@ from app.run_snapshots import save_snapshot
 from app.state_machine import AWAITING_APPROVAL, DETECTED
 from app.validation.engine import ValidationEngine, ValidationFailure
 
-NODE_NAMES = ["ingest", "validate", "resolve", "await_human", "explore", "narrate"]
+NODE_NAMES = ["ingest", "validate", "resolve", "await_human", "explore", "narrate", "summarise"]
 
 
 def _confidence_threshold() -> float:
@@ -486,6 +487,29 @@ def narrate_node(state: IngestState, config: RunnableConfig) -> dict:
         contract = repaired_contract_for_run(run, source, connector, baseline.profile_json if baseline else None)
         if exploration_record is not None:
             run_narrative_for_run(db, run, exploration_record, contract.data, narrative_agent)
+        db.commit()
+
+    return {"route": "done"}
+
+
+def summarise_node(state: IngestState, config: RunnableConfig) -> dict:
+    """The Session Summary Agent (Part 2), as its own node after narrate.
+
+    A node rather than a line inside narrate_node, because it is a distinct
+    agent with its own failure mode: a summary that cannot be generated must
+    leave the run completed with a template summary, and that decision reads
+    more honestly as its own step in the trace than as a side effect of
+    writing the report.
+
+    It runs LAST because it summarises the run's persisted artifacts, and the
+    narrative stage is the final one that writes any. It reads those rows -
+    never the exported deck, which does not exist yet and must never be this
+    agent's input.
+    """
+    with SessionLocal() as db:
+        run = db.get(Run, state["run_id"])
+        summary_agent = config["configurable"].get("summary_agent")
+        run_summary_for_run(db, run, summary_agent)
         db.commit()
 
     return {"route": "done"}

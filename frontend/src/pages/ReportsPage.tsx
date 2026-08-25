@@ -3,6 +3,8 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ApiError, apiFetch, pollReportReady } from "../api/client";
 import type { ReportRecord } from "../api/types";
 import { Badge, Button, ErrorMessage, RunLabel } from "../components/ui";
+import { SessionSummarySection } from "../components/SessionSummarySection";
+import type { SessionSummaryRecord } from "../components/SessionSummarySection";
 import { PrivacySection } from "../components/PrivacySection";
 import type { PrivacyClassificationRecord } from "../components/PrivacySection";
 import { loadPlotly, themedLayout, withDesignColors } from "../lib/plotly";
@@ -84,6 +86,8 @@ export default function ReportsPage() {
   // The privacy classification lives on the run, not the report, so it is
   // fetched alongside - a run with no report still has one.
   const [privacy, setPrivacy] = useState<PrivacyClassificationRecord | null | undefined>(undefined);
+  // The session summary lives on the run, like the privacy classification.
+  const [summary, setSummary] = useState<SessionSummaryRecord | null | undefined>(undefined);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   // Set while waiting out the completed-but-not-yet-narrated window, so the
@@ -98,6 +102,7 @@ export default function ReportsPage() {
     setError(null);
     setReport(null);
     setPrivacy(undefined);
+    setSummary(undefined);
     try {
       const data = await apiFetch<ReportRecord>(`/reports/${query}`);
       setReport(data);
@@ -106,6 +111,11 @@ export default function ReportsPage() {
       apiFetch<{ privacy?: PrivacyClassificationRecord | null }>(`/ingest/${query}/status`)
         .then((status) => setPrivacy(status.privacy ?? null))
         .catch(() => setPrivacy(null));
+      // A failure here must not fail the report - the section renders its own
+      // "no summary" state, the same way the privacy section does.
+      apiFetch<SessionSummaryRecord>(`/summary/${query}`)
+        .then(setSummary)
+        .catch(() => setSummary(null));
       // Normalize the box to the run number once resolved, so a load-by-
       // UUID still ends up showing (and re-loadable by) the short form.
       setRunQuery(data.run_number != null ? String(data.run_number) : data.run_id);
@@ -202,6 +212,12 @@ export default function ReportsPage() {
       )}
 
       <ErrorMessage error={error} />
+
+      {report && (
+        <div className="mb-6">
+          <SessionSummarySection summary={summary} />
+        </div>
+      )}
 
       {report && (
         <div className="mb-6">

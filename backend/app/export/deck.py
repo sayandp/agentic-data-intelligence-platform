@@ -69,6 +69,11 @@ class DeckSources:
     #: change what the analytics numbers are measuring, so a reader cannot
     #: interpret the figures without them.
     confirmed_roles: list[dict] = field(default_factory=list)
+    #: The Session Summary for this run, as {summary_text, generation_mode,
+    #: fallback_reason}. None for a run that predates the agent. Its quality
+    #: context is NOT carried: the quality slide already renders that from
+    #: the same source, and printing it twice would let two copies drift.
+    session_summary: dict | None = None
 
 
 def _text_slide(prs: Presentation, title: str):
@@ -141,6 +146,36 @@ def _title_slide(prs: Presentation, s: DeckSources) -> None:
         )
         run.font.size = Pt(13)
         run.font.color.rgb = CAUTION
+
+
+def _summary_slide(prs: Presentation, s: DeckSources) -> None:
+    """Directly after the quality slide.
+
+    The brief puts the summary immediately after quality context, and quality
+    context's own position is immutable ("ALWAYS slide 2", below) - a reader
+    who sees the summary first would have read the plain-language conclusion
+    before the caveat that qualifies it, which is exactly the ordering the
+    quality slide exists to prevent.
+
+    Omitted entirely for a run with no summary, rather than rendered empty: a
+    blank slide reads as a missing conclusion rather than as an older run.
+    """
+    summary = s.session_summary
+    if not summary or not summary.get("summary_text"):
+        return
+
+    slide = _text_slide(prs, "Summary")
+    lines: list[tuple[str, int, RGBColor]] = [(summary["summary_text"], 15, INK)]
+
+    # A template summary says so on the slide. A deck travels further from
+    # its context than a screen does, and a reader cannot judge phrasing
+    # without knowing which mode wrote it.
+    if summary.get("generation_mode") == "template":
+        reason = summary.get("fallback_reason") or "no language model was available"
+        lines.append(("", 10, INK_MUTED))
+        lines.append((f"Written without a language model: {reason}", 12, INK_MUTED))
+
+    _body(slide, lines)
 
 
 def _quality_slide(prs: Presentation, s: DeckSources) -> None:
@@ -827,6 +862,7 @@ def build_deck(sources: DeckSources) -> bytes:
 
     _title_slide(prs, sources)
     _quality_slide(prs, sources)
+    _summary_slide(prs, sources)
     _narrative_slides(prs, sources)
     _chart_slides(prs, sources)
     _analytics_slides(prs, sources)

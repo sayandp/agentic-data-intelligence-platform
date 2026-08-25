@@ -52,6 +52,7 @@ from app.modeling.pipeline import reject_escalated_model, resolve_escalated_mode
 from app.models import Baseline, DataSource, ModelRun, QueryRun, Run, ValidationEvent
 from app.narrative.agent import NarrativeAgent
 from app.narrative.dependency import get_narrative_agent
+from app.summary.dependency import get_summary_agent
 from app.profiling import BaselineProfiler
 from app.query.models import APPROVABLE_ESCALATION_REASONS, EscalationReason
 from app.query.pipeline import reject_escalated_query, resolve_escalated_query_approval
@@ -386,6 +387,7 @@ def _resolve_validation_event(
     diagnostic_agent: DiagnosticAgent | None,
     narrative_agent: NarrativeAgent | None,
     background_tasks: BackgroundTasks,
+    summary_agent=None,
 ) -> dict:
     """Phase 8: applying a decision to an escalated validation-event group
     now means RESUMING THE GRAPH at its await_human checkpoint - the graph
@@ -447,7 +449,17 @@ def _resolve_validation_event(
             raise HTTPException(status_code=409, detail="no active baseline for this source")
 
     resume_payload = {"resolve_id": event.id, "decision": payload.decision, "resolved_by": payload.resolved_by}
-    config = {"configurable": {"thread_id": event.run_id, "diagnostic_agent": diagnostic_agent, "narrative_agent": narrative_agent}}
+    config = {
+        "configurable": {
+            "thread_id": event.run_id,
+            "diagnostic_agent": diagnostic_agent,
+            "narrative_agent": narrative_agent,
+            # A RESUMED run reaches summarise too. Without this the summary
+            # would silently be the template on every escalated run, which
+            # is a degradation nothing would report.
+            "summary_agent": summary_agent,
+        }
+    }
     background_tasks.add_task(invoke_in_background, event.run_id, Command(resume=resume_payload), config)
 
     return {"id": event.id, "type": "validation_event", "decision": payload.decision, "status": "resolving", "run_id": event.run_id}
@@ -566,6 +578,7 @@ def resolve(
     db: Session = Depends(get_db),
     diagnostic_agent: DiagnosticAgent | None = Depends(get_diagnostic_agent),
     narrative_agent: NarrativeAgent | None = Depends(get_narrative_agent),
+    summary_agent=Depends(get_summary_agent),
 ):
     baseline = db.get(Baseline, item_id)
     if baseline is not None:
@@ -575,7 +588,9 @@ def resolve(
     if event is not None:
         if event.rule_failed.startswith(f"{CONNECTOR_WARNING}:"):
             return _resolve_connector_warning(event, payload, db)
-        return _resolve_validation_event(event, payload, db, diagnostic_agent, narrative_agent, background_tasks)
+        return _resolve_validation_event(
+                event, payload, db, diagnostic_agent, narrative_agent, background_tasks, summary_agent
+            )
 
     query_run = db.get(QueryRun, item_id)
     if query_run is not None:

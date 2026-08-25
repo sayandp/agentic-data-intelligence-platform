@@ -2318,6 +2318,62 @@ would report them all as simultaneously disappeared and appeared.
 Nothing in the comparison is causal, in output or in UI copy. Two runs differ
 in every uncontrolled way at once.
 
+## The Session Summary Agent (the ninth agent)
+
+Four to eight plain sentences about a run, for someone who will not read the
+statistics. `GET /summary/{run}`, shown at the top of the run view above the
+detailed report, and on the deck slide directly after quality context.
+
+**It summarises the PERSISTED ARTIFACTS, never the exported deck.** Reading our
+own rendered output back in would mean the summary silently changes whenever
+deck rendering changes, and two artifacts would have to agree forever - the
+two-sources-of-truth failure this codebase keeps finding. It reads validation
+events, exploration findings, business analytics, the marketing pack, model
+runs, and the run comparison. `tests/test_session_summary.py` enforces this by
+parsing the package's imports: nothing under `app/summary/` may import `pptx`
+or `app.export`.
+
+### Same constraints as the Narrative Agent, and mostly the same code
+
+The grounding filter, the number rounding, the causal lexicon and three of the
+four post-checks are **imported from `app/narrative/`, not reimplemented** - a
+second copy would be two definitions of "a fabricated number" that must agree
+forever.
+
+| | |
+| --- | --- |
+| **Two stages** | Stage 1 turns facts into claims citing fact ids; stage 2 turns claims into prose. |
+| **Stage 2 sees no artifact** | Structural, not a prompt instruction: `_build_stage2_prompt(self, claims)` has no parameter an artifact could arrive through, and a test asserts that signature. |
+| **Grounding** | A claim citing a fact id this run does not have is dropped before anything downstream sees it. |
+| **Post-checks** | Number fidelity, causal language, claim coverage, plus a length bound (4-8 sentences). Deterministic, every attempt, never model-judged. |
+| **Quality context** | Rendered deterministically by the narrative's own renderer, stored in its own column, and always first. |
+| **Template fallback** | Built from the same facts, and always states WHY it was used. |
+
+The length check is this agent's own. Both ends matter: a one-sentence summary
+has dropped most of what the run found while still reading as complete, and a
+twenty-sentence one is the detailed report again, for the reader who was
+promised they would not have to read it.
+
+### The egress boundary
+
+Both stages are outbound calls, both under the **strict** redaction policy, and
+both write an `egress_events` row. A fact's `text` never embeds a column value;
+values quoted out of real columns travel separately in `column_values`, keyed by
+column name, precisely so `redact_records` can mask them - which is what makes
+the redaction actually apply rather than silently matching nothing.
+
+Stage 2 records an egress row carrying no columns at all. That is deliberate: it
+discloses nothing new, but the call still happened, and a trail that omitted it
+would understate how many times a run reached a third party.
+
+### Where it sits in the graph
+
+Its own node, `summarise`, after `narrate`. A node rather than a line inside
+`narrate_node` because it is a distinct agent with its own failure mode, and
+that reads more honestly in the trace. Like narration, it is a
+**degrade-not-fail** concern: a run whose analysis succeeded is never reported
+as failed because its summary could not be written.
+
 ## Known issues
 
 **`GET /ingest/{run_id}/status` is O(source size).** `_serialize_run_response`

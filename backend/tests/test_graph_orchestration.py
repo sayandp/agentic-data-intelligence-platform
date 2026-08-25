@@ -172,7 +172,7 @@ def _trigger_node(client, tmp_path, node_name: str) -> str:
     """Engineers an ingest sequence that reaches `node_name` with every
     EARLIER node on the path left un-patched, so only the targeted node's
     own failure is under test."""
-    if node_name in ("ingest", "explore", "narrate"):
+    if node_name in ("ingest", "explore", "narrate", "summarise"):
         path = tmp_path / f"{node_name}.csv"
         _write_csv(path, _clean_df())
         source_id = _create_source(client, path)
@@ -206,7 +206,7 @@ def test_node_failure_never_leaves_run_non_terminal(client, tmp_path, node_name,
     run_id = _trigger_node(client, tmp_path, node_name)
     status = _run_status(run_id)
 
-    if node_name == "narrate":
+    if node_name in ("narrate", "summarise"):
         # explore_node (left un-patched) already committed run.status =
         # "completed" - independently, before narrate_node ever raised.
         # Rule B's guarantee ("never left running") still holds; a later
@@ -216,6 +216,11 @@ def test_node_failure_never_leaves_run_non_terminal(client, tmp_path, node_name,
         # see app/narrative/pipeline.py). See the Phase 8 report: this is a
         # deliberate reading of Rule B, called out for review, not a
         # silent loosening of the assertion.
+        #
+        # `summarise` (Part 2) is the same reading for the same reason: the
+        # Session Summary is a degrade-not-fail concern, and a run whose
+        # analysis succeeded must not be reported as failed because its
+        # plain-language summary could not be written.
         assert status == "completed"
     else:
         assert status == "failed"

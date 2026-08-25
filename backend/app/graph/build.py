@@ -26,6 +26,7 @@ from app.graph.nodes import (
     failed_node,
     ingest_node,
     narrate_node,
+    summarise_node,
     resolve_node,
     validate_node,
 )
@@ -39,6 +40,7 @@ NODE_FUNCS = {
     "await_human": await_human_node,
     "explore": explore_node,
     "narrate": narrate_node,
+    "summarise": summarise_node,
     "failed": failed_node,
 }
 
@@ -96,7 +98,11 @@ def build_graph():
     graph.add_conditional_edges("resolve", _route, {"await_human": "await_human", "explore": "explore", "failed": "failed"})
     graph.add_conditional_edges("await_human", _route, {"resolve": "resolve", "failed": "failed"})
     graph.add_conditional_edges("explore", _route, {"narrate": "narrate", "done": END, "failed": "failed"})
-    graph.add_edge("narrate", END)
+    # The Session Summary Agent runs after narrate, because it summarises
+    # the run's persisted artifacts and narrate is the last stage that
+    # writes any. It never reads the exported deck.
+    graph.add_edge("narrate", "summarise")
+    graph.add_edge("summarise", END)
     graph.add_edge("failed", END)
 
     return graph.compile(checkpointer=build_checkpointer())

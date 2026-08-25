@@ -177,6 +177,42 @@ def narrative_llm_override(responses: list):
 
 
 @contextmanager
+def summary_llm_override(responses: list):
+    """Temporarily overrides get_summary_agent with a SessionSummaryAgent
+    wrapping a FakeLLMClient - for tests that need the actual two-stage LLM
+    summary path rather than the `client` fixture's default of no summary LLM.
+
+    `responses` is consumed in call order: stage 1's SummaryClaimsResponse
+    first, then stage 2's SessionSummaryProse, and again in that order for
+    each regeneration attempt a test exercises. Running out raises rather
+    than silently returning a wrong-shaped default.
+
+    Restores whatever override was active before, same as the others."""
+    from app.main import app
+    from app.summary.agent import SessionSummaryAgent
+    from app.summary.dependency import get_summary_agent
+
+    previous = app.dependency_overrides.get(get_summary_agent)
+
+    def _override() -> SessionSummaryAgent:
+        llm_client = FakeLLMClient(
+            responses=list(responses),
+            default=_NoMoreResponsesConfigured("summary_llm_override ran out of queued responses"),
+            model_name="fake-summary-model",
+        )
+        return SessionSummaryAgent(llm_client=llm_client, sleep=lambda _seconds: None)
+
+    app.dependency_overrides[get_summary_agent] = _override
+    try:
+        yield
+    finally:
+        if previous is not None:
+            app.dependency_overrides[get_summary_agent] = previous
+        else:
+            app.dependency_overrides.pop(get_summary_agent, None)
+
+
+@contextmanager
 def query_llm_override(responses: list):
     """Temporarily overrides get_query_agent with a QueryAgent wrapping a
     FakeLLMClient - for tests that need to exercise the actual query

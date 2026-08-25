@@ -43,6 +43,7 @@ from app.models import Base  # noqa: E402
 from app.narrative.dependency import get_narrative_agent  # noqa: E402
 from app.query.dependency import get_query_agent  # noqa: E402
 from app.routers.ingest import get_diagnostic_agent  # noqa: E402
+from app.summary.dependency import get_summary_agent  # noqa: E402
 from tests.fakes import FakeLLMClient, InMemoryDiagnosisCache  # noqa: E402
 
 
@@ -132,7 +133,19 @@ def client():
     def _no_modeling_agent():
         return None
 
+    # Same reasoning as _no_narrative_agent, and the same danger: without
+    # this override the real get_summary_agent() constructs a real
+    # GeminiClient and the suite starts making live API calls. That is
+    # exactly what happened when the Session Summary Agent was first wired
+    # in - caught by test_a_run_that_called_nothing_records_nothing, which
+    # noticed egress rows appearing for a run that should have disclosed
+    # nothing. Tests that need the LLM summary path use
+    # tests.fakes.summary_llm_override.
+    def _no_summary_agent():
+        return None
+
     app.dependency_overrides[get_diagnostic_agent] = _fake_diagnostic_agent
+    app.dependency_overrides[get_summary_agent] = _no_summary_agent
     app.dependency_overrides[get_narrative_agent] = _no_narrative_agent
     app.dependency_overrides[get_query_agent] = _no_query_agent
     app.dependency_overrides[get_modeling_agent] = _no_modeling_agent
@@ -141,6 +154,7 @@ def client():
             yield test_client
     finally:
         app.dependency_overrides.pop(get_diagnostic_agent, None)
+        app.dependency_overrides.pop(get_summary_agent, None)
         app.dependency_overrides.pop(get_narrative_agent, None)
         app.dependency_overrides.pop(get_query_agent, None)
         app.dependency_overrides.pop(get_modeling_agent, None)

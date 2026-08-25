@@ -12,7 +12,7 @@ from app.security.rate_limit import RateLimitMiddleware
 load_dotenv()  # GEMINI_API_KEY, GEMINI_MODEL, LLM_PROVIDER, etc. - see .env.example
 
 from app.db import init_db  # noqa: E402
-from app.routers import analytics, compare, approvals, audit, baselines, export, findings, ingest, marketing, predict, privacy, query, reports, runs, sources  # noqa: E402
+from app.routers import analytics, compare, summary, approvals, audit, baselines, export, findings, ingest, marketing, predict, privacy, query, reports, runs, sources  # noqa: E402
 
 
 def _log_llm_mode() -> None:
@@ -90,6 +90,7 @@ app.include_router(analytics.router)
 app.include_router(marketing.router)
 app.include_router(privacy.router)
 app.include_router(compare.router)
+app.include_router(summary.router)
 
 
 @app.get("/health")

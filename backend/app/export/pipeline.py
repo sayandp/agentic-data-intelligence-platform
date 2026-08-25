@@ -24,6 +24,7 @@ from app.models import (
     AgentTrace,
     BusinessAnalysis,
     ConfirmedColumnRole,
+    SessionSummary,
     DataSource,
     ModelRun,
     Report,
@@ -67,6 +68,7 @@ def collect_sources(db: Session, run: Run) -> DeckSources:
     report = db.query(Report).filter(Report.run_id == run.id).one_or_none()
     analytics = db.query(BusinessAnalysis).filter(BusinessAnalysis.run_id == run.id).one_or_none()
     traces = db.query(AgentTrace).filter(AgentTrace.run_id == run.id).order_by(AgentTrace.timestamp).all()
+    session_summary = db.query(SessionSummary).filter(SessionSummary.run_id == run.id).one_or_none()
     events = db.query(ValidationEvent).filter(ValidationEvent.run_id == run.id).order_by(ValidationEvent.created_at).all()
     models = db.query(ModelRun).filter(ModelRun.run_id == run.id).order_by(ModelRun.created_at).all()
     # Confirmed roles are keyed by SOURCE, not by run - a person's answer
@@ -97,6 +99,17 @@ def collect_sources(db: Session, run: Run) -> DeckSources:
             {"role": c.role, "column_name": c.column_name, "confirmed_at": c.confirmed_at}
             for c in confirmed
         ],
+        # The Session Summary as the summary agent persisted it - read, never
+        # regenerated here, and never re-derived from the deck's own text.
+        session_summary=(
+            {
+                "summary_text": session_summary.summary_text,
+                "generation_mode": session_summary.generation_mode,
+                "fallback_reason": session_summary.fallback_reason,
+            }
+            if session_summary is not None
+            else None
+        ),
         model_runs=[
             {
                 "question": m.question,

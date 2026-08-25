@@ -350,6 +350,40 @@ class MarketingAnalysis(Base):
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class SessionSummary(Base):
+    """Written by the Session Summary Agent (the ninth agent) - one row per
+    run, only ever for a run that reached 'completed', exactly like
+    ExplorationFinding and BusinessAnalysis.
+
+    Summarises the PERSISTED ARTIFACTS, never the exported deck. Reading our
+    own rendered output back in would mean the summary silently changes
+    whenever deck rendering changes, and two artifacts would have to agree
+    forever.
+
+    `quality_context` is rendered deterministically and stored separately from
+    `summary_text` so it cannot be dropped, reordered or rephrased away by
+    anything downstream - the same guarantee Report makes.
+    """
+
+    __tablename__ = "session_summaries"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    run_id: Mapped[str] = mapped_column(String, ForeignKey("runs.id"), nullable=False)
+    summary_text: Mapped[str] = mapped_column(Text, nullable=False)
+    #: Deterministic, never model-written, always rendered first.
+    quality_context: Mapped[str] = mapped_column(Text, nullable=False)
+    #: "llm" | "template"
+    generation_mode: Mapped[str] = mapped_column(String, nullable=False)
+    #: Why the template was used. Null in llm mode; never null in template
+    #: mode - a fallback with no stated reason is indistinguishable from a
+    #: deliberate choice.
+    fallback_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    claims_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    facts_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    post_check_results: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class QueryRun(Base):
     """Written by the Query Agent (Phase 6) - one row per POST /ask call.
 
