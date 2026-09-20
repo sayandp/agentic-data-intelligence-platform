@@ -249,6 +249,39 @@ Small, consistent corner radius: 4px for buttons/badges/inputs, 6px for cards an
 - **Id columns:** `Data` font, `Ink Faint` color (present but visually quiet - it is the app's job to make the id copyable/linkable, not the reader's job to parse it character by character).
 - **Overflow:** every table sits in its own `overflow-x: auto` container. A wide table scrolls inside its own frame; the page body never scrolls sideways.
 
+### Pagination (result lists)
+
+Result lists here are bounded by the DATA, not by the code. Measured on 7,680
+rows of district-crop statistics, one agriculture run produced 1,328 findings
+(939 of them warnings) and 655 filter chips - rendered whole, a single card ran
+for thousands of rows and the only way to learn how much was there was to
+scroll to the end of it.
+
+- **Shape:** a divider, then the range and total on the left, `Prev` / `Page N
+  of M` / `Next` on the right. Standard control treatment (4px radius, `Border
+  Strong` stroke) - it is navigation, not a feature, and takes no accent fill.
+- **Position:** below its list, inside the same card. Paging scrolls that card
+  back into view, so the next page is read from its start rather than its end.
+- **Page sizes:** 10 for rich multi-line findings, 25 for table rows, 48 for
+  chips. Chosen so one page is about one screen of that content.
+
+- **Rule (Stated-Total Rule):** a pager always states the FULL count, never
+  just the page. This system's premise is that every warning reaches a person;
+  a control that showed ten warnings while silently holding back 929 would
+  break that promise rather than tidy the screen. Hiding rows is only
+  acceptable while the reader can see how many are hidden.
+
+- **Rule (No-Pager-Without-Overflow Rule):** a list that already fits renders
+  with no pager at all. A disabled `Page 1 of 1` above a count of four is
+  chrome reporting its own irrelevance.
+
+- **Rule (Bounded-By-Data Rule):** only lists whose length comes from the data
+  get a pager. The audit trace (one row per graph node, max 7 measured) and the
+  egress table (one row per outbound call site, max 5) are bounded by the code
+  instead, so they were deliberately left unpaged - a pager that can never
+  render is dead UI, and shipping one implies a scale problem that does not
+  exist.
+
 ### Run Picker (signature component)
 
 The app's answer to "which run is this about," used identically on Ask and Predict. A labelled `<select>` of recent completed runs (`Run #48 - orders.csv - completed 9h ago`) paired with a narrow free-text field for a run number, so selection is the primary act and typing is the fallback. Beneath it, the selected run's own column names render as quiet `Data`-font chips.

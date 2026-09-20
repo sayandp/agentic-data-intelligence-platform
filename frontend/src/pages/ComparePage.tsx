@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiFetch } from "../api/client";
 import type { RunComparison, ComparisonSection, ComparisonDelta } from "../api/types";
-import { Badge, Card, ErrorMessage, Muted, RunLabel } from "../components/ui";
+import { Badge, Card, ErrorMessage, Muted, Pager, RunLabel, usePagedList } from "../components/ui";
 
 // Two runs of one source, side by side.
 //
@@ -55,6 +55,14 @@ function DeltaRow({ delta }: { delta: ComparisonDelta }) {
 function Section({ section }: { section: ComparisonSection }) {
   const title = SECTION_TITLES[section.name] ?? section.name;
 
+  // Declared here, above the not-comparable early return, because hooks may
+  // not sit behind a conditional. `section.name` keys them: this component is
+  // reused for every section of every comparison, so a page chosen for the
+  // schema section must not carry over to marketing's.
+  const changedDeltas = section.deltas.filter((d) => d.changed);
+  const deltaPage = usePagedList(changedDeltas, 25, section.name);
+  const membershipPage = usePagedList(section.memberships, 15, section.name);
+
   if (section.comparability !== "comparable") {
     const tone = section.comparability === "not_comparable" ? "negative" : "neutral";
     return (
@@ -73,7 +81,7 @@ function Section({ section }: { section: ComparisonSection }) {
     );
   }
 
-  const changed = section.deltas.filter((d) => d.changed);
+  const changed = changedDeltas;
   const unchanged = section.deltas.length - changed.length;
 
   return (
@@ -82,13 +90,14 @@ function Section({ section }: { section: ComparisonSection }) {
         <div className="mb-4">
           <div className="text-label uppercase text-ink-faint">Present in one run only</div>
           <ul className="mt-2">
-            {section.memberships.map((m) => (
+            {membershipPage.visible.map((m) => (
               <li key={`${m.side}-${m.label}`} className="flex flex-wrap items-baseline gap-x-3 border-b border-border py-1.5 last:border-b-0">
                 <Badge value={m.side === "b_only" ? "appeared" : "disappeared"} tone={m.side === "b_only" ? "active" : "caution"} />
                 <span className="text-ink">{m.label}</span>
               </li>
             ))}
           </ul>
+          <Pager paged={membershipPage} noun="one-sided item" />
         </div>
       )}
 
@@ -111,11 +120,12 @@ function Section({ section }: { section: ComparisonSection }) {
               </tr>
             </thead>
             <tbody>
-              {changed.map((d) => (
+              {deltaPage.visible.map((d) => (
                 <DeltaRow key={d.label} delta={d} />
               ))}
             </tbody>
           </table>
+          <Pager paged={deltaPage} noun="changed value" />
           {unchanged > 0 && <p className="mt-2 text-sm text-ink-faint">{unchanged} further value(s) did not change.</p>}
         </div>
       )}

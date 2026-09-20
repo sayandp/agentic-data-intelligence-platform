@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ApiError, apiFetch } from "../api/client";
 import type { AgricultureRecord, AgricultureFindingRecord, AnalyticsChartRecord } from "../api/types";
-import { Badge, Card, ErrorMessage, Muted, RunLabel } from "../components/ui";
+import { Badge, Card, ErrorMessage, Muted, Pager, RunLabel, usePagedList } from "../components/ui";
 import { loadPlotly, applyAnalyticsColours } from "../lib/plotly";
 
 // The Agriculture Agent's view. Key values first, then what needs a decision,
@@ -103,6 +103,12 @@ export default function AgriculturePage() {
     )
   ).sort();
 
+  // Same two-part key as the marketing pack: a findings list belongs to one
+  // run and one scope filter. Measured on 7,680 rows of district-crop data,
+  // this page rendered 655 scope chips and 1,328 findings in one column.
+  const findingsKey = `${data?.run_id ?? ""}:${selectedScope ?? "all"}`;
+  const scopePage = usePagedList(scopes, 48, data?.run_id ?? "");
+
   const visible = (data?.findings ?? []).filter((f) => {
     if (!selectedScope) return true;
     const scope = f.payload?.scope as string | undefined;
@@ -110,6 +116,8 @@ export default function AgriculturePage() {
   });
   const warnings = visible.filter((f) => f.severity === "warning");
   const improvements = visible.filter((f) => f.severity === "improvement");
+  const warningsPage = usePagedList(warnings, 10, findingsKey);
+  const improvementsPage = usePagedList(improvements, 10, findingsKey);
 
   return (
     <div>
@@ -203,7 +211,7 @@ export default function AgriculturePage() {
               subtitle="Select one to narrow this page to it. Account-wide key values stay visible."
             >
               <div className="flex flex-wrap gap-2">
-                {scopes.map((scope) => {
+                {scopePage.visible.map((scope) => {
                   const active = selectedScope === scope;
                   return (
                     <button
@@ -223,6 +231,7 @@ export default function AgriculturePage() {
                   );
                 })}
               </div>
+              <Pager paged={scopePage} noun="district-crop pair" />
             </Card>
           )}
 
@@ -230,11 +239,14 @@ export default function AgriculturePage() {
             {warnings.length === 0 ? (
               <Muted>No warning thresholds were breached in this period.</Muted>
             ) : (
-              <ul>
-                {warnings.map((f) => (
-                  <Breach key={f.id} finding={f} />
-                ))}
-              </ul>
+              <>
+                <ul>
+                  {warningsPage.visible.map((f) => (
+                    <Breach key={f.id} finding={f} />
+                  ))}
+                </ul>
+                <Pager paged={warningsPage} noun="warning" />
+              </>
             )}
           </Card>
 
@@ -242,11 +254,14 @@ export default function AgriculturePage() {
             {improvements.length === 0 ? (
               <Muted>Nothing to suggest for this period.</Muted>
             ) : (
-              <ul>
-                {improvements.map((f) => (
-                  <Breach key={f.id} finding={f} />
-                ))}
-              </ul>
+              <>
+                <ul>
+                  {improvementsPage.visible.map((f) => (
+                    <Breach key={f.id} finding={f} />
+                  ))}
+                </ul>
+                <Pager paged={improvementsPage} noun="improvement" />
+              </>
             )}
           </Card>
 

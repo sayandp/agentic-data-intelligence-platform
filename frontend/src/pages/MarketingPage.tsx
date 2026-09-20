@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { ApiError, apiFetch } from "../api/client";
 import type { MarketingRecord, MarketingFindingRecord, AnalyticsChartRecord } from "../api/types";
-import { Badge, Card, ErrorMessage, Muted, RunLabel } from "../components/ui";
+import { Badge, Card, ErrorMessage, Muted, Pager, RunLabel, usePagedList } from "../components/ui";
 import { RunNotFoundHelp, RunPicker, useRunSelection } from "../components/RunPicker";
 import { UploadIngestPanel } from "../components/UploadIngestPanel";
 import { applyAnalyticsColours, loadPlotly } from "../lib/plotly";
@@ -134,6 +134,18 @@ export default function MarketingPage() {
   const improvements = visible.filter((f) => f.severity === "improvement");
   const concentration = visible.filter((f) => f.finding_type === "spend_concentration");
 
+  // A findings list belongs to one run AND one ad-set filter: narrowing to a
+  // single ad set produces a different, usually much shorter list, and a page
+  // number chosen against the unfiltered one means nothing there. Naming both
+  // in the key is what makes a stale page unreadable rather than merely
+  // corrected afterwards. The ad-set chips themselves are not filtered, so
+  // they are keyed on the run alone and keep their page as you click through.
+  const findingsKey = `${data?.run_id ?? ""}:${selectedAdset ?? "all"}`;
+  const adsetPage = usePagedList(adsets, 48, data?.run_id ?? "");
+  const concentrationPage = usePagedList(concentration, 10, findingsKey);
+  const warningsPage = usePagedList(warnings, 10, findingsKey);
+  const improvementsPage = usePagedList(improvements, 10, findingsKey);
+
   // An ENTRY POINT, not a second pipeline: the same /sources/upload and
   // /ingest endpoints the Sources page uses, through the same shared
   // component, so the file goes through the same detection, validation and
@@ -261,7 +273,7 @@ export default function MarketingPage() {
               subtitle="Select one to narrow this page to its own metrics, trend and warnings. Account-wide figures stay visible, so a filtered ad set is still read against the account it sits in."
             >
               <div className="flex flex-wrap gap-2">
-                {adsets.map((adset) => {
+                {adsetPage.visible.map((adset) => {
                   const active = selectedAdset === adset;
                   return (
                     <button
@@ -281,6 +293,7 @@ export default function MarketingPage() {
                   );
                 })}
               </div>
+              <Pager paged={adsetPage} noun="ad set" />
               {selectedAdset && (
                 <p className="mt-3 text-sm text-ink-muted" data-testid="marketing-filter-note">
                   Showing <span className="font-medium text-ink">{selectedAdset}</span> and account-wide figures.{" "}
@@ -298,7 +311,7 @@ export default function MarketingPage() {
               subtitle="Computed by the same ABC/Pareto engine the analytics agent uses, applied to ad sets."
             >
               <ul>
-                {concentration.map((f) => {
+                {concentrationPage.visible.map((f) => {
                   const p = f.payload as {
                     measured_over: string;
                     entity_count: number;
@@ -326,6 +339,7 @@ export default function MarketingPage() {
                   );
                 })}
               </ul>
+              <Pager paged={concentrationPage} noun="concentration finding" />
             </Card>
           )}
 
@@ -333,11 +347,14 @@ export default function MarketingPage() {
             {warnings.length === 0 ? (
               <Muted>No warning thresholds were breached in this period.</Muted>
             ) : (
-              <ul>
-                {warnings.map((f) => (
-                  <Breach key={f.id} finding={f} />
-                ))}
-              </ul>
+              <>
+                <ul>
+                  {warningsPage.visible.map((f) => (
+                    <Breach key={f.id} finding={f} />
+                  ))}
+                </ul>
+                <Pager paged={warningsPage} noun="warning" />
+              </>
             )}
           </Card>
 
@@ -345,11 +362,14 @@ export default function MarketingPage() {
             {improvements.length === 0 ? (
               <Muted>No improvement opportunities were identified in this period.</Muted>
             ) : (
-              <ul>
-                {improvements.map((f) => (
-                  <Breach key={f.id} finding={f} />
-                ))}
-              </ul>
+              <>
+                <ul>
+                  {improvementsPage.visible.map((f) => (
+                    <Breach key={f.id} finding={f} />
+                  ))}
+                </ul>
+                <Pager paged={improvementsPage} noun="improvement" />
+              </>
             )}
           </Card>
 

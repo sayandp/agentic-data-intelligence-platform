@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import type { ToastState } from "../hooks/useToast";
 
 // DESIGN.md's Flat-By-Default Rule: no shadow, a 1px border and a 6px
@@ -258,6 +258,137 @@ export function Toast({ toast, onDismiss }: { toast: ToastState | null; onDismis
       <button onClick={onDismiss} aria-label="Dismiss" className="ml-2 text-on-accent/80 hover:text-on-accent">
         &times;
       </button>
+    </div>
+  );
+}
+
+// PAGINATION. Added because the result lists are not bounded by anything:
+// measured on 7,680 rows of district-crop statistics, one agriculture run
+// produced 1,328 findings (939 warnings, 388 improvements) and 655 scope
+// chips. Rendered whole, a single card ran for thousands of rows and the
+// only way to learn how much was there was to scroll to the end.
+//
+// Two separate staleness bugs are possible here, and each gets its own
+// structural guard rather than a check:
+//
+//  1. The list is REPLACED under the reader (a different ad set is filtered,
+//     a different run is loaded). A page number from the previous list is
+//     meaningless against the new one. So the page is stored TOGETHER WITH
+//     the identity of the list it belongs to, and read back only when that
+//     identity still matches. A page from another list is not something this
+//     state can return - which is stronger than remembering to reset it, and
+//     unlike an effect it cannot render one frame of the wrong page first.
+//
+//  2. The list SHRINKS without changing identity (a refetch returns fewer
+//     rows). Then page 40 of a 3-item list would render empty, with nothing
+//     on screen to say that anything had ever been there. So the page is
+//     also clamped to the list's real length at read time.
+//
+// Guard (2) is DEFENCE IN DEPTH, not a tested guarantee. Falsification
+// (scripts/falsify-pagination.mjs) removes it and no test fails: while guard
+// (1) stands, every route a reader can take to a too-large page changes the
+// list's identity too, and guard (1) has already reset the page by then. It
+// is kept because it makes the invalid state unrepresentable rather than
+// merely unreached - but it is recorded here as unproven instead of being
+// claimed as covered.
+//
+// `total` is deliberately part of the return and always displayed. This
+// platform's premise is that every warning reaches a person; a pager that
+// showed "10 warnings" while hiding 929 more would quietly break that, so
+// the full count is stated on screen whenever a list is paged.
+export type PagedList<T> = {
+  visible: T[];
+  page: number;
+  pageCount: number;
+  total: number;
+  firstIndex: number;
+  lastIndex: number;
+  pageSize: number;
+  setPage: (page: number) => void;
+};
+
+export function usePagedList<T>(items: T[], pageSize: number, listKey: string = ""): PagedList<T> {
+  // The page and the list it was chosen for, stored as one value. See (1).
+  const [chosen, setChosen] = useState({ key: listKey, page: 0 });
+
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+  const requested = chosen.key === listKey ? chosen.page : 0;
+  const page = Math.min(Math.max(requested, 0), pageCount - 1); // see (2)
+
+  const firstIndex = page * pageSize;
+  const visible = items.slice(firstIndex, firstIndex + pageSize);
+
+  function setPage(next: number) {
+    setChosen({ key: listKey, page: Math.min(Math.max(next, 0), pageCount - 1) });
+  }
+
+  return {
+    visible,
+    page,
+    pageCount,
+    total: items.length,
+    firstIndex,
+    lastIndex: firstIndex + visible.length,
+    pageSize,
+    setPage,
+  };
+}
+
+// Renders NOTHING when everything already fits. A list of four ad sets is
+// not improved by a disabled "Page 1 of 1" and a count of four it can see.
+export function Pager<T>({ paged, noun }: { paged: PagedList<T>; noun: string }) {
+  // The Pager scrolls, not the caller: paging from the bottom of a long list
+  // would otherwise leave the reader at the END of the next page, looking at
+  // its last row before its first. Owning it here means no call site has to
+  // thread a ref through to get the behaviour right.
+  const self = useRef<HTMLDivElement | null>(null);
+
+  function go(next: number) {
+    paged.setPage(next);
+    self.current?.closest(".panel")?.scrollIntoView({ block: "nearest" });
+  }
+
+  if (paged.total <= paged.pageSize) return null;
+
+  const plural = paged.total === 1 ? noun : `${noun}s`;
+  const atStart = paged.page === 0;
+  const atEnd = paged.page >= paged.pageCount - 1;
+
+  return (
+    <div ref={self} className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+      {/* The total is the point of this line, not the range. */}
+      <p className="text-sm text-ink-muted" role="status" data-testid="pager-status">
+        Showing{" "}
+        <span className="font-medium text-ink">
+          {paged.firstIndex + 1}&ndash;{paged.lastIndex}
+        </span>{" "}
+        of <span className="font-medium text-ink">{paged.total}</span> {plural}
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => go(paged.page - 1)}
+          disabled={atStart}
+          aria-label={`Previous page of ${plural}`}
+          data-testid="pager-prev"
+          className="rounded-sm border border-border-strong px-2.5 py-1 text-sm text-ink hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          &larr; Prev
+        </button>
+        <span className="text-sm tabular-nums text-ink-muted" data-testid="pager-position">
+          Page {paged.page + 1} of {paged.pageCount}
+        </span>
+        <button
+          type="button"
+          onClick={() => go(paged.page + 1)}
+          disabled={atEnd}
+          aria-label={`Next page of ${plural}`}
+          data-testid="pager-next"
+          className="rounded-sm border border-border-strong px-2.5 py-1 text-sm text-ink hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Next &rarr;
+        </button>
+      </div>
     </div>
   );
 }

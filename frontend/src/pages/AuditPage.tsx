@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiFetch } from "../api/client";
 import type { AuditRecord } from "../api/types";
-import { Badge, Button, Card, CodeBlock, ErrorMessage, Muted, RunLabel } from "../components/ui";
+import { Badge, Button, Card, CodeBlock, ErrorMessage, Muted, Pager, RunLabel, usePagedList } from "../components/ui";
 
 export default function AuditPage() {
   const [params] = useSearchParams();
@@ -12,6 +12,23 @@ export default function AuditPage() {
   // handle here, unlike the earlier id-prefix scheme this replaced.
   const [runQuery, setRunQuery] = useState(params.get("run") ?? "");
   const [audit, setAudit] = useState<AuditRecord | null>(null);
+
+  // The audit trail is the record a reader consults to check what the system
+  // did; it grows with every node, every outbound call and every validation
+  // event, so it is the surface most likely to run past the end of a screen.
+  // Keyed on the run: loading a different run must not land the reader on
+  // page 6 of a trace that may only have two pages.
+  // Only the lists bounded by the DATA are paged. Measured across every run
+  // in the local database, the trace maxes at 7 rows (one per graph node) and
+  // egress at 5 (one per outbound call site) - both bounded by the code, not
+  // by the dataset, so neither can reach a page boundary and a pager on them
+  // would be chrome that never renders. Validation events are one per failed
+  // rule per column, and query and model runs accumulate over a run's life;
+  // those three have no ceiling but the data's.
+  const auditKey = audit?.run_id ?? "";
+  const eventsPage = usePagedList(audit?.validation_events ?? [], 25, auditKey);
+  const queryPage = usePagedList(audit?.query_runs ?? [], 10, auditKey);
+  const modelPage = usePagedList(audit?.model_runs ?? [], 10, auditKey);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
 
@@ -205,7 +222,7 @@ export default function AuditPage() {
                 </tr>
               </thead>
               <tbody>
-                {audit.validation_events.map((e) => {
+                {eventsPage.visible.map((e) => {
                   const reverted = e.action_taken === "auto_fix_reverted";
                   return (
                     <tr key={e.id} className={`border-b border-border ${reverted ? "bg-status-negative-tint" : ""}`}>
@@ -224,12 +241,13 @@ export default function AuditPage() {
               </tbody>
             </table>
             </div>
+            <Pager paged={eventsPage} noun="validation event" />
           </Card>
 
           {audit.query_runs.length > 0 && (
             <Card title="Query runs against this data">
               <div className="flex flex-col gap-4">
-                {audit.query_runs.map((q) => (
+                {queryPage.visible.map((q) => (
                   <div key={q.id} className="rounded-md border border-border p-4">
                     <p className="mb-1 text-sm"><span className="font-medium">Q:</span> {q.question}</p>
                     <p className="mb-2 text-sm">
@@ -240,13 +258,14 @@ export default function AuditPage() {
                   </div>
                 ))}
               </div>
+              <Pager paged={queryPage} noun="query run" />
             </Card>
           )}
 
           {audit.model_runs.length > 0 && (
             <Card title="Model runs against this data">
               <div className="flex flex-col gap-4">
-                {audit.model_runs.map((m) => (
+                {modelPage.visible.map((m) => (
                   <div key={m.id} className="rounded-md border border-border p-4">
                     <p className="mb-1 text-sm"><span className="font-medium">Target:</span> {m.target_column} ({m.task_type})</p>
                     <p className="mb-2 text-sm">
@@ -257,6 +276,7 @@ export default function AuditPage() {
                   </div>
                 ))}
               </div>
+              <Pager paged={modelPage} noun="model run" />
             </Card>
           )}
         </>

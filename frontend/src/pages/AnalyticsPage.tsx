@@ -8,7 +8,7 @@ import type {
   AnalyticsRecord,
   RoleCandidateRecord,
 } from "../api/types";
-import { Badge, Button, Card, ErrorMessage, Muted, RunLabel, type BadgeTone } from "../components/ui";
+import { Badge, Button, Card, ErrorMessage, Muted, Pager, RunLabel, usePagedList, type BadgeTone } from "../components/ui";
 import { RunNotFoundHelp, RunPicker, useRunSelection } from "../components/RunPicker";
 import { paretoBandColor } from "../lib/analyticsCharts";
 import { applyAnalyticsColours, loadPlotly } from "../lib/plotly";
@@ -395,6 +395,13 @@ function RoleConfirmation({
 function ResultCard({ result, chart }: { result: AnalysisResultRecord; chart?: AnalyticsChartRecord }) {
   const title = ANALYSIS_TITLES[result.analysis] ?? result.analysis;
 
+  // Above the not-run early return, for the rules of hooks. These tables are
+  // one row per entity - an ABC/Pareto over every customer, an outlier row
+  // per offending value - so their length is the dataset's, not a constant.
+  // Keyed by analysis: each ResultCard renders a different one.
+  const tabularFindings = result.findings.filter((f) => TABLE_HEADERS[f.finding_type]);
+  const tabularPage = usePagedList(tabularFindings, 25, result.analysis);
+
   if (!result.ran) {
     return (
       <Card title={title}>
@@ -406,7 +413,7 @@ function ResultCard({ result, chart }: { result: AnalysisResultRecord; chart?: A
     );
   }
 
-  const tabular = result.findings.filter((f) => TABLE_HEADERS[f.finding_type]);
+  const tabular = tabularFindings;
   const headers = tabular.length ? TABLE_HEADERS[tabular[0].finding_type] : null;
 
   const repeat = result.findings.find((f) => f.finding_type === "repeat_behaviour");
@@ -450,11 +457,12 @@ function ResultCard({ result, chart }: { result: AnalysisResultRecord; chart?: A
               </tr>
             </thead>
             <tbody>
-              {tabular.map((f) => (
+              {tabularPage.visible.map((f) => (
                 <FindingBody key={f.id} finding={f} />
               ))}
             </tbody>
           </table>
+          <Pager paged={tabularPage} noun="row" />
         </div>
       )}
 
