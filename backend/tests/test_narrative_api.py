@@ -196,10 +196,101 @@ def test_a_missing_report_on_a_COMPLETED_run_does_not_blame_the_run_state():
         with TestClient(app) as client:
             body = client.get(f"/reports/{run_id}").json()["detail"]
 
-        assert "still being written" in body
         assert "only runs once a run reaches" not in body, "must not tell a completed run to wait for completion"
+
+        # This run has NO exploration findings. The previous message said
+        # "Exploration has finished (which is what marks a run completed)" -
+        # inferred from the status, which is set BEFORE exploration starts.
+        # Run 1, a 1,067,371-row export, was told that for the 9 minutes it
+        # was still inside role detection.
+        assert "Exploration has finished" not in body, "claimed exploration finished for a run with no findings"
+        assert "analysis has not finished" in body
+        assert "no exploration findings have been written" in body
+        # And it must not send the reader to the Audit view for a narrative
+        # step the Audit view has no row for.
+        assert "shows whether the narrative step ran" not in body
     finally:
         with SessionLocal() as db:
+            db.query(Report).filter(Report.run_id == run_id).delete()
+            db.query(Run).filter(Run.id == run_id).delete()
+            db.commit()
+
+
+def test_a_missing_report_after_the_narrate_step_FAILED_says_it_will_not_arrive():
+    """safe_node records a dead node as a trace row under the node's name
+    with edge "failed", and leaves the run "completed". Without reading that
+    row, the message told the reader the report was on its way when the step
+    that writes it had already ended - found live, on two runs whose narrate
+    node was killed by a dropped connection to the model provider."""
+    import json
+
+    from app.db import SessionLocal
+    from app.models import AgentTrace, ExplorationFinding, Report, Run
+
+    with SessionLocal() as db:
+        run = Run(source_id="s-none", status="completed", run_number=987657)
+        db.add(run)
+        db.commit()
+        run_id = run.id
+        db.add(ExplorationFinding(run_id=run_id, schema_version=1, findings_json={}))
+        db.add(
+            AgentTrace(
+                run_id=run_id,
+                agent_name="narrate",
+                input_summary="node raised an exception",
+                output_summary=json.dumps({"error_type": "ConnectError", "error": "connection forcibly closed"}),
+                edge_taken="failed",
+            )
+        )
+        db.commit()
+
+    try:
+        from app.main import app
+        from fastapi.testclient import TestClient
+
+        with TestClient(app) as client:
+            body = client.get(f"/reports/{run_id}").json()["detail"]
+
+        assert "will not get one on its own" in body
+        assert "ConnectError" in body, "the recorded cause must reach the reader"
+        assert "Re-ingest" in body
+        assert "writes the report after it" not in body, "must not promise a report from a step that died"
+    finally:
+        with SessionLocal() as db:
+            db.query(AgentTrace).filter(AgentTrace.run_id == run_id).delete()
+            db.query(ExplorationFinding).filter(ExplorationFinding.run_id == run_id).delete()
+            db.query(Report).filter(Report.run_id == run_id).delete()
+            db.query(Run).filter(Run.id == run_id).delete()
+            db.commit()
+
+
+def test_a_missing_report_after_exploration_finished_says_exploration_finished():
+    """The counterpart: when the findings row EXISTS, "exploration finished"
+    is true and is said - with its own timestamp, not the run's."""
+    from app.db import SessionLocal
+    from app.models import ExplorationFinding, Report, Run
+
+    with SessionLocal() as db:
+        run = Run(source_id="s-none", status="completed", run_number=987656)
+        db.add(run)
+        db.commit()
+        run_id = run.id
+        db.add(ExplorationFinding(run_id=run_id, schema_version=1, findings_json={}))
+        db.commit()
+
+    try:
+        from app.main import app
+        from fastapi.testclient import TestClient
+
+        with TestClient(app) as client:
+            body = client.get(f"/reports/{run_id}").json()["detail"]
+
+        assert "Exploration finished" in body
+        assert "analysis has not finished" not in body
+        assert "Narrative Agent" in body
+    finally:
+        with SessionLocal() as db:
+            db.query(ExplorationFinding).filter(ExplorationFinding.run_id == run_id).delete()
             db.query(Report).filter(Report.run_id == run_id).delete()
             db.query(Run).filter(Run.id == run_id).delete()
             db.commit()

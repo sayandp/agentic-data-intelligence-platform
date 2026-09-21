@@ -197,6 +197,36 @@ def test_a_transient_outage_is_reported_as_unavailable_not_a_parse_failure():
     assert "did not match the required format" not in report.fallback_reason
 
 
+def test_a_dropped_connection_through_the_real_client_still_produces_a_report():
+    """End to end through the REAL GeminiClient, not a fake that raises the
+    platform's own error type - the fake is exactly what hid this. The SDK
+    raising httpx.ConnectError used to escape the client, the agent and the
+    node, leaving a completed run with no report at all. It must degrade to
+    the template, with the reason stated."""
+    import types as pytypes
+
+    import httpx
+
+    from app.llm.gemini_client import GeminiClient
+
+    client = GeminiClient(api_key="fake-key", model="gemini-3.5-flash")
+
+    class DroppedConnection:
+        def generate_content(self, **kwargs):
+            raise httpx.ConnectError("[WinError 10054] An existing connection was forcibly closed by the remote host")
+
+    client._client = pytypes.SimpleNamespace(models=DroppedConnection())
+
+    findings, df = _clean_findings()
+    agent = NarrativeAgent(llm_client=client, max_attempts=2, sleep=lambda _s: None)
+    report = generate_narrative_report(findings, df, agent)
+
+    assert report.generation_mode == GenerationMode.TEMPLATE
+    assert report.narrative_text, "a dropped connection must still leave a report to read"
+    assert "temporarily unavailable" in report.fallback_reason
+    assert "escalated_parse_failure" not in report.fallback_reason
+
+
 def test_an_outage_is_retried_with_backoff_rather_than_sent_to_the_repair_path():
     """The repair path re-asks the model to "respond again with ONLY the
     JSON object". Against a 5xx that is meaningless - there is no

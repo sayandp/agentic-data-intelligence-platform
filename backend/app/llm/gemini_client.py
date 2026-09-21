@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 
+import httpx
 from pydantic import BaseModel, ValidationError
 
 from app.llm.base import LLMClient, LLMRateLimitError, LLMResponseError, LLMUnavailableError
@@ -200,6 +201,22 @@ class GeminiClient(LLMClient):
                 if isinstance(code, int) and code >= 500:
                     raise LLMUnavailableError(str(exc)) from exc
                 raise LLMResponseError(str(exc)) from exc
+            except httpx.TransportError as exc:
+                # The request never got an HTTP answer at all: the connection
+                # was reset, refused, or timed out. That is not an APIError,
+                # so it used to escape this client as a raw httpx exception -
+                # an error no agent recognises. The Narrative and Summary
+                # agents fall back to their templates on LLMUnavailableError,
+                # but a raw ConnectError went straight past that, out of the
+                # node, and left the run "completed" with no report, forever.
+                # Measured: 3 node failures in the local database, all
+                # `ConnectError: [WinError 10054] An existing connection was
+                # forcibly closed by the remote host` - 2 in narrate, 1 in
+                # summarise. It is the provider being unreachable, which is
+                # exactly what LLMUnavailableError means; callers already
+                # retry it with backoff and then degrade with the reason
+                # stated.
+                raise LLMUnavailableError(f"{type(exc).__name__}: {exc}") from exc
             break
 
         parsed = getattr(response, "parsed", None)

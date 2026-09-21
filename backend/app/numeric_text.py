@@ -92,5 +92,27 @@ def looks_numeric(series: pd.Series, minimum_parse_rate: float = 0.9) -> bool:
     non_null = series.dropna()
     if non_null.empty:
         return False
-    parsed = sum(1 for v in non_null if parse_number(v) is not None)
-    return parsed / len(non_null) >= minimum_parse_rate
+    # Stops as soon as the answer is decided, in either direction. The result
+    # is exactly the full-scan result - only the number of values parsed
+    # changes. It matters for free text: a million-row Description column
+    # used to be parsed end to end to conclude, after the first few hundred
+    # values, that it was not a number column.
+    #
+    # Every comparison is the ORIGINAL expression, `parsed / total >= rate`,
+    # rather than a rearrangement like `parsed >= rate * total`. A search of
+    # 10 rates across every size up to 4,000 found no input where the two
+    # disagree, so this is not fixing a known rounding case - it is choosing
+    # "the same answer" by construction over "the same answer on the inputs
+    # someone searched". Both exits are sound because `parsed` only grows:
+    # once the rate is reached it cannot be lost, and once even parsing every
+    # remaining value could not reach it, it cannot be won.
+    total = len(non_null)
+    parsed = 0
+    for seen, v in enumerate(non_null, start=1):
+        if parse_number(v) is not None:
+            parsed += 1
+            if parsed / total >= minimum_parse_rate:
+                return True
+        elif (parsed + (total - seen)) / total < minimum_parse_rate:
+            return False
+    return parsed / total >= minimum_parse_rate

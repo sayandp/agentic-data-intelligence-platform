@@ -107,7 +107,9 @@ async function pollUntil<T>(
   fetchOnce: () => Promise<T>,
   isTerminal: (result: T) => boolean,
   opts: {
-    onTick?: (elapsedMs: number) => void;
+    // `latest` is the most recent poll result, for a caller whose progress
+    // message depends on WHAT the poll saw, not only how long it has waited.
+    onTick?: (elapsedMs: number, latest: T) => void;
     timeoutMs: number;
     intervalMs: number;
     timeoutMessage: (elapsedSeconds: number) => string;
@@ -122,7 +124,7 @@ async function pollUntil<T>(
     if (elapsedMs > opts.timeoutMs) {
       throw new Error(opts.timeoutMessage(Math.round(elapsedMs / 1000)));
     }
-    opts.onTick?.(elapsedMs);
+    opts.onTick?.(elapsedMs, result);
     await new Promise((resolve) => setTimeout(resolve, opts.intervalMs));
   }
 }
@@ -172,7 +174,10 @@ export function pollIngestStatus(runId: string, onTick?: (elapsedMs: number) => 
 // Polls the SAME status endpoint pollIngestStatus does, with the same
 // grace period, so the two agree on when a report is never coming rather
 // than each deciding separately.
-export function pollReportReady(runRef: string, onTick?: (elapsedMs: number) => void): Promise<IngestResponse> {
+export function pollReportReady(
+  runRef: string,
+  onTick?: (elapsedMs: number, status: IngestResponse) => void
+): Promise<IngestResponse> {
   let completedSeenAt: number | null = null;
   return pollUntil<IngestResponse>(
     () => apiFetch<IngestResponse>(`/ingest/${runRef}/status`),
@@ -189,8 +194,13 @@ export function pollReportReady(runRef: string, onTick?: (elapsedMs: number) => 
       onTick,
       timeoutMs: REPORT_GRACE_PERIOD_MS,
       intervalMs: INGEST_POLL_INTERVAL_MS,
+      // Not "the Audit view shows whether the narrative step ran": the
+      // explore and narrate nodes write no trace row of their own, so for a
+      // run still inside exploration the Audit view shows nothing after
+      // ingestion. The status endpoint's `findings` flag is what says whether
+      // exploration has finished, and GET /reports states it.
       timeoutMessage: (seconds) =>
-        `The report for run ${runRef} has not appeared after ${seconds}s. The Audit view shows whether the narrative step ran and what it returned.`,
+        `The report for run ${runRef} has not appeared after ${seconds}s. Load it again for what has and has not finished yet.`,
     }
   );
 }

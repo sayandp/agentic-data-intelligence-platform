@@ -23,7 +23,9 @@ class LLMRateLimitError(LLMError):
 
 
 class LLMUnavailableError(LLMError):
-    """The provider was transiently unreachable/overloaded (HTTP 5xx).
+    """The provider was transiently unreachable/overloaded: an HTTP 5xx, or a
+    request that got no HTTP answer at all (connection reset, refused or timed
+    out).
 
     Distinct from LLMResponseError on purpose. A 503 "model is currently
     experiencing high demand" used to be classified as a malformed

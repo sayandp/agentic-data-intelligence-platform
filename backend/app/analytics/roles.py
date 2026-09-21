@@ -22,6 +22,7 @@ does to something else.
 from __future__ import annotations
 
 import re
+from contextvars import ContextVar
 from enum import Enum
 
 import pandas as pd
@@ -505,7 +506,40 @@ def _score_quantity(series: pd.Series, column: str, rows: int) -> tuple[float, l
 # ---------------------------------------------------------------------------
 
 
+# One detection pass parses each column ONCE. `detect()` hands the same
+# Series object to every scorer for that column, and roughly one scorer in
+# two reads it through _numeric_non_null - measured at 129 calls for an
+# 8-column frame, re-parsing every value in pure Python each time, with the
+# same answer each time. On a 1,067,371-row retail export that made role
+# detection the single slowest step of the whole run: 350s at full size,
+# paid twice (business analytics detects again). Measured end to end on that
+# file, in isolation, the pipeline took 806s before and 147s after; live, run
+# 1 sat "completed" for 16 minutes before its report existed. The agriculture
+# scorers (_score_agri_measure, which also calls _reads_as_year) were most of
+# the per-column cost.
+#
+# Scoped to one detect() call through a ContextVar, never global: a cache
+# keyed on a Series' id() is only sound while that Series is alive, so each
+# entry holds the Series itself, and the whole cache is dropped when the
+# pass ends. Outside detect() there is no cache and behaviour is unchanged.
+_PASS_CACHE: ContextVar[dict[int, tuple[pd.Series, pd.Series | None]] | None] = ContextVar(
+    "_roles_numeric_pass_cache", default=None
+)
+
+
 def _numeric_non_null(series: pd.Series) -> pd.Series | None:
+    cache = _PASS_CACHE.get()
+    if cache is None:
+        return _numeric_non_null_uncached(series)
+    hit = cache.get(id(series))
+    if hit is not None and hit[0] is series:
+        return hit[1]
+    result = _numeric_non_null_uncached(series)
+    cache[id(series)] = (series, result)
+    return result
+
+
+def _numeric_non_null_uncached(series: pd.Series) -> pd.Series | None:
     """The column as numbers, seeing through export formatting.
 
     An ads export writes `$1,234.56` and `2.3%` as text because it was
@@ -871,6 +905,14 @@ class SemanticColumnDetector:
         return bound
 
     def detect(self, df: pd.DataFrame) -> "RoleDetection":
+        # See _PASS_CACHE: every column is parsed once for this pass.
+        token = _PASS_CACHE.set({})
+        try:
+            return self._detect(df)
+        finally:
+            _PASS_CACHE.reset(token)
+
+    def _detect(self, df: pd.DataFrame) -> "RoleDetection":
         rows = len(df)
         candidates: list[RoleCandidate] = []
         scorers = self._scorers()

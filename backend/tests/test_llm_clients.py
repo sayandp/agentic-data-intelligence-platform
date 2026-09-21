@@ -125,6 +125,52 @@ def test_gemini_client_maps_5xx_to_unavailable_not_a_parse_failure(code):
     assert not issubclass(LLMUnavailableError, LLMResponseError)
 
 
+@pytest.mark.parametrize("make_error", [
+    lambda: __import__("httpx").ConnectError("[WinError 10054] An existing connection was forcibly closed by the remote host"),
+    lambda: __import__("httpx").ReadTimeout("read timed out"),
+    lambda: __import__("httpx").RemoteProtocolError("server disconnected without sending a response"),
+])
+def test_gemini_client_maps_a_dropped_connection_to_unavailable(make_error):
+    """REGRESSION: a request that got no HTTP answer at all is not an
+    APIError, so it escaped this client as a raw httpx exception. No agent
+    recognises that, so the Narrative and Summary agents' template fallback
+    never fired: the node raised, and the run was left "completed" with no
+    report. Three runs in the local database died exactly this way, all on
+    `ConnectError: [WinError 10054] ... forcibly closed by the remote host`."""
+    client = GeminiClient(api_key="fake-key", model="gemini-3.5-flash")
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            raise make_error()
+
+    client._client = pytypes.SimpleNamespace(models=FakeModels())
+
+    with pytest.raises(LLMUnavailableError) as caught:
+        client.complete("s", "u", Diagnosis)
+    # The transport error's own name survives into the reason a run records.
+    assert type(caught.value.__cause__).__name__ in str(caught.value)
+
+
+def test_gemini_client_does_not_rotate_keys_on_a_dropped_connection():
+    """Same reasoning as a 5xx: every key goes over the same network to the
+    same host, so rotating would only burn the pool."""
+    import httpx
+
+    client = GeminiClient(api_key=None, model="gemini-3.5-flash")
+    client._api_keys = ["key-1", "key-2", "key-3"]
+    client._key_index = 0
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            raise httpx.ConnectError("connection reset")
+
+    client._client = pytypes.SimpleNamespace(models=FakeModels())
+
+    with pytest.raises(LLMUnavailableError):
+        client.complete("s", "u", Diagnosis)
+    assert client._key_index == 0
+
+
 def test_gemini_client_does_not_rotate_keys_on_a_5xx():
     """Key rotation exists for per-key quota. Every key reaches the same
     overloaded model, so burning them on a 5xx would exhaust the pool for

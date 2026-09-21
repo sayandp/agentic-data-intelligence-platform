@@ -520,6 +520,130 @@ and not claimed as load-bearing.
 
 ---
 
+## 5.7 A message that asserted something it had not checked
+
+A user loaded the report for run 1 - a 1,067,371-row retail export - and was
+told:
+
+> the report for run 1 is still being written. Exploration has finished (which
+> is what marks a run completed), and the Narrative Agent runs after that -
+> reload in a moment. If it never appears, the Audit view shows whether the
+> narrative step ran and what it returned.
+
+Three of those claims were wrong at the moment it was shown.
+
+**"Exploration has finished" was never checked.** It was inferred from
+`run.status == "completed"`, and `explore_node` sets that status at its START,
+before role detection, exploration, analytics or the domain packs run - because
+in this codebase "completed" means the run passed validation and its data is
+usable (Ask and Predict accept a run from that moment, and the user ran both
+on run 1 while it was still analysing). The message restated an internal
+status as an external fact about a stage that had not started.
+
+**"reload in a moment" was 16 minutes.** Run 1's own timestamps: marked
+completed at 23:16:55, exploration findings written at 23:26:09 (9m 14s
+later), report delivered at 23:32:57 (16m 02s later).
+
+**"the Audit view shows whether the narrative step ran" pointed at an empty
+page.** The explore and narrate nodes write no trace row of their own; the
+only rows are the ones exploration and the narrative write on SUCCESS. For a
+run still inside exploration the Audit view shows nothing after ingestion, so
+the fallback advice sent a reader somewhere that could not answer.
+
+### What made the window long enough to notice
+
+Role detection re-parsed every column once per scorer. `_numeric_non_null` was
+called 129 times for an 8-column frame, each call re-parsing every value in
+pure Python through `parse_number`, and `looks_numeric` scanned a whole column
+even after the 90% threshold was already out of reach. Business analytics then
+ran a second detection pass and paid it again.
+
+Measured on run 1's own file:
+
+| | before | after |
+| --- | --- | --- |
+| detection, 50k rows | 16.7s | 0.58s |
+| detection, 200k rows | 66.0s | 2.45s |
+| detection, 1,067,371 rows | 349.5s | 12.4s |
+| business analytics, full file | 346.2s | 24.1s |
+| **whole pipeline, full file, isolated** | **806s** | **147s** |
+| live re-ingest, same machine | 16m 02s | 2m 36s |
+
+**This was a regression I introduced in Part 4.** The nine agriculture scorers
+added there account for roughly 12s of the 17s measured at 50k rows -
+`_score_agri_measure` reads the column and calls `_reads_as_year`, which reads
+it again. Nothing caught it, because every fixture in the suite is small
+enough that a quadratic-in-scorers constant is invisible.
+
+### The fix, and what is claimed for it
+
+Each column is parsed once per detection pass (a cache scoped to one
+`detect()` call, keyed on the Series object and dropped when the pass ends),
+and `looks_numeric` stops as soon as the answer is decided, using the original
+comparison rather than a rearrangement of it.
+
+Both are meant to change speed and nothing else. That was checked rather than
+asserted: detection was run at HEAD and on the fix in separate processes over
+46 CSVs, and all 5,905 candidates - column, role, score and reasons - were
+identical. `test_detection_parse_once.py` keeps it true without a second
+checkout, asserting the CALL COUNT rather than a wall-clock bound, since a
+timing assertion fails on a busy machine and passes on a fast one whatever the
+code does.
+
+`GET /reports` now reads the rows instead of the status: whether exploration
+finished is whether its findings exist, and when is their own timestamp. The
+Reports page makes the same distinction from the status poll's `findings` flag
+instead of claiming one phase for the whole wait.
+
+Falsification: 8 mutations, 7 caught. The eighth - the rearranged comparison -
+is an equivalent mutant: a search of 10 rates across every size up to 4,000
+found no input where the two forms disagree, and a too-strict early exit is
+rescued by the final comparison anyway. It is recorded as expected-not-caught
+rather than counted as a guard.
+
+### A second route to the same symptom, found while verifying the first
+
+The first full E2E pass after the fix was **not** green: one failure in dark,
+one in aurora, both timeouts waiting for a report or summary. They read like
+LLM flakiness. They were not. Both runs had finished every stage within
+seconds, and their trace rows were named `narrate` and `summarise` - the names
+`safe_node` uses when a node RAISES. The error, on all three such rows in the
+database: `ConnectError: [WinError 10054] An existing connection was forcibly
+closed by the remote host`.
+
+The Gemini client mapped HTTP failures into the platform's own error types -
+429 to `LLMRateLimitError`, 5xx to `LLMUnavailableError` - but a request that
+gets no HTTP answer at all is not an `APIError`. It escaped the client as a
+raw `httpx` exception, which no agent recognises, so the template fallback the
+platform promises never fired: the node died and the run stayed "completed"
+with no report, permanently. That is the user's symptom by a different path,
+and the rewritten message above would have told that reader "the Narrative
+Agent writes the report after it" about a step that had already ended.
+
+Fixed at the one boundary that classifies provider errors: `httpx.
+TransportError` becomes `LLMUnavailableError`, which every agent already
+retries with backoff and then degrades from with the reason stated. No agent
+changed. The message now also reads the failure row and says the report will
+not arrive, and why. The regression test drives a REAL `GeminiClient` whose
+SDK raises `ConnectError` through the Narrative Agent: the existing outage test
+used a fake that raised the platform's own `LLMUnavailableError` directly,
+which is precisely the step that was missing, so it could never have caught
+this.
+
+The earlier monitor that reported "71 passed" per theme read only the pass
+line and hid the "1 failed" beside it. The failures were found by reading the
+full result, not the summary.
+
+### Still true, and not fixed here
+
+The repaired contract is rebuilt from the file twice per run (once in
+`explore_node`, once in `narrate_node`) - 36s each on this file, now the
+largest single cost. Business analytics still runs its own detection pass
+rather than reusing the run's. Both are real, both are bounded, and neither is
+the defect that was reported; they are named here rather than quietly fixed.
+
+---
+
 ## 6. Limitations, honestly
 
 1. **The container path has never been run.** `docker-compose.yml`,

@@ -94,6 +94,9 @@ export default function ReportsPage() {
   // wait shows elapsed time rather than a bare spinner (DESIGN.md: never a
   // spinner with no sense of whether it is stuck).
   const [waitingFor, setWaitingFor] = useState<string | null>(null);
+  // Unknown until the first poll answers, so it starts as "still analysing":
+  // the claim that needs evidence is "exploration finished", not its absence.
+  const [waitingOnExploration, setWaitingOnExploration] = useState(true);
   const chartsContainerRef = useRef<HTMLDivElement>(null);
 
   async function loadReport(query: string) {
@@ -128,7 +131,10 @@ export default function ReportsPage() {
       if (err instanceof ApiError && err.status === 404) {
         try {
           setWaitingFor("0s");
-          const status = await pollReportReady(query, (ms) => setWaitingFor(`${Math.round(ms / 1000)}s`));
+          const status = await pollReportReady(query, (ms, latest) => {
+            setWaitingFor(`${Math.round(ms / 1000)}s`);
+            setWaitingOnExploration(!latest.findings?.available);
+          });
           if (status.report?.available) {
             const data = await apiFetch<ReportRecord>(`/reports/${query}`);
             setReport(data);
@@ -205,9 +211,18 @@ export default function ReportsPage() {
         </div>
       </div>
 
+      {/* Which phase is true comes from the status poll's `findings` flag -
+          whether exploration findings have been WRITTEN. It used to say
+          "Exploration finished" unconditionally, because the run's status
+          was "completed"; but that status is set when the run passes
+          validation, before exploration starts, so a run still inside
+          exploration was told its exploration had finished. */}
       {waitingFor !== null && (
-        <p className="mb-4 text-sm text-ink-muted">
-          Exploration finished and the narrative is still being written &mdash; waiting {waitingFor}...
+        <p className="mb-4 text-sm text-ink-muted" data-testid="report-waiting">
+          {waitingOnExploration
+            ? "The run passed validation and its analysis is still running; the report is written after it"
+            : "Exploration finished and the narrative is being written"}{" "}
+          &mdash; waiting {waitingFor}...
         </p>
       )}
 
