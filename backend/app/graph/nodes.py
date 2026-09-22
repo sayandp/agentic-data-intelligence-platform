@@ -51,9 +51,7 @@ from app.privacy.confirmations import confirmed_pii_for_source
 from app.semantic_roles import detect_for_run, roles_document
 from app.gate import DEFAULT_CONFIDENCE_THRESHOLD
 from app.graph.state import IngestState
-from app.models import AgentTrace, Baseline, DataSource, Run, ValidationEvent
-from app.narrative.pipeline import run_narrative_for_run
-from app.summary.pipeline import run_summary_for_run
+from app.models import AgentTrace, Baseline, DataSource, EgressEvent, Run, ValidationEvent
 from app.profiling import BaselineProfiler
 from app.repair import repaired_contract_for_run
 from app.resolution import (
@@ -230,10 +228,38 @@ def validate_node(state: IngestState, config: RunnableConfig) -> dict:
 
 
 def resolve_node(state: IngestState, config: RunnableConfig) -> dict:
-    diagnostic_agent = config["configurable"]["diagnostic_agent"]
+    """Diagnose -> gate -> fix for every DETECTED event, with NO session open
+    while the Diagnostic Agent is on the network.
 
+    This used to load the run and its events, then run the whole diagnosis
+    loop - model calls included - inside that one session, holding a pooled
+    connection throughout. Four phases now:
+
+      1. read     - short session: run, source, baseline, DETECTED events.
+                    The objects are detached with their state intact, and
+                    the state each event was read in is remembered.
+      2. diagnose - no session: rebuild the frame and run process_queue
+                    against a WriteBuffer, which collects every row it adds.
+      3. write    - FRESH session. Re-read the run and those events first:
+                    the run may have been rejected (another pending event's
+                    reject_data sets it "failed"), or another resolution of
+                    the same run may have processed these events already.
+                    Either way nothing is overwritten - only the egress rows
+                    are kept, because those calls did go out - and a trace
+                    says what was dropped and why.
+      4. snapshot - only when pausing on a MUTABLE source with no snapshot
+                    yet: fetch with no session (a SQL or API fetch is a
+                    network call), then store the path in a fresh session if
+                    nothing else has meanwhile.
+    """
+    from app.resolution import WriteBuffer
+
+    diagnostic_agent = config["configurable"]["diagnostic_agent"]
+    run_id = state["run_id"]
+
+    # -- 1. read ---------------------------------------------------------
     with SessionLocal() as db:
-        run = db.get(Run, state["run_id"])
+        run = db.get(Run, run_id)
 
         # Rule D: re-read fresh. A reject_data applied at await_human's last
         # resume already set this - resolve_node re-entering afterward must
@@ -245,21 +271,78 @@ def resolve_node(state: IngestState, config: RunnableConfig) -> dict:
 
         source = db.get(DataSource, run.source_id)
         baseline = db.query(Baseline).filter(Baseline.source_id == source.id, Baseline.is_active.is_(True)).one_or_none()
-        connector = build_connector(source)
-
         detected_events = (
             db.query(ValidationEvent)
             .filter(ValidationEvent.run_id == run.id, ValidationEvent.state == DETECTED)
             .order_by(ValidationEvent.created_at)
             .all()
         )
-        if detected_events:
-            contract = repaired_contract_for_run(run, source, connector, baseline.profile_json if baseline else None)
-            groups_and_events = _group_detected_events(detected_events)
-            queue_outcome = process_queue(
-                db, run, contract, groups_and_events, baseline, diagnostic_agent, _confidence_threshold(), reveal_depth_cap_from_env()
+        status_as_read = run.status
+        states_as_read = {e.id: e.state for e in detected_events}
+        detected_count = len(detected_events)
+        db.expunge_all()
+
+    connector = build_connector(source)
+
+    # -- 2. diagnose (no session) ------------------------------------------
+    buffer = WriteBuffer()
+    queue_outcome = None
+    if detected_events:
+        contract = repaired_contract_for_run(run, source, connector, baseline.profile_json if baseline else None)
+        groups_and_events = _group_detected_events(detected_events)
+        queue_outcome = process_queue(
+            buffer, run, contract, groups_and_events, baseline, diagnostic_agent, _confidence_threshold(), reveal_depth_cap_from_env()
+        )
+
+    # -- 3. write (fresh session, re-checked) --------------------------------
+    with SessionLocal() as db:
+        current = db.get(Run, run_id)
+        changed_events = []
+        if states_as_read:
+            now = {
+                e.id: e.state
+                for e in db.query(ValidationEvent).filter(ValidationEvent.id.in_(list(states_as_read))).all()
+            }
+            changed_events = [eid for eid, st in states_as_read.items() if now.get(eid) != st]
+
+        conflict = None
+        if current.status != status_as_read:
+            conflict = f"the run became {current.status!r} while its events were being diagnosed"
+        elif changed_events:
+            conflict = (
+                f"{len(changed_events)} of the {len(states_as_read)} event(s) being diagnosed changed state meanwhile - "
+                "another resolution of this run got there first"
             )
-            run.fix_chain = [*(run.fix_chain or []), *queue_outcome.fix_chain]
+
+        if conflict is not None:
+            # The calls went out; the audit trail records them regardless.
+            for obj in buffer.objects:
+                if isinstance(obj, EgressEvent):
+                    db.add(obj)
+            route = "failed" if current.status == "failed" else _route_from_pending(db, current)
+            db.add(
+                AgentTrace(
+                    run_id=run_id,
+                    agent_name="resolve",
+                    input_summary=f"detected_groups={detected_count}",
+                    output_summary=json.dumps({"discarded": conflict, "nothing_overwritten": True}),
+                    edge_taken=route,
+                )
+            )
+            db.commit()
+            return {"route": route}
+
+        for event in detected_events:
+            db.merge(event)
+        for obj in buffer.objects:
+            db.add(obj)
+        # process_queue records how deep the reveal chain went ON THE RUN it
+        # was given - here, a detached copy. Carried across explicitly, or it
+        # would be lost with that copy. (Caught by the golden capture:
+        # reveal_depth_reached came back 0 where it had been 1.)
+        current.reveal_depth_reached = max(current.reveal_depth_reached or 0, run.reveal_depth_reached or 0)
+        if queue_outcome is not None:
+            current.fix_chain = [*(current.fix_chain or []), *queue_outcome.fix_chain]
             # The cache describes the frame, and the frame just changed. A
             # run that escalates here sits at awaiting_approval being polled
             # and would otherwise serve metadata describing the PRE-fix
@@ -267,40 +350,53 @@ def resolve_node(state: IngestState, config: RunnableConfig) -> dict:
             # if it never does. Free to refresh: process_queue already
             # carries the post-fix contract, so nothing is rebuilt.
             if queue_outcome.fix_chain:
-                run.contract_metadata = queue_outcome.contract.metadata()
-            db.flush()
+                current.contract_metadata = queue_outcome.contract.metadata()
+        db.flush()
 
-        still_pending = (
-            db.query(ValidationEvent).filter(ValidationEvent.run_id == run.id, ValidationEvent.state == AWAITING_APPROVAL).count()
-        )
+        still_pending = _pending_count(db, current)
         route = "await_human" if still_pending > 0 else "explore"
+        needs_snapshot = route == "await_human" and not connector.source_immutable and not current.snapshot_path
         if route == "await_human":
-            run.status = "awaiting_approval"
-            if not connector.source_immutable and not run.snapshot_path:
-                # Matches app/run_snapshots.py's documented contract exactly:
-                # a mutable source (SQL, API) only ever gets snapshotted once
-                # a run is actually known to be pausing at awaiting_approval -
-                # never unconditionally at ingest time. A human resolving this
-                # hours later must replay against the RAW frame the
-                # Diagnostic Agent actually saw, not a live re-fetch; but an
-                # ingest that ends up auto-fixing everything (no pause) has
-                # no such risk and must never pay this cost or lose
-                # connector_metadata (declared_schema, pagination bookkeeping)
-                # to a snapshot round-trip that only persists the DataFrame.
-                raw_contract = connector.fetch()
-                run.snapshot_path = save_snapshot(run.id, raw_contract.data.copy(deep=True))
+            current.status = "awaiting_approval"
         db.add(
             AgentTrace(
-                run_id=run.id,
+                run_id=run_id,
                 agent_name="resolve",
-                input_summary=f"detected_groups={len(detected_events)}",
+                input_summary=f"detected_groups={detected_count}",
                 output_summary=json.dumps({"still_pending": still_pending}),
                 edge_taken=route,
             )
         )
         db.commit()
 
+    # -- 4. snapshot (fetch with no session) ---------------------------------
+    if needs_snapshot:
+        # Matches app/run_snapshots.py's documented contract exactly: a
+        # mutable source (SQL, API) only ever gets snapshotted once a run is
+        # actually known to be pausing at awaiting_approval - never
+        # unconditionally at ingest time. A human resolving this hours later
+        # must replay against the RAW frame the Diagnostic Agent actually
+        # saw, not a live re-fetch; but an ingest that ends up auto-fixing
+        # everything (no pause) has no such risk and must never pay this cost
+        # or lose connector_metadata (declared_schema, pagination
+        # bookkeeping) to a snapshot round-trip that only persists the frame.
+        raw_contract = connector.fetch()
+        snapshot_path = save_snapshot(run_id, raw_contract.data.copy(deep=True))
+        with SessionLocal() as db:
+            current = db.get(Run, run_id)
+            if not current.snapshot_path:
+                current.snapshot_path = snapshot_path
+                db.commit()
+
     return {"route": route}
+
+
+def _pending_count(db, run) -> int:
+    return db.query(ValidationEvent).filter(ValidationEvent.run_id == run.id, ValidationEvent.state == AWAITING_APPROVAL).count()
+
+
+def _route_from_pending(db, run) -> str:
+    return "await_human" if _pending_count(db, run) > 0 else "explore"
 
 
 def await_human_node(state: IngestState, config: RunnableConfig) -> dict:
@@ -492,19 +588,49 @@ def explore_node(state: IngestState, config: RunnableConfig) -> dict:
 
 
 def narrate_node(state: IngestState, config: RunnableConfig) -> dict:
-    narrative_agent = config["configurable"].get("narrative_agent")
-    with SessionLocal() as db:
-        from app.models import ExplorationFinding
+    """Three phases, and no session is open across any network call.
 
+    This used to query, rebuild the frame, and make the Narrative Agent's
+    model calls - with rate-limit backoff - all inside one session, releasing
+    its pooled connection only at the final commit. Overlapping runs drained
+    the pool (5 + 10): a status request returned 500 after 30s, and an ingest
+    failed with `QueuePool limit ... reached`.
+
+      1. read   - one short session: the run, its source, baseline and
+                  exploration findings, copied out as plain values or
+                  detached objects. Closed before anything slow happens.
+      2. work   - no session: rebuild the repaired frame (a SQL or API source
+                  re-fetches here, which is a network call too) and generate.
+      3. write  - a FRESH session, which re-reads the run before writing and
+                  will not overwrite a report someone else wrote meanwhile.
+    """
+    from app.models import ExplorationFinding
+    from app.narrative.pipeline import generate_for_inputs, load_narrative_inputs, save_narrative_report
+
+    narrative_agent = config["configurable"].get("narrative_agent")
+
+    with SessionLocal() as db:
         run = db.get(Run, state["run_id"])
         source = db.get(DataSource, run.source_id)
         baseline = db.query(Baseline).filter(Baseline.source_id == source.id, Baseline.is_active.is_(True)).one_or_none()
         exploration_record = db.query(ExplorationFinding).filter(ExplorationFinding.run_id == run.id).one_or_none()
+        if exploration_record is None:
+            return {"route": "done"}
+        inputs = load_narrative_inputs(db, run, exploration_record)
+        if inputs is None:
+            return {"route": "done"}
+        baseline_profile = baseline.profile_json if baseline else None
+        # Detached with their loaded attributes intact: the frame rebuild
+        # below reads run.snapshot_path / run.fix_chain and the source's
+        # connection config, and must not reach back into a session to do it.
+        db.expunge_all()
 
-        connector = build_connector(source)
-        contract = repaired_contract_for_run(run, source, connector, baseline.profile_json if baseline else None)
-        if exploration_record is not None:
-            run_narrative_for_run(db, run, exploration_record, contract.data, narrative_agent)
+    connector = build_connector(source)
+    contract = repaired_contract_for_run(run, source, connector, baseline_profile)
+    report, egress_records = generate_for_inputs(inputs, contract.data, narrative_agent)
+
+    with SessionLocal() as db:
+        save_narrative_report(db, inputs, report, egress_records)
         db.commit()
 
     return {"route": "done"}
@@ -523,11 +649,24 @@ def summarise_node(state: IngestState, config: RunnableConfig) -> dict:
     narrative stage is the final one that writes any. It reads those rows -
     never the exported deck, which does not exist yet and must never be this
     agent's input.
+
+    Read, generate, write - with the session CLOSED while the model is
+    called, and a fresh one to save, for the same reason as narrate_node.
     """
+    from app.summary.pipeline import generate_summary, load_summary_inputs, save_summary
+
+    summary_agent = config["configurable"].get("summary_agent")
+
     with SessionLocal() as db:
         run = db.get(Run, state["run_id"])
-        summary_agent = config["configurable"].get("summary_agent")
-        run_summary_for_run(db, run, summary_agent)
+        inputs = load_summary_inputs(db, run)
+    if inputs is None:
+        return {"route": "done"}
+
+    result = generate_summary(inputs, summary_agent)
+
+    with SessionLocal() as db:
+        save_summary(db, inputs, result)
         db.commit()
 
     return {"route": "done"}

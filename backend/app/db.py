@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import os
+import threading
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -17,6 +18,80 @@ DATABASE_URL = os.environ.get(
 _connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=_connect_args)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+
+# ---------------------------------------------------------------------------
+# No pool connection may be held across a network call.
+#
+# A session that has queried holds a pooled connection until its transaction
+# ends. narrate_node used to query, then make its model calls - with
+# rate-limit backoff - and only release the connection at the final commit.
+# Enough overlapping runs drained SQLAlchemy's default pool (5 + 10): a plain
+# status request waited 30s and returned 500, and an ingest FAILED with
+# `QueuePool limit ... reached`. Raising the pool size would only move that
+# number; the fix is that nothing waits on the network while holding one.
+#
+# This records which thread checked out each connection, so a test can assert
+# the count is ZERO at the moment of a model call - a precise check at the
+# call itself, rather than an inference from whether a pool happened to run
+# dry under some particular load.
+# ---------------------------------------------------------------------------
+
+_checked_out: dict[int, int] = {}
+_checked_out_lock = threading.Lock()
+
+
+def track_connections(target_engine) -> None:
+    """Attach the checkout tracker to an engine. Idempotent per engine."""
+    if getattr(target_engine, "_tracks_connections", False):
+        return
+
+    @event.listens_for(target_engine, "checkout")
+    def _on_checkout(dbapi_connection, connection_record, connection_proxy):
+        with _checked_out_lock:
+            _checked_out[id(connection_record)] = threading.get_ident()
+
+    @event.listens_for(target_engine, "checkin")
+    def _on_checkin(dbapi_connection, connection_record):
+        # Removed by record, not by the current thread: a check-in can
+        # happen on a different thread from the checkout.
+        with _checked_out_lock:
+            _checked_out.pop(id(connection_record), None)
+
+    target_engine._tracks_connections = True
+
+
+def connections_held_by_current_thread() -> int:
+    me = threading.get_ident()
+    with _checked_out_lock:
+        return sum(1 for owner in _checked_out.values() if owner == me)
+
+
+def release_connection(db: Session | None) -> None:
+    """End `db`'s transaction so its pooled connection goes back BEFORE a
+    network call, for a session the caller does not own and so cannot close
+    (a request's session, carried through a query or prediction graph).
+
+    Refuses if anything is pending. Committing here would write that pending
+    state early - before the model has answered, and outside the transaction
+    its author meant it to be in. That is a bug in the caller, and it is
+    raised rather than committed quietly.
+    """
+    if db is None:
+        # No session, nothing held - a graph node unit-tested without a
+        # database passes None through.
+        return
+    pending = [*db.new, *db.dirty, *db.deleted]
+    if pending:
+        kinds = sorted({type(obj).__name__ for obj in pending})
+        raise RuntimeError(
+            f"release_connection: {len(pending)} pending change(s) ({', '.join(kinds)}) would be committed early, "
+            "before a network call"
+        )
+    db.commit()
+
+
+track_connections(engine)
 
 
 def _add_column_if_missing(conn: Connection, table: str, column: str, ddl_type: str) -> None:

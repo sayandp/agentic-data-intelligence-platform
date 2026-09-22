@@ -42,6 +42,38 @@ from app.validation.engine import RuleOutcome, ValidationFailure
 DEFAULT_REVEAL_DEPTH_CAP = 2
 
 
+class WriteBuffer:
+    """What the diagnosis loop writes to instead of a Session.
+
+    process_queue, process_group and raise_revealed_events never query or
+    flush - they only add rows and change objects in memory. The only reason
+    a connection was held across the Diagnostic Agent's model calls was that
+    the caller's session had queried BEFORE the loop and kept its
+    transaction open through it. Running the loop against this buffer, on
+    detached objects, means no session exists during those calls at all;
+    the caller applies the buffer afterwards in a fresh transaction, after
+    re-checking that nothing it read has changed.
+
+    Anything but add/add_all raises. A query added to the loop later would
+    otherwise quietly reopen a connection inside it - exactly the failure
+    this exists to prevent - so it fails loudly at the first attempt.
+    """
+
+    def __init__(self) -> None:
+        self.objects: list = []
+
+    def add(self, obj) -> None:
+        self.objects.append(obj)
+
+    def add_all(self, objs) -> None:
+        self.objects.extend(objs)
+
+    def __getattr__(self, name):
+        raise AttributeError(
+            f"the diagnosis loop runs with no database session; it may only add rows, not call .{name}()"
+        )
+
+
 def raise_revealed_events(
     db: Session, run: Run, baseline: Baseline | None, revealed: list[RuleOutcome]
 ) -> list[tuple[CorrelatedGroup, list[ValidationEvent]]]:
@@ -472,13 +504,40 @@ def apply_approve(
         # the chain from there exactly like the ingest auto-apply path does.
         contract.data = repair_result.new_df
         initial_reveals = raise_revealed_events(db, run, baseline, repair_result.revealed_failures)
-        queue_outcome = process_queue(
-            db, run, contract, initial_reveals, baseline, diagnostic_agent, confidence_threshold, reveal_depth_cap, start_depth=1
-        )
-        if queue_outcome.fix_chain:
-            run.fix_chain = [*(run.fix_chain or []), *queue_outcome.fix_chain]
+        if not initial_reveals:
+            # Nothing revealed: the queue is empty, so process_queue makes no
+            # model call - it only records that the chain reached depth 1 (the
+            # approved fix itself). Run in place, exactly as before.
+            process_queue(
+                db, run, contract, [], baseline, diagnostic_agent, confidence_threshold, reveal_depth_cap, start_depth=1
+            )
+            db.commit()
+            return DecisionOutcome(decision="approve", applied=True)
+
+        # Diagnosing what the approved fix revealed means model calls, and no
+        # connection may be held across them. So the human's decision and the
+        # newly revealed failures are committed FIRST, together - a crash
+        # during diagnosis then leaves the reveals recorded as DETECTED
+        # rather than lost - and the commit ends the transaction. The
+        # diagnosis runs on detached copies against a WriteBuffer, and its
+        # results go in through a fresh session, after a re-check.
+        db.flush()
+        reveal_ids = [[e.id for e in events] for _group, events in initial_reveals]
+        reveal_groups = [group for group, _events in initial_reveals]
+        run_id, baseline_id, status_after_decision = run.id, baseline.id, run.status
         db.commit()
-        return DecisionOutcome(decision="approve", applied=True)
+
+        return _diagnose_reveals_detached(
+            run_id,
+            baseline_id,
+            status_after_decision,
+            contract,
+            reveal_groups,
+            reveal_ids,
+            diagnostic_agent,
+            confidence_threshold,
+            reveal_depth_cap,
+        )
 
     # Approved, but the fix didn't actually resolve the failure it was meant
     # to. awaiting_approval can only legally end at resolved or rejected -
@@ -495,3 +554,84 @@ def apply_approve(
         e.resolved_at = datetime.now(timezone.utc)
     db.commit()
     return DecisionOutcome(decision="approve", applied=False, error=repair_result.error)
+
+def _diagnose_reveals_detached(
+    run_id: str,
+    baseline_id: str,
+    status_after_decision: str,
+    contract: DataContract,
+    reveal_groups: list[CorrelatedGroup],
+    reveal_ids: list[list[str]],
+    diagnostic_agent: DiagnosticAgent | None,
+    confidence_threshold: float,
+    reveal_depth_cap: int,
+) -> DecisionOutcome:
+    """apply_approve's reveal chain, with no session open during the model
+    calls. Read detached copies, diagnose into a WriteBuffer, then write in a
+    fresh session only if the run and the revealed events are as they were.
+
+    If they are not - a reject_data on another pending event failed the run,
+    or another resolution already processed these events - nothing is
+    overwritten. The egress rows are still written, because those calls went
+    out, and a trace records what was discarded. The approval itself stands:
+    it was committed before any of this began.
+    """
+    from app.db import SessionLocal
+    from app.models import EgressEvent
+
+    all_ids = [eid for ids in reveal_ids for eid in ids]
+    with SessionLocal() as db:
+        run = db.get(Run, run_id)
+        baseline = db.get(Baseline, baseline_id)
+        by_id = {e.id: e for e in db.query(ValidationEvent).filter(ValidationEvent.id.in_(all_ids)).all()}
+        db.expunge_all()
+
+    detached = [(group, [by_id[eid] for eid in ids]) for group, ids in zip(reveal_groups, reveal_ids)]
+    buffer = WriteBuffer()
+    queue_outcome = process_queue(
+        buffer, run, contract, detached, baseline, diagnostic_agent, confidence_threshold, reveal_depth_cap, start_depth=1
+    )
+
+    with SessionLocal() as db:
+        current = db.get(Run, run_id)
+        now = {e.id: e.state for e in db.query(ValidationEvent).filter(ValidationEvent.id.in_(all_ids)).all()}
+        changed = [eid for eid in all_ids if now.get(eid) != DETECTED]
+
+        conflict = None
+        if current.status != status_after_decision:
+            conflict = f"the run became {current.status!r} while the revealed failures were being diagnosed"
+        elif changed:
+            conflict = f"{len(changed)} revealed event(s) changed state meanwhile - another resolution got there first"
+
+        if conflict is not None:
+            for obj in buffer.objects:
+                if isinstance(obj, EgressEvent):
+                    db.add(obj)
+            db.add(
+                AgentTrace(
+                    run_id=run_id,
+                    agent_name="resolve",
+                    input_summary=f"revealed_groups={len(reveal_groups)} after approval",
+                    output_summary=json.dumps({"discarded": conflict, "nothing_overwritten": True}),
+                    edge_taken="discarded",
+                )
+            )
+            db.commit()
+            return DecisionOutcome(decision="approve", applied=True)
+
+        for _group, events in detached:
+            for event in events:
+                db.merge(event)
+        for obj in buffer.objects:
+            db.add(obj)
+        # process_queue records how deep the reveal chain went ON THE RUN it
+        # was given - here, a detached copy. Carried across explicitly, or it
+        # would be lost with that copy. (Caught by the golden capture:
+        # reveal_depth_reached came back 0 where it had been 1.)
+        current.reveal_depth_reached = max(current.reveal_depth_reached or 0, run.reveal_depth_reached or 0)
+        if queue_outcome.fix_chain:
+            # Re-read and APPEND: another approval may have extended the chain
+            # while this one was diagnosing, and replacing it would drop that.
+            current.fix_chain = [*(current.fix_chain or []), *queue_outcome.fix_chain]
+        db.commit()
+    return DecisionOutcome(decision="approve", applied=True)

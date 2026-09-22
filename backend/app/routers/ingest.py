@@ -169,7 +169,11 @@ def _run_graph_in_background(
 def ingest(
     source_id: str,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    # scope="function": this session closes when the endpoint returns, BEFORE the
+    # background task runs. With the default scope FastAPI keeps it open until the
+    # background work finishes - and after a post-commit read it holds a pooled
+    # connection for the entire graph run, model calls included.
+    db: Session = Depends(get_db, scope="function"),
     diagnostic_agent: DiagnosticAgent | None = Depends(get_diagnostic_agent),
     narrative_agent: NarrativeAgent | None = Depends(get_narrative_agent),
     summary_agent=Depends(get_summary_agent),

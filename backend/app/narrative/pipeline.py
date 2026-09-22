@@ -25,6 +25,7 @@ from app.analytics.findings import BusinessAnalyticsFindings
 from app.models import AgentTrace, BusinessAnalysis, ExplorationFinding, Report, Run
 from app.narrative.agent import NarrativeAgent
 from app.privacy.classification import PrivacyClassification
+from app.db import release_connection
 from app.privacy.egress_log import persist_egress
 from app.narrative.charts import build_charts
 from app.semantic_roles import prompt_context
@@ -36,20 +37,23 @@ from app.narrative.quality import render_quality_context_summary
 from app.narrative.template import build_template_claims, render_template_narrative
 
 
-def run_narrative_for_run(
-    db: Session,
-    run: Run,
-    exploration_record: ExplorationFinding,
-    repaired_df: pd.DataFrame,
-    narrative_agent: NarrativeAgent | None,
-    config: NarrativeConfig | None = None,
-) -> Report | None:
-    """Idempotent: a run that already has a Report row is left alone rather
-    than regenerated and re-persisted a second time - same pattern as
-    app/exploration/pipeline.py::run_exploration_for_run."""
-    existing = db.query(Report).filter(Report.run_id == run.id).one_or_none()
-    if existing is not None:
-        return existing
+@dataclass
+class NarrativeInputs:
+    """Everything the report needs that lives in the database, read once and
+    then carried as plain values - so the model calls that follow need no
+    session, and none is open while they run."""
+
+    run_id: str
+    findings: ExplorationFindings
+    analytics_findings: object | None
+    roles: dict | None
+    privacy: PrivacyClassification
+
+
+def load_narrative_inputs(db: Session, run: Run, exploration_record: ExplorationFinding) -> NarrativeInputs | None:
+    """Phase 1 of 3. None when the run already has a report (idempotent)."""
+    if db.query(Report).filter(Report.run_id == run.id).one_or_none() is not None:
+        return None
 
     findings = ExplorationFindings.model_validate(exploration_record.findings_json)
 
@@ -65,21 +69,82 @@ def run_narrative_for_run(
         except Exception:  # noqa: BLE001 - a stale payload must not block a report
             analytics_findings = None
 
+    return NarrativeInputs(
+        run_id=run.id,
+        findings=findings,
+        analytics_findings=analytics_findings,
+        roles=run.semantic_roles,
+        privacy=PrivacyClassification.from_dict(run.privacy_classification),
+    )
+
+
+def generate_for_inputs(
+    inputs: NarrativeInputs,
+    repaired_df: pd.DataFrame,
+    narrative_agent: NarrativeAgent | None,
+    config: NarrativeConfig | None = None,
+) -> tuple[NarrativeReport, list]:
+    """Phase 2 of 3: the model calls. Takes no session and can reach none."""
     egress_records: list = []
     report = generate_narrative_report(
-        findings,
+        inputs.findings,
         repaired_df,
         narrative_agent,
         config,
-        analytics_findings,
-        roles=run.semantic_roles,
-        privacy=PrivacyClassification.from_dict(run.privacy_classification),
+        inputs.analytics_findings,
+        roles=inputs.roles,
+        privacy=inputs.privacy,
         egress_sink=egress_records,
     )
-    persist_egress(db, run.id, egress_records)
+    return report, egress_records
+
+
+def save_narrative_report(
+    db: Session, inputs: NarrativeInputs, report: NarrativeReport, egress_records: list
+) -> Report | None:
+    """Phase 3 of 3, in a FRESH session. The run is re-read, because it may
+    have changed while the model was answering.
+
+    The egress rows are written whatever happens next: those calls went out,
+    and the audit trail must say so even when the report they produced is
+    not kept.
+
+    Then the report is written only if it would not overwrite anything:
+      - a report that appeared in the meantime (another writer finished
+        first) is kept, and this one is dropped;
+      - a run that is no longer "completed" (discarded, failed, or sent
+        back for a decision) gets no report written against its old state.
+    Each outcome is recorded as a trace, so a dropped report is visible
+    rather than silently absent.
+    """
+    persist_egress(db, inputs.run_id, egress_records)
+
+    run = db.get(Run, inputs.run_id)
+    existing = db.query(Report).filter(Report.run_id == inputs.run_id).one_or_none()
+    skip_reason = None
+    if run is None:
+        skip_reason = "the run no longer exists"
+    elif existing is not None:
+        skip_reason = "a report was written for this run while this one was being generated; the existing one is kept"
+    elif run.status != "completed":
+        skip_reason = f"the run is now {run.status!r}, not 'completed'; no report is written against its earlier state"
+
+    if skip_reason is not None:
+        if run is not None:
+            db.add(
+                AgentTrace(
+                    run_id=inputs.run_id,
+                    agent_name="narrative",
+                    input_summary="report generated, not saved",
+                    output_summary=json.dumps({"skipped": skip_reason, "generation_mode": report.generation_mode.value}),
+                    edge_taken="skipped",
+                )
+            )
+        db.flush()
+        return existing
 
     record = Report(
-        run_id=run.id,
+        run_id=inputs.run_id,
         narrative_text=report.rendered_text(),
         chart_refs=[chart.model_dump(mode="json") for chart in report.charts],
         grounded_claims_json=[claim.model_dump(mode="json") for claim in report.grounded_claims],
@@ -90,9 +155,9 @@ def run_narrative_for_run(
     db.add(record)
     db.add(
         AgentTrace(
-            run_id=run.id,
+            run_id=inputs.run_id,
             agent_name="narrative",
-            input_summary=f"finding_count={len(findings.findings)} chart_count={len(report.charts)}",
+            input_summary=f"finding_count={len(inputs.findings.findings)} chart_count={len(report.charts)}",
             output_summary=json.dumps(
                 {
                     "generation_mode": report.generation_mode.value,
@@ -107,6 +172,29 @@ def run_narrative_for_run(
     db.flush()
     db.refresh(record)
     return record
+
+
+def run_narrative_for_run(
+    db: Session,
+    run: Run,
+    exploration_record: ExplorationFinding,
+    repaired_df: pd.DataFrame,
+    narrative_agent: NarrativeAgent | None,
+    config: NarrativeConfig | None = None,
+) -> Report | None:
+    """All three phases against a session the CALLER owns. Its connection is
+    released before the model calls (release_connection refuses if the
+    caller left changes pending), so even this entry point holds nothing
+    across the network. app/graph/nodes.py::narrate_node goes further and
+    uses separate sessions for the read and the write.
+
+    Idempotent: a run that already has a Report row is left alone."""
+    inputs = load_narrative_inputs(db, run, exploration_record)
+    if inputs is None:
+        return db.query(Report).filter(Report.run_id == run.id).one_or_none()
+    release_connection(db)
+    report, egress_records = generate_for_inputs(inputs, repaired_df, narrative_agent, config)
+    return save_narrative_report(db, inputs, report, egress_records)
 
 
 def generate_narrative_report(

@@ -13,6 +13,7 @@ separate step an author could forget.
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime, timezone
 
 from langgraph.errors import GraphBubbleUp
@@ -109,12 +110,20 @@ def build_graph():
 
 
 _compiled_graph = None
+_compiled_graph_lock = threading.Lock()
 
 
 def get_graph():
+    """Built once, under a lock. Without one, runs started at the same moment
+    each saw no graph yet and each built their own - with its own checkpointer
+    connection - and only the last was kept; the others leaked, holding the
+    checkpoint file open. Found by running more simultaneous ingests than the
+    connection pool holds (tests/test_no_connection_across_model_calls.py)."""
     global _compiled_graph
     if _compiled_graph is None:
-        _compiled_graph = build_graph()
+        with _compiled_graph_lock:
+            if _compiled_graph is None:
+                _compiled_graph = build_graph()
     return _compiled_graph
 
 

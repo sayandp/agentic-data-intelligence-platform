@@ -66,6 +66,14 @@ def _persist(
     terminal path through the predict graph (app/graph/predict_graph.py)
     must finish writing to THAT SAME row, never a second one the caller's
     id wouldn't match."""
+    if existing is not None:
+        # The model call before this ran with no connection held, so this row
+        # is re-read here rather than trusted from before it. A placeholder
+        # that has already left "running" was finished by someone else in
+        # the meantime, and is not overwritten.
+        db.refresh(existing)
+        if existing.state != "running":
+            return existing
     record = existing if existing is not None else ModelRun(source_id=source.id, run_id=run.id)
     record.question = question
     record.target_column = target_column

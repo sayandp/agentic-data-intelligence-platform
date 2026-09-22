@@ -12,10 +12,12 @@ and wrong, for a reader who was told they would not need to check.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from app.db import release_connection
 from app.models import AgentTrace, ExplorationFinding, Run, SessionSummary
 from app.exploration.findings import DataQualityContext
 from app.narrative.quality import render_quality_context_summary
@@ -46,38 +48,63 @@ def _quality_context_for(db: Session, run: Run) -> str:
     return render_quality_context_summary(DataQualityContext(total_events=0))
 
 
-def run_summary_for_run(
-    db: Session,
-    run: Run,
-    agent: SessionSummaryAgent | None,
-    config: SummaryConfig | None = None,
-) -> SessionSummary | None:
-    """Idempotent. Returns the existing row unchanged if there is one."""
-    existing = db.query(SessionSummary).filter(SessionSummary.run_id == run.id).one_or_none()
-    if existing is not None:
-        return existing
+@dataclass
+class SummaryInputs:
+    """What the summary needs from the database, read once and carried as
+    plain values - so the model calls need no session and none is open."""
 
-    config = config or SummaryConfig()
+    run_id: str
+    facts: list
+    facts_json: list
+    quality_context: str
+    privacy: PrivacyClassification
+
+
+@dataclass
+class SummaryResult:
+    summary_text: str
+    generation_mode: str
+    fallback_reason: str | None
+    claims_json: list | None
+    post_checks: list
+    egress_records: list = field(default_factory=list)
+
+
+def load_summary_inputs(db: Session, run: Run) -> SummaryInputs | None:
+    """Phase 1 of 3. None when the run already has a summary (idempotent)."""
+    if db.query(SessionSummary).filter(SessionSummary.run_id == run.id).one_or_none() is not None:
+        return None
     facts = build_summary_facts(db, run)
-    quality_context = _quality_context_for(db, run)
-    facts_json = [
-        {"id": f.id, "group": f.group.value, "text": f.text, "values": f.values, "origin": f.origin}
-        for f in facts
-    ]
+    return SummaryInputs(
+        run_id=run.id,
+        facts=facts,
+        facts_json=[
+            {"id": f.id, "group": f.group.value, "text": f.text, "values": f.values, "origin": f.origin}
+            for f in facts
+        ],
+        quality_context=_quality_context_for(db, run),
+        privacy=PrivacyClassification.from_dict(run.privacy_classification),
+    )
+
+
+def generate_summary(
+    inputs: SummaryInputs, agent: SessionSummaryAgent | None, config: SummaryConfig | None = None
+) -> SummaryResult:
+    """Phase 2 of 3: the model calls. Takes no session and can reach none."""
+    config = config or SummaryConfig()
+    facts = inputs.facts
 
     summary_text: str | None = None
     generation_mode = "template"
     fallback_reason: str | None = None
     claims_json = None
     post_checks: list = []
+    egress_records: list = []
 
     if agent is None:
         fallback_reason = "no language model is configured for this run"
     else:
-        privacy = PrivacyClassification.from_dict(run.privacy_classification)
-        egress_records: list = []
-
-        claims_outcome = agent.generate_claims(facts, privacy=privacy)
+        claims_outcome = agent.generate_claims(facts, privacy=inputs.privacy)
         if claims_outcome.egress is not None:
             egress_records.append(claims_outcome.egress)
 
@@ -108,34 +135,92 @@ def run_summary_for_run(
                 failures = [issue.detail for o in checked.outcomes for issue in o.issues]
                 fallback_reason = f"the generated summary failed its post-checks: {'; '.join(failures[:3])}"
 
-        persist_egress(db, run.id, egress_records)
-
     if summary_text is None:
         summary_text = render_template_summary(facts, fallback_reason or "generation was not attempted")
 
-    record = SessionSummary(
-        run_id=run.id,
+    return SummaryResult(
         summary_text=summary_text,
-        quality_context=quality_context,
         generation_mode=generation_mode,
-        fallback_reason=None if generation_mode == "llm" else fallback_reason,
+        fallback_reason=fallback_reason,
         claims_json=claims_json,
-        facts_json=facts_json,
-        post_check_results=[a.model_dump(mode="json") for a in post_checks],
+        post_checks=post_checks,
+        egress_records=egress_records,
+    )
+
+
+def save_summary(db: Session, inputs: SummaryInputs, result: SummaryResult) -> SessionSummary | None:
+    """Phase 3 of 3, in a FRESH session, re-reading the run first. Same rules
+    as the narrative's save: egress is always recorded, because those calls
+    went out; the summary is not written over one that appeared meanwhile,
+    nor against a run that is no longer "completed"; a dropped summary
+    leaves a trace saying why."""
+    persist_egress(db, inputs.run_id, result.egress_records)
+
+    run = db.get(Run, inputs.run_id)
+    existing = db.query(SessionSummary).filter(SessionSummary.run_id == inputs.run_id).one_or_none()
+    skip_reason = None
+    if run is None:
+        skip_reason = "the run no longer exists"
+    elif existing is not None:
+        skip_reason = "a summary was written for this run while this one was being generated; the existing one is kept"
+    elif run.status != "completed":
+        skip_reason = f"the run is now {run.status!r}, not 'completed'; no summary is written against its earlier state"
+
+    if skip_reason is not None:
+        if run is not None:
+            db.add(
+                AgentTrace(
+                    run_id=inputs.run_id,
+                    agent_name="session_summary",
+                    input_summary="summary generated, not saved",
+                    output_summary=f"skipped: {skip_reason}",
+                    edge_taken="skipped",
+                )
+            )
+        db.flush()
+        return existing
+
+    record = SessionSummary(
+        run_id=inputs.run_id,
+        summary_text=result.summary_text,
+        quality_context=inputs.quality_context,
+        generation_mode=result.generation_mode,
+        fallback_reason=None if result.generation_mode == "llm" else result.fallback_reason,
+        claims_json=result.claims_json,
+        facts_json=inputs.facts_json,
+        post_check_results=[a.model_dump(mode="json") for a in result.post_checks],
     )
     db.add(record)
     db.add(
         AgentTrace(
-            run_id=run.id,
+            run_id=inputs.run_id,
             agent_name="session_summary",
-            input_summary=f"facts={len(facts)}",
-            output_summary=f"mode={generation_mode} sentences={len(summary_text.split('.'))}",
-            edge_taken=generation_mode,
+            input_summary=f"facts={len(inputs.facts)}",
+            output_summary=f"mode={result.generation_mode} sentences={len(result.summary_text.split('.'))}",
+            edge_taken=result.generation_mode,
         )
     )
     db.flush()
     db.refresh(record)
     return record
+
+
+def run_summary_for_run(
+    db: Session,
+    run: Run,
+    agent: SessionSummaryAgent | None,
+    config: SummaryConfig | None = None,
+) -> SessionSummary | None:
+    """All three phases against a session the CALLER owns, releasing its
+    connection before the model calls (release_connection refuses if the
+    caller left changes pending). app/graph/nodes.py::summarise_node goes
+    further and uses separate sessions. Idempotent."""
+    inputs = load_summary_inputs(db, run)
+    if inputs is None:
+        return db.query(SessionSummary).filter(SessionSummary.run_id == run.id).one_or_none()
+    release_connection(db)
+    result = generate_summary(inputs, agent, config)
+    return save_summary(db, inputs, result)
 
 
 def rendered_summary(record: SessionSummary) -> str:

@@ -64,6 +64,7 @@ class QueryState(TypedDict, total=False):
 
 
 def generate_node(state: QueryState, config) -> dict:
+    from app.db import release_connection
     from app.query.pipeline import _persist, _sql_validation_inputs, MAX_SAMPLE_ROWS, _findings_summary_for_run
 
     db, run, source = state["db"], state["run"], state["source"]
@@ -107,6 +108,15 @@ def generate_node(state: QueryState, config) -> dict:
     )
 
     # Roles are CONTEXT for the model, from the run's one detection pass.
+    # Read BEFORE the connection is released: after it, the run's attributes
+    # are expired, and reading one would reopen a transaction right before
+    # the call - holding a connection across it after all.
+    column_roles = prompt_context(state["run"].semantic_roles)
+
+    # `db` is the request's session, carried through this graph; it is not
+    # ours to close. Ending its transaction returns the pooled connection, so
+    # none is held while the model answers. Refuses if anything is pending.
+    release_connection(db)
     outcome = query_agent.generate(
         query_kind,
         question,
@@ -114,10 +124,17 @@ def generate_node(state: QueryState, config) -> dict:
         sample_rows,
         findings_summary,
         table_name=table_name,
-        column_roles=prompt_context(state["run"].semantic_roles),
+        column_roles=column_roles,
     )
     if outcome.source != "cache":
         persist_egress(db, run.id, [egress])
+        # The disclosure has already happened, so its record is committed now
+        # rather than riding along with whatever this graph writes later: a
+        # crash further on must not lose the audit of what was sent. Nothing
+        # else can be pending here - the connection was released, with
+        # nothing pending, immediately before the call.
+        if db is not None:
+            db.commit()
     if outcome.query is None:
         result = _persist(
             db, run, source, question, quality_summary,

@@ -145,7 +145,11 @@ def _run_predict_in_background(
 def predict_endpoint(
     payload: PredictRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    # scope="function": this session closes when the endpoint returns, BEFORE the
+    # background task runs. With the default scope FastAPI keeps it open until the
+    # background work finishes - and after a post-commit read it holds a pooled
+    # connection for the entire graph run, model calls included.
+    db: Session = Depends(get_db, scope="function"),
     modeling_agent: ModelingAgent | None = Depends(get_modeling_agent),
     query_agent: QueryAgent | None = Depends(get_query_agent),
 ):

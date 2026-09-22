@@ -644,6 +644,94 @@ the defect that was reported; they are named here rather than quietly fixed.
 
 ---
 
+## 5.8 Pooled connections held across model calls
+
+**How it was found.** The approvals-order E2E spec used to `test.skip` when the
+database held 10 or fewer provisional baselines - on every freshly reset
+database, so it reported green over an assertion it never made. Once it
+seeded its own fixture instead, its first run on an empty database failed: a
+plain status request waited 30s and returned 500, and the eighth seeded
+ingest FAILED with `TimeoutError: QueuePool limit of size 5 overflow 10
+reached`.
+
+**Cause 1 - the nodes.** Every model call ran inside a session that had
+already queried, so a pooled connection was held for the whole call,
+rate-limit backoff included. Five call sites: narrative, session summary,
+diagnosis (inside `resolve_node`, and again in `apply_approve` for what an
+approved fix reveals), query, and modeling intent.
+
+**Cause 2 - the request.** Found only because the new precision test drove
+the real HTTP path: FastAPI 0.141 exits a request dependency AFTER that
+request's background tasks (verified directly - `enter -> background task ->
+exit`). So `POST /ingest`'s own session stayed open for the entire graph run,
+and after its post-commit `refresh` it held a connection throughout - one per
+in-flight ingest, even with every node fixed. The same held for `/predict` and
+`/approvals/{id}/resolve`.
+
+**The fix.**
+- Narrative and summary: read in one session, CLOSE it, make the model calls,
+  write in a fresh session.
+- Diagnosis: the loop never queried - it only adds rows and changes objects -
+  so it now runs on detached objects against a `WriteBuffer` that refuses
+  anything but `add`. A query slipped into the loop later would fail at once
+  instead of quietly reopening a connection.
+- Query and modeling: the session belongs to the caller, so its transaction
+  is ended before the call by `release_connection`, which refuses if anything
+  is pending rather than committing it early. It found one such case - the
+  modeling step's egress row, pending when the flow handed off to the query
+  path - which is now committed the moment the call returns: it records a
+  disclosure that has already happened.
+- Endpoints that schedule background work declare
+  `Depends(get_db, scope="function")`, closing the session before the task.
+- Not done: raising the pool size. That would only move the number.
+
+**The gap, guarded.** Between the read and the write the run can change. On
+reopen each writer re-checks: no report or summary over one written
+meanwhile, none against a run that is no longer "completed", and no diagnosis
+written over a run that was rejected (a `reject_data` on another pending
+event) or over events another resolution already processed. In every case the
+egress rows are still written, because those calls went out, and a trace
+records what was dropped and why.
+
+**Two defects the restructure itself introduced, caught before merge.**
+`process_queue` writes `run.reveal_depth_reached` onto the run it is given -
+now a detached copy, so the value was being lost. The golden capture caught it
+(`expected 1, got 0`); it is now carried across explicitly. And the
+approval path skipped `process_queue` when nothing was revealed, which also
+lost that depth; it runs it again (an empty queue makes no model call).
+
+**One more found by the load test.** `get_graph()` built the compiled graph
+lazily with no lock. Twenty runs starting together each built their own, each
+with its own checkpointer connection, and only one was kept - the rest leaked,
+holding the checkpoint file open. It is now built once, under a lock.
+
+**Proof.**
+- Load: 20 simultaneous ingests (the pool holds 15) against a model that
+  takes a second per call, with the pool's size asserted unchanged and only
+  its wait timeout shortened to 2s: all 20 complete with a report and a
+  summary, no pool failure. With narrate_node's old held session put back,
+  the same test fails with `QueuePool limit of size 5 overflow 10 reached,
+  connection timed out, timeout 2.00` on 5 nodes.
+- Precision: at every one of the five call sites, the calling thread holds
+  ZERO pooled connections at the moment of the call - measured by a checkout
+  tracker on the engine, and each site asserted to have been exercised.
+- The fresh-database E2E that failed now passes, with a real model
+  configured: 0 -> 11 provisional baselines seeded, 11 of 11 runs completed
+  with a report and a summary, no 500s, no pool errors.
+- Falsification (`backend/scripts/falsify_connection_release.py`): 11
+  mutations, 11 caught.
+
+**Not done - recorded rather than assumed.** The rule "no session across any
+network call" is met for every MODEL call. It is NOT yet met for connector
+fetches: ten sites still build the repaired frame inside a session (the
+ingest, validate and explore nodes; the query and modeling pipelines; two
+resolution paths; the status, baseline-recompute, analytics and privacy
+routes). For a file source - the only kind in use here - that is a local read.
+For a SQL or API source it is a network call inside a session, and the same
+failure would return under load.
+
+---
+
 ## 6. Limitations, honestly
 
 1. **The container path has never been run.** `docker-compose.yml`,

@@ -70,6 +70,7 @@ MAX_SAMPLE_ROWS = 5
 
 
 def classify_node(state: PredictState, config) -> dict:
+    from app.db import release_connection
     from app.modeling.pipeline import _persist
 
     db, run, source = state["db"], state["run"], state["source"]
@@ -114,11 +115,23 @@ def classify_node(state: PredictState, config) -> dict:
 
         # Roles are CONTEXT from the run's one detection pass - an
         # identifier is not a forecast target just because it is numeric.
-        outcome = modeling_agent.classify_intent(
-            question or "", schema, sample_rows, column_roles=prompt_context(state["run"].semantic_roles)
-        )
+        # Everything the call needs is read first; then the connection goes
+        # back to the pool, so none is held while the model answers. `db`
+        # belongs to the caller and is not closed here - ending its
+        # transaction is what releases the connection. Refuses if anything
+        # is pending.
+        column_roles = prompt_context(state["run"].semantic_roles)
+        release_connection(db)
+        outcome = modeling_agent.classify_intent(question or "", schema, sample_rows, column_roles=column_roles)
         if outcome.source != "cache":
             persist_egress(db, run.id, [egress])
+            # The disclosure has already happened, so its record is committed now
+            # rather than riding along with whatever this graph writes later: a
+            # crash further on must not lose the audit of what was sent. Nothing
+            # else can be pending here - the connection was released, with
+            # nothing pending, immediately before the call.
+            if db is not None:
+                db.commit()
         if outcome.classification is None:
             result = _persist(
                 db, run, source, question, quality_summary,
