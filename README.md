@@ -2512,6 +2512,8 @@ editing any consumer.
 
 ## Known issues
 
+**Under concurrent load with SQL or API sources, source fetches still hold a DB session and could exhaust the connection pool; file sources are unaffected** (details in `docs/EVIDENCE.md` §5.8).
+
 **`GET /ingest/{run_id}/status` is O(source size).** `_serialize_run_response`
 rebuilds the repaired frame through the connector on every call, purely to
 compute `metadata` (row count, column types, encoding). On a 1.07M-row,
