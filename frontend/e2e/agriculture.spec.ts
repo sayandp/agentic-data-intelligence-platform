@@ -42,6 +42,24 @@ const CROP_CSV = (() => {
   return [header, ...rows].join("\n");
 })();
 
+// How long a report or summary can really take, measured rather than guessed.
+// Across 124 runs of one full baseline (all three themes, 2026-09-22) the gap
+// between exploration finishing and the report landing was: median 34s, p90
+// 176s, p95 242s, worst 1857s. The provider was returning 429s and 503 "model
+// is experiencing high demand" throughout (139 of them in that session), and
+// the worst run ended on the template fallback.
+//
+// 20 minutes covers 123 of those 124. A wait costs nothing when the model is
+// quick - the poll returns the moment the report exists - so it is sized for
+// the bad day, not the median. The old 90s bound was exceeded by 32 of the
+// 124, which is why this spec failed on model latency rather than on anything
+// it was testing.
+//
+// It is not a true upper bound: app/llm/gemini_client.py sets no request
+// timeout, so a single hung call has no ceiling. That is noted in the report,
+// not fixed here.
+const MODEL_WAIT_MS = 20 * 60 * 1000;
+
 const ORDERS_CSV = ["order_id,amount,city", ...Array.from({ length: 60 }, (_, i) => `${i},10.0,Paris`)].join("\n");
 
 function writeFixture(name: string, contents: string): string {
@@ -139,10 +157,11 @@ test("agriculture charts render from the persisted spec", async ({ page, request
 
 test("the run comparison and session summary work on an agriculture run", async ({ request }) => {
   // Two COMPLETE pipeline runs, each through a real model on the narrative and
-  // summary stages. That is inherently slower than the 3-minute default, and
-  // it timed out under full-suite load while passing standalone. Declared here
-  // rather than trimming the test: comparing two runs needs two runs.
-  test.setTimeout(600_000);
+  // summary stages. The budget has to cover both ingests AND the summary wait
+  // below, or the test dies before its own deadline can be honoured.
+  // Declared here rather than trimming the test: comparing two runs needs two
+  // runs.
+  test.setTimeout(2 * 300_000 + MODEL_WAIT_MS + 5 * 60 * 1000);
   const path = writeFixture("agri_compare.csv", CROP_CSV);
   const source = await (
     await request.post(`${API}/sources`, { data: { type: "file", connection_config: { path } } })
@@ -173,7 +192,7 @@ test("the run comparison and session summary work on an agriculture run", async 
   expect(sections).toContain("marketing");
 
   // And the summary is written for the run like any other.
-  const deadline = Date.now() + 180_000;
+  const deadline = Date.now() + MODEL_WAIT_MS;
   let summary: { available?: boolean } = {};
   while (Date.now() < deadline) {
     const response = await request.get(`${API}/summary/${runs[1]}`);

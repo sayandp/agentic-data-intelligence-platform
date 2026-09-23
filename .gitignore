@@ -9,6 +9,16 @@ venv/
 *.db-wal
 *.db-shm
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# Coverage output, whichever tool writes it.
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+# OS junk that turns up in any shared directory.
+.DS_Store
+Thumbs.db
 .cache/
 .run_artifacts/
 data/*

@@ -56,14 +56,33 @@ function reportDiagnostics(testInfo: import("@playwright/test").TestInfo, consol
   }
 }
 
+// How long a report or summary can really take, measured rather than guessed.
+// Across 124 runs of one full baseline (all three themes, 2026-09-22) the gap
+// between exploration finishing and the report landing was: median 34s, p90
+// 176s, p95 242s, worst 1857s. The provider was returning 429s and 503 "model
+// is experiencing high demand" throughout (139 of them in that session), and
+// the worst run ended on the template fallback.
+//
+// 20 minutes covers 123 of those 124. A wait costs nothing when the model is
+// quick - the poll returns the moment the report exists - so it is sized for
+// the bad day, not the median. The old 90s bound was exceeded by 32 of the
+// 124, which is why this spec failed on model latency rather than on anything
+// it was testing.
+//
+// It is not a true upper bound: app/llm/gemini_client.py sets no request
+// timeout, so a single hung call has no ceiling. That is noted in the report,
+// not fixed here.
+const MODEL_WAIT_MS = 20 * 60 * 1000;
+
 test.describe("Real dashboard - full human flow", () => {
   test("register -> ingest -> confirm baseline -> escalate -> resolve -> report -> audit", async ({ page, context }, testInfo) => {
     // Two real LLM narrative calls in this flow (first run's report, then
-    // the escalated/resolved run's), each polled up to 90s - the 3-minute
-    // suite default (playwright.config.ts) doesn't leave enough room above
-    // this file's own other real-timing waits once both land near their
-    // worst case. Same reasoning as demo-full-charts.spec.ts's override.
-    test.setTimeout(6 * 60 * 1000);
+    // the escalated/resolved run's), each polled up to MODEL_WAIT_MS. The
+    // per-test budget has to cover BOTH of those waits plus this file's own
+    // real-timing steps, or the test dies before its own deadlines can be
+    // honoured - the same mistake the 6-minute bound made against two 90s
+    // waits that were themselves too short.
+    test.setTimeout(2 * MODEL_WAIT_MS + 10 * 60 * 1000);
     const { consoleErrors, failedRequests } = trackDiagnostics(page);
     // Part 1 COPY BUTTON verification below reads the real OS/browser
     // clipboard - needs the permission granted up front (Chromium only,
@@ -109,7 +128,7 @@ test.describe("Real dashboard - full human flow", () => {
     // before clicking through, rather than assume "status=completed" means
     // the report is ready. Real LLM latency varies with provider load/quota,
     // so this is a generous bound, not a tight one.
-    const firstReportDeadline = Date.now() + 90_000;
+    const firstReportDeadline = Date.now() + MODEL_WAIT_MS;
     let firstReportReady = false;
     while (Date.now() < firstReportDeadline) {
       const statusResp = await page.request.get(`${API_ORIGIN}/ingest/${firstRunNumber}/status`);
@@ -120,7 +139,7 @@ test.describe("Real dashboard - full human flow", () => {
       }
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    expect(firstReportReady, `report for Run #${firstRunNumber} never became available within 90s`).toBe(true);
+    expect(firstReportReady, `report for Run #${firstRunNumber} never became available within ${MODEL_WAIT_MS / 1000}s`).toBe(true);
 
     // --- Part 2 (UX pass): kill the copy-paste workflow - jump to this
     // run's report via the "View report" link the Sources page shows right
@@ -256,7 +275,7 @@ test.describe("Real dashboard - full human flow", () => {
     // than assume the resolve completing means the report is ready - via
     // the run NUMBER, exercising the exact lookup a human typing one into
     // the load box gets (app/id_lookup.py::resolve_run).
-    const reportDeadline = Date.now() + 90_000;
+    const reportDeadline = Date.now() + MODEL_WAIT_MS;
     let reportReady = false;
     while (Date.now() < reportDeadline) {
       const statusResp = await page.request.get(`${API_ORIGIN}/ingest/${secondRunNumber}/status`);
@@ -267,7 +286,7 @@ test.describe("Real dashboard - full human flow", () => {
       }
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    expect(reportReady, `report for Run #${secondRunNumber} never became available within 90s`).toBe(true);
+    expect(reportReady, `report for Run #${secondRunNumber} never became available within ${MODEL_WAIT_MS / 1000}s`).toBe(true);
 
     // VERIFY: Reports loads via typing the run NUMBER ALONE - no id, no
     // prefix, nothing pasted from anywhere else.

@@ -280,6 +280,24 @@ npm i -D @playwright/test && npx playwright install chromium   # one-time
 npm run test:e2e
 ```
 
+### Manual test console (Streamlit)
+
+`tools/test_console.py` is a Streamlit page for poking the running backend by
+hand: register, upload and ingest a source, resolve approvals, inspect reports
+and the audit trail, check that the Gemini key is actually live (not just
+present in `.env`), and run the backend test suite on demand. It talks to the
+same HTTP API the React dashboard uses. It is a debugging aid, not a
+replacement for the dashboard, and no automated test depends on it.
+
+```powershell
+.\start.ps1              # the backend must already be running
+backend\.venv\Scripts\python.exe -m streamlit run tools\test_console.py
+```
+
+It opens on http://localhost:8501. Its two dependencies, `streamlit` and
+`requests`, are listed in `tools/requirements.txt` and are already present in
+`backend\.venv`.
+
 ### Type-checking the frontend
 
 ```bash
