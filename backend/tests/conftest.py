@@ -1,4 +1,5 @@
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -31,6 +32,16 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB_PATH.as_posix()}"
 # one test's runs would leak into the next.
 _TEST_CHECKPOINT_PATH = _TEST_TMP / f"agentic_platform_test_checkpoints_{os.getpid()}.db"
 os.environ["GRAPH_CHECKPOINT_PATH"] = _TEST_CHECKPOINT_PATH.as_posix()
+
+# Run snapshots are a THIRD store (app/run_snapshots.py), and the only one
+# that was still unset here: its default is the relative path
+# `.run_artifacts`, so tests resolved it against the working directory and
+# wrote parquet snapshots into the REAL backend/.run_artifacts alongside
+# live ones. A cleanup found 12 of them, none belonging to any run in the
+# development database. Same per-process name as the two stores above, for
+# the same reason.
+_TEST_ARTIFACTS_DIR = _TEST_TMP / f"agentic_platform_test_artifacts_{os.getpid()}"
+os.environ["RUN_ARTIFACTS_DIR"] = str(_TEST_ARTIFACTS_DIR)
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -69,6 +80,7 @@ def _remove_this_process_databases():
             path.unlink(missing_ok=True)
         except OSError:
             pass
+    shutil.rmtree(_TEST_ARTIFACTS_DIR, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)

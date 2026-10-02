@@ -36,6 +36,22 @@ const PII_CSV = [
 
 const CLEAN_CSV = ["region,amount", ...Array.from({ length: 60 }, (_, i) => `north,${i}`)].join("\n");
 
+// Every test here ingests and then waits for the narrative, so each one is
+// bounded by how long the model takes. Measured across 124 runs of a full
+// baseline (2026-09-22, provider returning 429s and repeated 503 "high
+// demand"): median 34s from exploration to report, p90 176s, worst 1857s.
+// The old 180s wait was exceeded by 12 of those 124 - and it sat inside
+// Playwright's 180s per-test default, so the wait could never be honoured
+// anyway: the test died first. Same defect as dashboard-flow and
+// agriculture; same fix.
+//
+// The per-test budget covers the ingest (240s) AND this wait, with room for
+// the page steps after it. A wait costs nothing when the model is quick -
+// the poll returns as soon as the narrative exists.
+const MODEL_WAIT_MS = 20 * 60 * 1000;
+
+test.describe.configure({ timeout: 240_000 + MODEL_WAIT_MS + 5 * 60 * 1000 });
+
 /** Values that must not appear on the page or in the API response. */
 const SECRETS = ["p3@example.com", "Person 3", "handwritten note about order 7"];
 
@@ -79,13 +95,13 @@ async function ingest(request: APIRequestContext, name: string, contents: string
  * egress list. Waits for the report, which is the signal that narrate ran.
  */
 async function waitForNarrative(request: APIRequestContext, runNumber: number) {
-  const deadline = Date.now() + 180_000;
+  const deadline = Date.now() + MODEL_WAIT_MS;
   while (Date.now() < deadline) {
     const audit = await (await request.get(`${API}/audit/${runNumber}`)).json();
     if (audit.report) return audit;
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  throw new Error(`run ${runNumber} never produced a report within 180s`);
+  throw new Error(`run ${runNumber} never produced a report within ${MODEL_WAIT_MS / 1000}s`);
 }
 
 async function openAudit(page: import("@playwright/test").Page, runNumber: number) {
