@@ -10,15 +10,17 @@ where the UI lives did.
 
 ## Demo video
 
-[![Run #648: a type-cast fix is reverted by its post-condition and escalated to a person](https://github.com/sayandp/agentic-data-intelligence-platform/releases/download/demo-video-2026-10-10/agentic-platform-horizontal-thumb.png)](https://github.com/sayandp/agentic-data-intelligence-platform/releases/download/demo-video-2026-10-10/agentic-platform-horizontal.mp4)
+[![Run #648: the self-healing pipeline catches its own failed fix. The real Audit row reads auto_fix_reverted (reverted).](https://github.com/sayandp/agentic-data-intelligence-platform/releases/download/demo-video-2026-10-10/agentic-platform-horizontal-v2-thumb.png)](https://github.com/sayandp/agentic-data-intelligence-platform/releases/download/demo-video-2026-10-10/agentic-platform-horizontal-v2.mp4)
 
-- [Full walkthrough, 1920×1080, 1:57](https://github.com/sayandp/agentic-data-intelligence-platform/releases/download/demo-video-2026-10-10/agentic-platform-horizontal.mp4)
-- [Teaser, 1080×1920, 0:54](https://github.com/sayandp/agentic-data-intelligence-platform/releases/download/demo-video-2026-10-10/agentic-platform-vertical.mp4)
+- [Walkthrough, 1920×1080, 1:15](https://github.com/sayandp/agentic-data-intelligence-platform/releases/download/demo-video-2026-10-10/agentic-platform-horizontal-v2.mp4)
+- [Teaser, 1080×1920, 0:39](https://github.com/sayandp/agentic-data-intelligence-platform/releases/download/demo-video-2026-10-10/agentic-platform-vertical-v2.mp4)
+- For presentation rooms, without music (SFX only, −16 LUFS): [walkthrough](https://github.com/sayandp/agentic-data-intelligence-platform/releases/download/demo-video-2026-10-10/agentic-platform-horizontal-v2-nomusic.mp4) · [teaser](https://github.com/sayandp/agentic-data-intelligence-platform/releases/download/demo-video-2026-10-10/agentic-platform-vertical-v2-nomusic.mp4)
 
-Both are cut from screenshots of this dashboard running real runs, with
-captions burned in and no audio. Every figure they state is sourced in
-[`video/README.md`](video/README.md), which also covers how they were made and
-how to re-render them.
+The videos are built from screenshots of this dashboard running real runs, with
+burned-in captions. Two short shots (a type-cast attempt and its rewind) are
+recreated, and say so on screen; the real Audit row follows them.
+[`video/README.md`](video/README.md) gives the source of every figure they
+state, explains how they were made, and shows how to re-render them.
 
 ## Structure
 

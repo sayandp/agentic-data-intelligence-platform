@@ -10,14 +10,14 @@ strip and the stat tiles are motion graphics, not imitations of a screen.
 | --- | --- | --- | --- |
 | `out/agentic-platform-horizontal-v2.mp4` | 1920×1080, H.264 yuv420p + AAC, faststart | 1:15 (75.0 s) | 22.5 MB |
 | `out/agentic-platform-vertical-v2.mp4` | 1080×1920, H.264 yuv420p + AAC, faststart | 0:39 (39.0 s) | 10.5 MB |
-| `out/agentic-platform-horizontal-v2-nomusic.mp4` | same picture, SFX only (−17.85 LUFS) | 1:15 (75.0 s) | 22.2 MB |
-| `out/agentic-platform-vertical-v2-nomusic.mp4` | same picture, SFX only (−17.56 LUFS) | 0:39 (39.0 s) | 10.3 MB |
+| `out/agentic-platform-horizontal-v2-nomusic.mp4` | same picture, SFX only, −16 LUFS | 1:15 (75.0 s) | 22.2 MB |
+| `out/agentic-platform-vertical-v2-nomusic.mp4` | same picture, SFX only, −16 LUFS | 0:39 (39.0 s) | 10.3 MB |
 | `out/agentic-platform-horizontal.mp4` (v1) | 1920×1080, H.264, yuv420p, faststart, silent | 1:57 (117.4 s) | 24.1 MB |
 | `out/agentic-platform-vertical.mp4` (v1) | 1080×1920, H.264, yuv420p, faststart, silent | 0:54 (54.0 s) | 15.6 MB |
 
 - **v1** is published on the GitHub release `demo-video-2026-10-10`. It has no audio track: its brief allowed CC0 music or none, and the bundled library is Mixkit-licensed.
 - **v2** has music and SFX, which the v2 brief allows (Mixkit Free License, credited below). It is **not published yet** and is waiting for approval.
-- `out/` is gitignored. The v2 end card shows the repo URL and the byline `<sayandp>` (the `byline` prop).
+- `out/` is gitignored. The v2 end card shows the repo URL and, under it, the byline "Sayand" (the `byline` prop).
 - Both versions carry burned-in English text on every shot, because most viewers watch muted.
 
 ## v2: why v1 felt flat
@@ -95,16 +95,16 @@ The colours are the dashboard's own **Aurora** theme. DESIGN.md defines it as th
 
 The beat offset is how far the music's beats in the render sit from the cut grid; for both cuts, 90% of beats are within 0.86 f (tolerance 3 f).
 
-**No-music cuts** (`*-v2-nomusic.mp4`) are the same picture with an SFX-only track. `music:false` renders the audio from the same timeline, which is muxed onto the v2 video stream. That track gets the music cut's exact mastering gain (`--gain-from`), not its own −14 LUFS normalisation, so every effect sits at the same level in both versions and the SFX-only track comes out quieter.
+**No-music cuts** (`*-v2-nomusic.mp4`) are the same picture with an SFX-only track. `music:false` renders the audio from the same timeline, which is muxed onto the v2 video stream. That track is mastered to **−16 LUFS integrated, true peak ≤ −1 dBTP**, which is better for presentation rooms (`master_audio.py --target -16 --ceiling -2.0`). The extra ceiling headroom covers AAC overshoot.
 
 **Honesty notes for v2.**
 - **Data tables.** These are drawn from the seeded file, not from a screen, and each carries a label saying which file and run it is.
 - **The cast-attempt and rewind shots are recreated, and say so on screen.** No run captured the attempt as footage: the cast is tried and rejected inside `app/repair.py`, and the dashboard never renders it. Both shots carry the label "Recreated from run #648 · real audit row follows" (32 px, top of frame). The very next shot is run #648's real Audit row reading `auto_fix_reverted (reverted)` with the post-condition message. The table values are the real rows of the file run #648 ingested.
 - **Thumbnails are real footage.** Both are run #648's real Audit row with the `(reverted)` cell circled, never the recreated shot.
-- **No agent count on screen.** EVIDENCE §1.1's "nine" predates the Agriculture pack and the Session Summary agent, both of which write trace rows in the current code. The How scene now says "Each agent, one job." §1.1 itself was not changed.
+- **Agent count re-done from the current code.** §1.1 was re-counted on 2026-10-10 at `367b965`. It lists 11 agents, each with its module and the file that writes its trace, and 5 of them use an LLM. The old nine is kept there, marked historical. The How scene shows "11 agents. Each one job." with "EVIDENCE.md §1.1" as the source line. The diagram includes Session Summary (LLM) and Agriculture, and the particle path runs through all 11.
 - **Odometer reels.** Only EVIDENCE.md figures get them; the narrative's own numbers are shown as the stored text.
 - **No "four planes" claim.** "Four planes" was cut from the captions because EVIDENCE.md has no plane breakdown to back the number. The plane names stay as diagram labels.
-- **LLM glow.** The diagram lights the four LLM users in EVIDENCE §1.1, which includes modeling intent.
+- **LLM glow.** The diagram lights the five LLM users in the current EVIDENCE §1.1: diagnosis, query, modeling intent, narrative and session summary.
 
 ### Independent review and what changed
 
@@ -238,7 +238,7 @@ place the video's own figures are defined.
 
 | On screen | Meaning | Provenance | Kind |
 | --- | --- | --- | --- |
-| **Nine** | agents (v1 only; v2 dropped the count: §1.1 predates the Agriculture and Session Summary agents) | EVIDENCE.md §1.1 (Agents table, nine rows incl. the connector layer) | code inventory |
+| **11** | agents (v2; v1 showed the historical nine) | EVIDENCE.md §1.1 (current count, re-counted 2026-10-10 at 367b965: 11 agents, 5 use an LLM) | code inventory |
 | **5** | actions in the closed FixAction enum | EVIDENCE.md §3.1 (Closed FixAction enum: five members) | code inventory |
 | **11/12** | diagnoses correct | EVIDENCE.md §4 (Diagnosis accuracy, scripts/part6_evaluation.py) | live model |
 | **0** | wrongly auto-fixed, at all 10 thresholds | EVIDENCE.md §4 (Wrongly auto-fixed across sweep, part6_wrongly_auto_fixed_replay.py) | cache replay, 0 live calls |
@@ -257,7 +257,9 @@ place the video's own figures are defined.
 | A new domain = roles + rules + a view. | EVIDENCE.md §5.2 and §5.6 (pack-local surface: rule pack, router, page; roles in analytics/roles.py) |
 | PII is masked before an outbound model call; the egress trail records shape only. | EVIDENCE.md §1.3 (egress_events: shape only) + §4 (PII detection tiers, egress leak scan) |
 
-v2 shows `5`, `11/12`, `0` (wrong auto-fixes) and `1075`. `1075` comes from the backend suite re-run on 2026-10-10 and recorded in EVIDENCE.md §1.5; the earlier `874` there is now marked historical. v1 shows `Nine`, `5`, `11/12`, `0`, `2 of 6`, `0` (egress) and `0` (contrast).
+v2 shows `11` (agents), `5`, `11/12`, `0` (wrong auto-fixes) and `1075`.
+- `11` and `1075` come from EVIDENCE.md §1.1 and §1.5, re-measured on 2026-10-10; the earlier `nine` and `874` are kept there, marked historical.
+- v1 shows `Nine`, `5`, `11/12`, `0`, `2 of 6`, `0` (egress) and `0` (contrast).
 
 **Numbers inside filmed dashboard frames** (run numbers, row counts, the
 egress "41 distinct values", the forecast's RMSE, the Ask result) are not

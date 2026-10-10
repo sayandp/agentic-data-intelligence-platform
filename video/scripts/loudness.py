@@ -13,7 +13,11 @@ subprocess.run(f'npx remotion ffmpeg -y -v error -i "{src}" -vn -c:a pcm_s16le -
 y, sr = sf.read(wav)
 loud = pyln.Meter(sr).integrated_loudness(y)
 peak = 20 * np.log10(np.max(np.abs(y)) + 1e-12)
-print(f"{src}: integrated {loud:.2f} LUFS, sample peak {peak:.2f} dBFS, gain to -14 LUFS: x{10 ** ((-14 - loud) / 20):.3f}")
+from scipy.signal import resample_poly
+tp = 20 * np.log10(np.abs(resample_poly(y, 4, 1, axis=0)).max() + 1e-12)  # 4x-oversampled true-peak estimate
+print(f"{src}: integrated {loud:.2f} LUFS, sample peak {peak:.2f} dBFS, true peak ~{tp:.2f} dBTP")
+if "--no-beats" in sys.argv:
+    sys.exit(0)
 
 mono = y.mean(axis=1) if y.ndim > 1 else y
 _, perc = librosa.effects.hpss(librosa.resample(mono, orig_sr=sr, target_sr=22050))

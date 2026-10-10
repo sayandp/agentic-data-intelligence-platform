@@ -152,12 +152,13 @@ const NODES: Node[] = [
   { name: "Query", plane: 2, llm: "LLM" },
   { name: "Modeling", plane: 2, llm: "intent" },
   { name: "Narrative", plane: 3, llm: "LLM" },
+  { name: "Session Summary", plane: 3, llm: "LLM" },
   { name: "Marketing", plane: 3 },
-  { name: "Agriculture", plane: 3, dashed: true },
+  { name: "Agriculture", plane: 3 },
 ];
 const PLANES = ["Ingestion", "Reliability", "Intelligence", "Delivery"];
-// The nine agents of EVIDENCE.md §1.1, in pipeline order.
-const FLOW = ["Connectors", "Data-Quality", "Diagnosis", "Exploration", "Analytics", "Query", "Modeling", "Narrative", "Marketing"];
+// The 11 agents of EVIDENCE.md §1.1 (current count), in pipeline order.
+const FLOW = ["Connectors", "Data-Quality", "Diagnosis", "Exploration", "Analytics", "Query", "Modeling", "Narrative", "Session Summary", "Marketing", "Agriculture"];
 
 const How: React.FC = () => {
   const f = useCurrentFrame();
@@ -244,8 +245,9 @@ const How: React.FC = () => {
                 alignItems: "center",
                 justifyContent: "space-between",
                 padding: "0 20px",
+                gap: 12,
                 fontFamily: SANS,
-                fontSize: 32,
+                fontSize: n.name.length > 12 ? 28 : 32,
                 fontWeight: n.dashed ? 500 : 700,
                 color: n.dashed ? A.faint : A.ink,
                 background: n.dashed ? "transparent" : A.glassHi,
@@ -263,7 +265,12 @@ const How: React.FC = () => {
       </AbsoluteFill>
       {/* scrim so the caption reads over the zoomed diagram */}
       <AbsoluteFill style={{ background: "linear-gradient(180deg, transparent 62%, rgba(10,14,28,0.92) 86%)", pointerEvents: "none" }} />
-      <Kinetic words={words("Each agent, one job.", b(1), 4, { one: A.cyan })} out={b(5) - 4} />
+      <Kinetic words={words(`${CLAIMS.agents.value} agents. Each one job.`, b(1), 4, { [CLAIMS.agents.value]: A.cyan })} out={b(5) - 4} />
+      {f >= b(1) + 12 && f < b(5) - 4 && (
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: vertical ? 250 : 78, textAlign: "center", fontFamily: MONO, fontSize: vertical ? 34 : 30, color: A.faint, opacity: interpolate(f, [b(1) + 12, b(1) + 20], [0, 1], clamp) }}>
+          EVIDENCE.md §1.1
+        </div>
+      )}
       <Kinetic words={words("Rules guard every run.", b(5) + 6, 3, { Rules: A.cyan })} out={b(10) - 4} />
       <Kinetic words={words("One graph, end to end.", b(10), 3, { graph: A.cyan })} out={b(15) - 4} />
       <Kinetic words={words("LLMs only where needed.", b(15) + 4, 3, { LLMs: A.magenta })} />

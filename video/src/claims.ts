@@ -8,7 +8,7 @@
 export type Claim = { id: string; value: string; label: string; source: string; kind: string; n?: number };
 
 export const CLAIMS = {
-  agents: { id: "agents", value: "Nine", label: "agents (v1 only; v2 dropped the count: §1.1 predates the Agriculture and Session Summary agents)", source: "EVIDENCE.md §1.1 (Agents table, nine rows incl. the connector layer)", kind: "code inventory" },
+  agents: { id: "agents", value: "11", label: "agents (v2; v1 showed the historical nine)", source: "EVIDENCE.md §1.1 (current count, re-counted 2026-10-10 at 367b965: 11 agents, 5 use an LLM)", kind: "code inventory" },
   actions: { id: "actions", value: "5", label: "actions in the closed FixAction enum", source: "EVIDENCE.md §3.1 (Closed FixAction enum: five members)", kind: "code inventory" },
   accuracy: { id: "accuracy", value: "11/12", label: "diagnoses correct", source: "EVIDENCE.md §4 (Diagnosis accuracy, scripts/part6_evaluation.py)", kind: "live model" },
   wrongFix: { id: "wrongFix", value: "0", label: "wrongly auto-fixed, at all 10 thresholds", source: "EVIDENCE.md §4 (Wrongly auto-fixed across sweep, part6_wrongly_auto_fixed_replay.py)", kind: "cache replay, 0 live calls" },

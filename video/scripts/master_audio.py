@@ -2,7 +2,7 @@
 true-peak target (look-ahead peak limiter, numpy only), and write a WAV that
 scripts/finalize.mjs muxes back in.
 
-  uv run --with pyloudnorm --with soundfile --with numpy --with scipy --python 3.11 scripts/master_audio.py <in.mp4|wav> <out.wav> [--gain-from <other.wav.gain.json>]
+  uv run --with pyloudnorm --with soundfile --with numpy --with scipy --python 3.11 scripts/master_audio.py <in.mp4|wav> <out.wav> [--target -16] [--ceiling -2.0] [--gain-from <other.wav.gain.json>]
 
 Writes <out.wav>.gain.json with the total gain applied. --gain-from reuses
 another master's gain instead of normalising: the SFX-only cut takes the
@@ -17,7 +17,13 @@ import numpy as np, pyloudnorm as pyln, soundfile as sf
 from scipy.ndimage import maximum_filter1d
 from scipy.signal import resample_poly
 
-TARGET, CEIL = -14.0, 10 ** (-1.6 / 20)  # sample ceiling; leaves room for inter-sample peaks under -1 dBTP
+def _arg(name, default):
+    return float(sys.argv[sys.argv.index(name) + 1]) if name in sys.argv else default
+
+# --target LUFS (default -14) and --ceiling dBFS sample ceiling (default -1.6,
+# room for inter-sample and AAC overshoot under -1 dBTP)
+TARGET = _arg("--target", -14.0)
+CEIL = 10 ** (_arg("--ceiling", -1.6) / 20)
 
 src, out = sys.argv[1], sys.argv[2]
 gain_from = sys.argv[sys.argv.index("--gain-from") + 1] if "--gain-from" in sys.argv else None

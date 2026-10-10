@@ -7,7 +7,7 @@ import { durationOf, Horizontal2, H2_SCENES, Vertical2, V2_SCENES } from "./v2/M
 // `byline` is a prop so the CTA name can change without touching code:
 //   npx remotion render Horizontal out/x.mp4 --props=props.json
 const defaultProps = { byline: "by @sayandp" };
-const v2Props = { byline: "<sayandp>", gain: 1 };
+const v2Props = { byline: "Sayand", gain: 1 };
 
 export const RemotionRoot: React.FC = () => (
   <>
