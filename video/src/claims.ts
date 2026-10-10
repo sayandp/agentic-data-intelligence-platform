@@ -5,7 +5,7 @@
 // Numbers that appear INSIDE filmed dashboard frames (run numbers, counts on
 // a page) are not claims of the video: they are whatever the filmed runs
 // returned, and are listed separately in video/README.md.
-export type Claim = { id: string; value: string; label: string; source: string; kind: string };
+export type Claim = { id: string; value: string; label: string; source: string; kind: string; n?: number };
 
 export const CLAIMS = {
   agents: { id: "agents", value: "Nine", label: "agents, across four planes", source: "EVIDENCE.md §1.1 (Agents table, nine rows incl. the connector layer)", kind: "code inventory" },
@@ -14,6 +14,7 @@ export const CLAIMS = {
   wrongFix: { id: "wrongFix", value: "0", label: "wrongly auto-fixed, at all 10 thresholds", source: "EVIDENCE.md §4 (Wrongly auto-fixed across sweep, part6_wrongly_auto_fixed_replay.py)", kind: "cache replay, 0 live calls" },
   reverts: { id: "reverts", value: "2 of 6", label: "auto-applies reverted by their post-condition", source: "EVIDENCE.md §4 (Post-condition reverts)", kind: "cache replay" },
   egress: { id: "egress", value: "0", label: "data values stored in the egress trail", source: "EVIDENCE.md §4 (Egress trail leak scan)", kind: "tests + live E2E" },
+  tests: { id: "tests", value: "874", n: 874, label: "backend tests passed (most recent full run)", source: "EVIDENCE.md §1.5 (Full-suite pass, most recent run: 874 backend passed)", kind: "test suite" },
   contrast: { id: "contrast", value: "0", label: "contrast failures; 910 text nodes measured in each of 3 themes", source: "EVIDENCE.md §4 (Contrast audit)", kind: "real browser" },
 } satisfies Record<string, Claim>;
 
