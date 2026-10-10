@@ -22,6 +22,50 @@ commands shown, on that commit.
 
 ### 1.1 Agents
 
+#### Current count: 11 agents, 5 use an LLM (re-counted 2026-10-10)
+
+Counted from the code at commit `367b965`, whose backend is identical to
+`main` at `2bc6548`. The counting rule is the same as the historical table
+below: one row per decision-making component, with the connector layer
+included. Nine of the eleven write an `AgentTrace` row, verified with
+`grep -rln 'agent_name="<name>"' backend/app/`; the file each is written
+from is given. Query and Modeling persist `query_runs` / `model_runs`
+instead.
+
+| # | Agent | Module | Trace written in | Uses an LLM? |
+| --- | --- | --- | --- | --- |
+| 1 | Ingestion / connector | `app/connectors/` | `app/graph/nodes.py` (`ingestion`) | No |
+| 2 | Data-Quality (validation) | `app/validation/` | `app/graph/nodes.py` (`validation`) | No |
+| 3 | Diagnosis | `app/diagnosis/agent.py` | `app/resolution.py` (`diagnosis`) | **Yes** |
+| 4 | Exploration | `app/exploration/` | `app/exploration/pipeline.py` | No |
+| 5 | Business Analytics | `app/analytics/` | `app/analytics/pipeline.py` | No |
+| 6 | Query | `app/query/agent.py` | `query_runs` table | **Yes** |
+| 7 | Modeling | `app/modeling/agent.py` | `model_runs` table | **Yes** (intent only) |
+| 8 | Narrative | `app/narrative/agent.py` | `app/narrative/pipeline.py` | **Yes** |
+| 9 | Session Summary | `app/summary/agent.py` | `app/summary/pipeline.py` (`session_summary`) | **Yes** (stage-2 prose, §5.5) |
+| 10 | Marketing | `app/marketing/` | `app/marketing/pipeline.py` | No |
+| 11 | Agriculture | `app/agriculture/` | `app/agriculture/pipeline.py` | No |
+
+**LLM users.** Verified with `grep -rln "llm_client" backend/app/`. The
+decision paths are the five agent modules marked Yes. The other hits only
+wire the client through and decide nothing:
+- `app/llm/*`, the clients themselves
+- `*/dependency.py`
+- `*/models.py`
+- `app/main.py`
+- `app/graph/query_graph.py`
+- `app/graph/predict_graph.py`
+
+**Non-agent trace writers.** `gate`, `correlation`, `resolve`,
+`await_human` and `baseline_profiler` are pipeline stages, not agents.
+
+**What changed since the historical count.** Two agents were added after the
+table below was written:
+- Agriculture, the second domain pack (§5.6)
+- Session Summary (§5.5)
+
+#### Historical count (at `cf27f66`, 2026-08-16): nine
+
 Eight agents write an `AgentTrace` row. Verified by
 `grep -rho 'agent_name="[a-z_]*"' backend/app/`, which additionally returns
 four non-agent trace writers (`gate`, `correlation`, `resolve`,
@@ -113,8 +157,15 @@ cd frontend && npx playwright test --list
 The E2E total is 135 because `playwright.config.ts` defines three projects
 (default / dark / aurora) and every spec runs once per theme.
 
-**Full-suite pass, most recent run:** 874 backend passed (4m38s); 144 E2E
-passed (16m24s) across all three themes, as one batch.
+**Backend full-suite pass, re-run 2026-10-10:** **1075 passed**, 0 failed,
+0 skipped (6m57s). Run at commit `091484e`, whose backend code is identical
+to `main` at `2bc6548` (that commit adds only `video/`). Command:
+`cd backend && .venv/Scripts/python.exe -m pytest -q`. This supersedes the
+backend figures above and below; the E2E suite was not re-run, so its
+figures are unchanged.
+
+**Full-suite pass, earlier run (historical):** 874 backend passed (4m38s);
+144 E2E passed (16m24s) across all three themes, as one batch.
 
 The suite is now safe to run concurrently with itself. It was not, until
 `tests/conftest.py` was fixed: one hard-coded SQLite path plus an autouse

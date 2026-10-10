@@ -2,7 +2,11 @@
 // (yuvj420p), which some players and upload pipelines mis-handle. Convert to
 // limited-range yuv420p H.264 with the moov atom up front (+faststart), and
 // check the result.
-//   node scripts/finalize.mjs        (after rendering to out/raw/)
+//   node scripts/finalize.mjs        v1 (silent), after rendering to out/raw/
+//   node scripts/finalize.mjs v2     v2: also muxes out/raw/<name>.wav, the
+//                                    soundtrack mastered by scripts/master_audio.py
+//   node scripts/finalize.mjs v2-nomusic   SFX-only cut: the v2 render's video
+//                                    + out/raw/<name>-nomusic.wav
 import { execFileSync } from "node:child_process";
 import { mkdirSync, statSync } from "node:fs";
 
@@ -10,11 +14,18 @@ const npx = process.platform === "win32" ? "npx.cmd" : "npx";
 const run = (args) => execFileSync(npx, ["remotion", ...args], { encoding: "utf8", shell: process.platform === "win32" });
 
 mkdirSync("out", { recursive: true });
-for (const name of ["agentic-platform-horizontal", "agentic-platform-vertical"]) {
-  const src = `out/raw/${name}.mp4`;
+const mode = process.argv[2];
+const v2 = mode === "v2" || mode === "v2-nomusic";
+const base = v2 ? ["agentic-platform-horizontal-v2", "agentic-platform-vertical-v2"] : ["agentic-platform-horizontal", "agentic-platform-vertical"];
+const names = mode === "v2-nomusic" ? base.map((n) => `${n}-nomusic`) : base;
+for (const name of names) {
+  // the SFX-only cut is the same picture: reuse the v2 render's video stream
+  const src = `out/raw/${name.replace(/-nomusic$/, "")}.mp4`;
   const dst = `out/${name}.mp4`;
-  run(["ffmpeg", "-y", "-v", "error", "-i", src, "-vf", "scale=in_range=full:out_range=tv,format=yuv420p", "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-profile:v", "high", "-color_range", "tv", "-movflags", "+faststart", "-an", dst]);
-  const probe = run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_name,pix_fmt,width,height", "-show_entries", "format=duration", "-of", "compact", dst]).trim();
+  const video = ["-vf", "scale=in_range=full:out_range=tv,format=yuv420p", "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-profile:v", "high", "-color_range", "tv"];
+  const audio = v2 ? ["-i", `out/raw/${name}.wav`, "-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "192k", "-shortest"] : ["-an"];
+  run(["ffmpeg", "-y", "-v", "error", "-i", src, ...audio, ...video, "-movflags", "+faststart", dst]);
+  const probe = run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_name,pix_fmt,width,height,sample_rate", "-show_entries", "format=duration", "-of", "compact", dst]).trim();
   const mb = statSync(dst).size / 1e6;
   if (!probe.includes("pix_fmt=yuv420p") || !probe.includes("codec_name=h264")) throw new Error(`${dst}: ${probe}`);
   if (mb >= 50) throw new Error(`${dst} is ${mb.toFixed(1)} MB (limit 50)`);
