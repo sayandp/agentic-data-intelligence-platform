@@ -8,6 +8,18 @@ why and what changed. Everything below the split still describes the
 backend's own history phase by phase, since none of that changed - only
 where the UI lives did.
 
+## Demo video
+
+[![Run #648: a type-cast fix is reverted by its post-condition and escalated to a person](https://github.com/sayandp/agentic-data-intelligence-platform/releases/download/demo-video-2026-10-10/agentic-platform-horizontal-thumb.png)](https://github.com/sayandp/agentic-data-intelligence-platform/releases/download/demo-video-2026-10-10/agentic-platform-horizontal.mp4)
+
+- [Full walkthrough, 1920×1080, 1:57](https://github.com/sayandp/agentic-data-intelligence-platform/releases/download/demo-video-2026-10-10/agentic-platform-horizontal.mp4)
+- [Teaser, 1080×1920, 0:54](https://github.com/sayandp/agentic-data-intelligence-platform/releases/download/demo-video-2026-10-10/agentic-platform-vertical.mp4)
+
+Both are cut from screenshots of this dashboard running real runs, with
+captions burned in and no audio. Every figure they state is sourced in
+[`video/README.md`](video/README.md), which also covers how they were made and
+how to re-render them.
+
 ## Structure
 
 ```
