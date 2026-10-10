@@ -445,11 +445,11 @@ export const Odometer: React.FC<{ value: string; at: number; size: number; color
       {[...value].map((ch, i) => {
         if (!/[0-9]/.test(ch)) return <span key={i}>{ch}</span>;
         const d = Number(ch);
-        const start = at + di * 4;
+        const start = at + di * 2; // reels land left to right, the last one well before the cut
         di++;
-        const p = interpolate(f, [start, start + 16], [0, 1], { ...clamp, easing: Easing.bezier(0.2, 0.9, 0.3, 1.08) });
+        const p = interpolate(f, [start, start + 12], [0, 1], { ...clamp, easing: Easing.bezier(0.2, 0.9, 0.3, 1.08) });
         const pos = (10 + d) * p; // one full turn, then land on d
-        const blur = interpolate(f, [start, start + 8, start + 16], [0, 6, 0], clamp);
+        const blur = interpolate(f, [start, start + 6, start + 12], [0, 6, 0], clamp);
         return (
           <span key={i} style={{ display: "inline-block", height: size, overflow: "hidden", position: "relative", width: "0.62em" }}>
             <span style={{ position: "absolute", left: 0, top: -pos * size, filter: `blur(${blur}px)`, display: "flex", flexDirection: "column" }}>

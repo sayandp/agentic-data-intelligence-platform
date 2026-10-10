@@ -5,6 +5,8 @@
 //   node scripts/finalize.mjs        v1 (silent), after rendering to out/raw/
 //   node scripts/finalize.mjs v2     v2: also muxes out/raw/<name>.wav, the
 //                                    soundtrack mastered by scripts/master_audio.py
+//   node scripts/finalize.mjs v2-nomusic   SFX-only cut: the v2 render's video
+//                                    + out/raw/<name>-nomusic.wav
 import { execFileSync } from "node:child_process";
 import { mkdirSync, statSync } from "node:fs";
 
@@ -12,10 +14,13 @@ const npx = process.platform === "win32" ? "npx.cmd" : "npx";
 const run = (args) => execFileSync(npx, ["remotion", ...args], { encoding: "utf8", shell: process.platform === "win32" });
 
 mkdirSync("out", { recursive: true });
-const v2 = process.argv[2] === "v2";
-const names = v2 ? ["agentic-platform-horizontal-v2", "agentic-platform-vertical-v2"] : ["agentic-platform-horizontal", "agentic-platform-vertical"];
+const mode = process.argv[2];
+const v2 = mode === "v2" || mode === "v2-nomusic";
+const base = v2 ? ["agentic-platform-horizontal-v2", "agentic-platform-vertical-v2"] : ["agentic-platform-horizontal", "agentic-platform-vertical"];
+const names = mode === "v2-nomusic" ? base.map((n) => `${n}-nomusic`) : base;
 for (const name of names) {
-  const src = `out/raw/${name}.mp4`;
+  // the SFX-only cut is the same picture: reuse the v2 render's video stream
+  const src = `out/raw/${name.replace(/-nomusic$/, "")}.mp4`;
   const dst = `out/${name}.mp4`;
   const video = ["-vf", "scale=in_range=full:out_range=tv,format=yuv420p", "-c:v", "libx264", "-preset", "slow", "-crf", "20", "-profile:v", "high", "-color_range", "tv"];
   const audio = v2 ? ["-i", `out/raw/${name}.wav`, "-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "192k", "-shortest"] : ["-an"];

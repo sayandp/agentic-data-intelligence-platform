@@ -113,8 +113,15 @@ cd frontend && npx playwright test --list
 The E2E total is 135 because `playwright.config.ts` defines three projects
 (default / dark / aurora) and every spec runs once per theme.
 
-**Full-suite pass, most recent run:** 874 backend passed (4m38s); 144 E2E
-passed (16m24s) across all three themes, as one batch.
+**Backend full-suite pass, re-run 2026-10-10:** **1075 passed**, 0 failed,
+0 skipped (6m57s). Run at commit `091484e`, whose backend code is identical
+to `main` at `2bc6548` (that commit adds only `video/`). Command:
+`cd backend && .venv/Scripts/python.exe -m pytest -q`. This supersedes the
+backend figures above and below; the E2E suite was not re-run, so its
+figures are unchanged.
+
+**Full-suite pass, earlier run (historical):** 874 backend passed (4m38s);
+144 E2E passed (16m24s) across all three themes, as one batch.
 
 The suite is now safe to run concurrently with itself. It was not, until
 `tests/conftest.py` was fixed: one hard-coded SQLite path plus an autouse

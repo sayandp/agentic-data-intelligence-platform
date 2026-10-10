@@ -263,7 +263,7 @@ const How: React.FC = () => {
       </AbsoluteFill>
       {/* scrim so the caption reads over the zoomed diagram */}
       <AbsoluteFill style={{ background: "linear-gradient(180deg, transparent 62%, rgba(10,14,28,0.92) 86%)", pointerEvents: "none" }} />
-      <Kinetic words={words(`${CLAIMS.agents.value} agents.`, b(1), 4, { Nine: A.cyan })} out={b(5) - 4} />
+      <Kinetic words={words("Each agent, one job.", b(1), 4, { one: A.cyan })} out={b(5) - 4} />
       <Kinetic words={words("Rules guard every run.", b(5) + 6, 3, { Rules: A.cyan })} out={b(10) - 4} />
       <Kinetic words={words("One graph, end to end.", b(10), 3, { graph: A.cyan })} out={b(15) - 4} />
       <Kinetic words={words("LLMs only where needed.", b(15) + 4, 3, { LLMs: A.magenta })} />
@@ -390,6 +390,20 @@ const CastAttempt: React.FC<{ reverse?: boolean; len: number }> = ({ reverse, le
   );
 };
 
+/** Small, readable provenance tag for the two dramatised shots (cast attempt
+ *  + rewind): nothing in the dashboard shows the attempt itself - it happens
+ *  inside app/repair.py - so the beat is recreated and says so on screen. */
+const Recreated: React.FC = () => {
+  const { vertical } = useV();
+  return (
+    <div style={{ position: "absolute", top: vertical ? 120 : 44, left: 0, right: 0, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
+      <div style={{ fontFamily: SANS, fontSize: vertical ? 34 : 32, fontWeight: 600, color: A.ink, background: "rgba(10,14,28,0.82)", border: `1px solid ${A.lineStrong}`, borderRadius: 999, padding: "10px 26px", letterSpacing: 0.2 }}>
+        Recreated from run #648 · real audit row follows
+      </div>
+    </div>
+  );
+};
+
 const HERO = { detect: 4, diagnose: 4, fix: 6, verify: 6, attempt: 4, rewind: 4, caught: 8 };
 const heroStarts = (() => {
   let t = 0;
@@ -439,6 +453,7 @@ const Hero: React.FC = () => {
       </Sequence>
       <Sequence from={at("attempt")} durationInFrames={len("attempt")}>
         <CastAttempt len={len("attempt")} />
+        <Recreated />
         <Kinetic words={words("Next fix fails.", 24, 4, { fails: A.red })} />
       </Sequence>
       <Sequence from={at("rewind")} durationInFrames={len("rewind")}>
@@ -446,6 +461,7 @@ const Hero: React.FC = () => {
           <Ground />
           <CastAttempt len={len("attempt")} reverse />
         </VHS>
+        <Recreated />
       </Sequence>
       <Sequence from={at("caught")} durationInFrames={len("caught")}>
         <Stage url="localhost:5173/audit?run=648" dur={len("caught")} orbit={[-6, -11]}>
@@ -698,7 +714,7 @@ const StatShot: React.FC<{ value: string; label: string; source: string }> = ({ 
 export const STATS = [
   { value: CLAIMS.accuracy.value, label: "diagnoses correct", source: "live model · EVIDENCE.md §4" },
   { value: CLAIMS.wrongFix.value, label: "wrong auto-fixes", source: "all 10 thresholds · cache replay · §4" },
-  { value: CLAIMS.tests.value, label: "tests passed", source: "backend · latest full run · §1.5" },
+  { value: CLAIMS.tests.value, label: "tests passed", source: "backend · full run 2026-10-10 · §1.5" },
 ];
 export const StatsRun: React.FC<{ each: number }> = ({ each }) => (
   <>

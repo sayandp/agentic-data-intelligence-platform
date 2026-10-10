@@ -2,12 +2,17 @@
 true-peak target (look-ahead peak limiter, numpy only), and write a WAV that
 scripts/finalize.mjs muxes back in.
 
-  uv run --with pyloudnorm --with soundfile --with numpy --with scipy --python 3.11 scripts/master_audio.py <in.mp4> <out.wav>
+  uv run --with pyloudnorm --with soundfile --with numpy --with scipy --python 3.11 scripts/master_audio.py <in.mp4|wav> <out.wav> [--gain-from <other.wav.gain.json>]
+
+Writes <out.wav>.gain.json with the total gain applied. --gain-from reuses
+another master's gain instead of normalising: the SFX-only cut takes the
+music cut's gain, so every effect sits at the same level in both versions
+(normalising a sparse SFX-only track to -14 LUFS would pump the effects).
 
 The render already sums music under SFX; this stage only sets the overall
 level and stops the impacts from clipping when it does.
 """
-import os, subprocess, sys, tempfile
+import json, os, subprocess, sys, tempfile
 import numpy as np, pyloudnorm as pyln, soundfile as sf
 from scipy.ndimage import maximum_filter1d
 from scipy.signal import resample_poly
@@ -15,6 +20,7 @@ from scipy.signal import resample_poly
 TARGET, CEIL = -14.0, 10 ** (-1.6 / 20)  # sample ceiling; leaves room for inter-sample peaks under -1 dBTP
 
 src, out = sys.argv[1], sys.argv[2]
+gain_from = sys.argv[sys.argv.index("--gain-from") + 1] if "--gain-from" in sys.argv else None
 tmp = os.path.join(tempfile.mkdtemp(), "a.wav")
 subprocess.run(f'npx remotion ffmpeg -y -v error -i "{src}" -vn -c:a pcm_s16le -ar 48000 "{tmp}"', shell=True, check=True)
 x, sr = sf.read(tmp, always_2d=True)
@@ -35,8 +41,14 @@ def limit(sig):
     return sig * g[:, None]
 
 y = x.copy()
-for it in range(4):
+total = 1.0
+if gain_from:
+    total = json.load(open(gain_from))["gain"]
+    y = limit(y * total)
+    print(f"fixed gain x{total:.3f} (from {gain_from}): {meter.integrated_loudness(y):.2f} LUFS")
+for it in range(0 if gain_from else 4):
     gain = 10 ** ((TARGET - meter.integrated_loudness(y)) / 20)
+    total *= gain
     y = limit(y * gain)
     l = meter.integrated_loudness(y)
     # 4x-oversampled peak as a true-peak estimate
@@ -45,4 +57,5 @@ for it in range(4):
     if abs(l - TARGET) < 0.2:
         break
 sf.write(out, y.astype(np.float32), sr, subtype="PCM_16")
+json.dump({"gain": total}, open(out + ".gain.json", "w"))
 print(f"-> {out}")
